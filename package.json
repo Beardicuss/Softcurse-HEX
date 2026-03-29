@@ -1,0 +1,46 @@
+{
+  "name": "softcurse-hex",
+  "version": "1.0.0",
+  "description": "Softcurse H.E.X. \u2014 Intelligent Cyberpunk Desktop Assistant",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "rebuild": "node -e \"require('@electron/rebuild').rebuild({force:true,onlyModules:['sherpa-onnx']})\""
+  },
+  "dependencies": {
+    "node-schedule": "^2.1.1",
+    "systeminformation": "^5.21.0",
+    "sherpa-onnx": "^1.10.30"
+  },
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3",
+    "@electron/rebuild": "^3.6.0"
+  },
+  "build": {
+    "appId": "com.softcurse.hex",
+    "productName": "Softcurse H.E.X.",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "local-voice/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "src/assets/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "src/assets/icon.icns"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "src/assets/icon.png"
+    }
+  }
+}
