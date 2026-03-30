@@ -29,15 +29,32 @@ async function init() {
 
   // Configure subsystems
   window.hexAI.configure(config);
-  window.hexVoice.init({ ...(config.voice || {}), llm: config.llm });
+  // Push saved modelsDir to engine before init so it knows where models are
+  if (config.voice?.modelsDir) {
+    await window.hexAPI.voice.setModelsDir(config.voice.modelsDir).catch(() => {});
+  }
+  // Await voice init so local engine status is ready before first use
+  await window.hexVoice.init({ ...(config.voice || {}), llm: config.llm });
 
-  // When TTS voices finish loading, apply saved voice selection
+  // Voices may already be loaded (browser cached them before callback was wired).
+  // Apply saved name now; onVoicesLoaded will re-apply if they load later.
+  if (config.voice?.voiceName && window.hexVoice.getVoices().length > 0) {
+    window.hexVoice.setVoiceByName(config.voice.voiceName);
+  }
+
+  // When TTS voices finish loading, restore full voice config
   window.hexVoice.onVoicesLoaded = (voices) => {
     addLog('VOICE', `${voices.length} TTS voices loaded`);
     if (config.voice?.voiceName) {
       window.hexVoice.setVoiceByName(config.voice.voiceName);
-      addLog('VOICE', `Voice set: ${config.voice.voiceName}`);
     }
+    // Also restore engine settings (Piper/OS/GCloud) in case this fires late
+    window.hexVoice._ttsEngine      = config.voice?.ttsEngine      || 'os';
+    window.hexVoice._localVoiceLang = config.voice?.localVoiceLang || 'en';
+    window.hexVoice._localSpeed     = config.voice?.localSpeed     ?? 1.0;
+    window.hexVoice._gcloudKey      = config.voice?.gcloudTtsKey   || '';
+    window.hexVoice._useGCloud      = !!(config.voice?.gcloudTtsKey);
+    window.hexVoice._gcloudVoice    = config.voice?.gcloudVoice    || 'ka-GE-Standard-A';
   };
   window.reminders.init();
 
@@ -926,6 +943,12 @@ async function openSettings() {
   const volEl = document.getElementById('cfg-volume');
   if (volEl) { volEl.value = volume; const vv = document.getElementById('volume-val'); if (vv) vv.textContent = volume; }
 
+  // GCloud TTS fields
+  const gcKeyEl   = document.getElementById('cfg-gcloud-tts-key');
+  const gcVoiceEl = document.getElementById('cfg-gcloud-voice');
+  if (gcKeyEl)   gcKeyEl.value   = cfg.voice?.gcloudTtsKey || '';
+  if (gcVoiceEl) gcVoiceEl.value = cfg.voice?.gcloudVoice  || 'ka-GE-Standard-A';
+
   populateVoiceSelect(cfg.voice?.voiceName || '');
 
   // Restore TTS engine choice
@@ -980,6 +1003,7 @@ async function openSettings() {
   updateProviderUI();
   // Always start on General tab
   switchSettingsTab('tab-general');
+  // Auto-show voice status info when general is loaded (shows in voice tab when switched)
   // Pre-populate personality active display
   updatePersonaBadge();
   refreshPersonaList();
@@ -1211,14 +1235,18 @@ async function saveSettings() {
     },
     voice: {
       ...config.voice,
-      wakeWord: document.getElementById('cfg-wakeword').value || 'hey hex',
-      voiceName: document.getElementById('cfg-voice')?.value || '',
-      rate: parseFloat(document.getElementById('cfg-rate').value) || 0.95,
-      pitch: parseFloat(document.getElementById('cfg-pitch').value) || 0.85,
-      volume: parseFloat(document.getElementById('cfg-volume')?.value || '0.9'),
-      ttsEngine: document.querySelector('input[name="tts-engine"]:checked')?.value || 'os',
+      // modelsDir: always read from field so it persists even without clicking APPLY
+      modelsDir:      (document.getElementById('cfg-models-dir')?.value || '').trim() || config.voice?.modelsDir || '',
+      wakeWord:       document.getElementById('cfg-wakeword').value || 'hey hex',
+      voiceName:      document.getElementById('cfg-voice')?.value || '',
+      rate:           parseFloat(document.getElementById('cfg-rate').value) || 0.95,
+      pitch:          parseFloat(document.getElementById('cfg-pitch').value) || 0.85,
+      volume:         parseFloat(document.getElementById('cfg-volume')?.value || '0.9'),
+      ttsEngine:      document.querySelector('input[name="tts-engine"]:checked')?.value || 'os',
       localVoiceLang: document.getElementById('cfg-local-voice')?.value || 'en',
-      localSpeed: parseFloat(document.getElementById('cfg-local-speed')?.value || '1.0'),
+      localSpeed:     parseFloat(document.getElementById('cfg-local-speed')?.value || '1.0'),
+      gcloudTtsKey:   (document.getElementById('cfg-gcloud-tts-key')?.value || '').trim() || config.voice?.gcloudTtsKey || '',
+      gcloudVoice:    document.getElementById('cfg-gcloud-voice')?.value || config.voice?.gcloudVoice || 'ka-GE-Standard-A',
     },
     monitoring: {
       ...config.monitoring,
@@ -1233,11 +1261,20 @@ async function saveSettings() {
   config = { ...config, ...newCfg, ...pcfg };
   await window.hexAPI.setConfig(config);
   window.hexAI.configure(config);
-  window.hexVoice.wakeWord = config.voice.wakeWord;
+  window.hexVoice.wakeWord        = config.voice.wakeWord;
   window.hexVoice.setVoiceByName(config.voice.voiceName);
-  window.hexVoice._ttsEngine = config.voice.ttsEngine || 'os';
+  window.hexVoice._ttsEngine      = config.voice.ttsEngine      || 'os';
   window.hexVoice._localVoiceLang = config.voice.localVoiceLang || 'en';
-  window.hexVoice._localSpeed = config.voice.localSpeed ?? 1.0;
+  window.hexVoice._localSpeed     = config.voice.localSpeed     ?? 1.0;
+  window.hexVoice._gcloudKey      = config.voice.gcloudTtsKey   || '';
+  window.hexVoice._useGCloud      = !!(config.voice.gcloudTtsKey);
+  window.hexVoice._gcloudVoice    = config.voice.gcloudVoice    || 'ka-GE-Standard-A';
+  // Push modelsDir to engine and refresh engine status
+  if (config.voice.modelsDir) {
+    window.hexAPI.voice.setModelsDir(config.voice.modelsDir).catch(() => {});
+  }
+  // Re-check local engines so _localSTT/_localTTS are current after any path change
+  window.hexVoice._checkLocalEngines();
   window.hexBrowser.defaultEngine = config.browser?.searchEngine || 'google';
   updateSearchEngineBtn();
 

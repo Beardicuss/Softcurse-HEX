@@ -61,7 +61,7 @@ class HexVoice {
   }
 
   // ── Init ──────────────────────────────────────────────────────
-  init(config = {}) {
+  async init(config = {}) {
     this.wakeWord        = (config.wakeWord || 'hey hex').toLowerCase();
     this.wakeWordMode    = config.wakeWordMode === true;
     this._voiceName      = config.voiceName      || '';
@@ -76,6 +76,8 @@ class HexVoice {
       this._ollamaUrl      = config.llm?.baseUrl || 'http://localhost:11434';
     }
     this._applyVoiceName(this._voiceName);
+    // Await engine check so _localSTT/_localTTS are populated before anything calls speak()
+    await this._checkLocalEngines();
     return true;
   }
 

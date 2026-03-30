@@ -308,15 +308,13 @@ class LocalVoiceEngine {
 
     for (const { label, cfg } of variants) {
       try {
-        this._log('Trying variant ' + label);
         const recognizer = tryCreate(cfg);
         this._stt      = recognizer;
         this._sttReady = true;
-        this._log('STT ready — variant ' + label);
+        this._log('STT ready.');
         return true;
       } catch (e) {
-        this._log('Variant ' + label + ' failed: ' + (e.message || String(e)));
-        console.warn('STT [' + label + ']:', e.message || e);
+        // silent — try next variant
       }
     }
 
