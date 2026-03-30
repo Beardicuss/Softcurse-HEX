@@ -6,9 +6,9 @@ class PCMProcessor extends AudioWorkletProcessor {
     super();
     this._buf   = [];
     this._count = 0;
-    // Send a chunk every ~4 seconds worth of samples at 16kHz
-    // sampleRate is always 16000 because we create the AudioContext at 16000
-    this._chunkSize = 16000 * 4; // 4 seconds
+    // Send a chunk every ~0.5 seconds — VAD in voice.js accumulates speech frames
+    // and only sends to Whisper once a complete speech segment is detected.
+    this._chunkSize = 16000 * 0.5; // 0.5 seconds
   }
 
   process(inputs) {

@@ -41,6 +41,12 @@ class HexVoice {
     this._sourceNode     = null;
     this._workletNode    = null;
 
+    // VAD state — prevents background noise from triggering transcription
+    this._vadSpeechBuf   = [];       // accumulates frames that contain speech
+    this._vadSilence     = 0;        // consecutive silent frames after speech
+    this._vadActive      = false;    // currently collecting a speech segment
+    this._lastTranscribe = 0;        // timestamp of last transcription call
+
     // Local engine
     this._localSTT       = false;
     this._localTTS       = {};
@@ -246,14 +252,62 @@ class HexVoice {
     }
   }
 
+  // ── RMS energy helper ────────────────────────────────────────
+  _rms(samples) {
+    let sum = 0;
+    for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
+    return Math.sqrt(sum / samples.length);
+  }
+
   async _transcribePCM(pcm) {
-    // Silence gate — skip very quiet chunks
-    let maxAmp = 0;
-    for (let i = 0; i < pcm.length; i++) {
-      const a = Math.abs(pcm[i]);
-      if (a > maxAmp) maxAmp = a;
+    // ── VAD: RMS-based speech detection ──────────────────────────
+    // Threshold tuned for typical mic levels — ignores keyboard, fans, AC
+    const SPEECH_RMS    = 0.025;   // minimum RMS to count as speech
+    const MIN_SPEECH_MS = 400;     // ignore anything shorter (clicks, pops)
+    const SILENCE_GRACE = 6;       // silent frames allowed before cutting segment
+    const COOLDOWN_MS   = 1200;    // don't send two transcriptions too close together
+    const SR            = 16000;
+
+    const rms = this._rms(pcm);
+    const isSpeech = rms >= SPEECH_RMS;
+
+    if (isSpeech) {
+      this._vadActive = true;
+      this._vadSilence = 0;
+      this._vadSpeechBuf.push(pcm);
+    } else if (this._vadActive) {
+      this._vadSilence++;
+      this._vadSpeechBuf.push(pcm); // keep collecting during brief pauses
+
+      if (this._vadSilence < SILENCE_GRACE) return; // wait for more silence
+
+      // End of speech segment — check it's long enough to be real speech
+      const totalSamples = this._vadSpeechBuf.reduce((s, c) => s + c.length, 0);
+      const durationMs   = (totalSamples / SR) * 1000;
+
+      const seg = this._vadSpeechBuf;
+      this._vadSpeechBuf = [];
+      this._vadActive    = false;
+      this._vadSilence   = 0;
+
+      if (durationMs < MIN_SPEECH_MS) return; // too short — noise burst
+
+      const now = Date.now();
+      if (now - this._lastTranscribe < COOLDOWN_MS) return; // too soon
+      this._lastTranscribe = now;
+
+      // Merge frames into a single Float32Array
+      const merged = new Float32Array(totalSamples);
+      let offset = 0;
+      for (const frame of seg) { merged.set(frame, offset); offset += frame.length; }
+      pcm = merged;
+    } else {
+      return; // silence, no active segment
     }
-    if (maxAmp < 0.005) return;
+
+    if (!this._vadActive && pcm.length === 0) return; // nothing to send yet
+    // Only send when we've just finished a segment (vadActive just turned false)
+    if (this._vadActive) return;
 
     let text = '';
 

@@ -214,127 +214,118 @@ class LocalVoiceEngine {
       return false;
     }
 
-    this._log('STT files found:\n  encoder: ' + p.encoder +
-              '\n  decoder: ' + p.decoder + '\n  tokens: ' + p.tokens);
+    // Normalise to forward slashes — ONNX runtime rejects backslashes on some builds
+    const fwd = (s) => s.replace(/\\/g, '/');
+    const enc = fwd(p.encoder);
+    const dec = fwd(p.decoder);
+    const tok = fwd(p.tokens);
+
+    this._log('STT files found:\n  encoder: ' + enc +
+              '\n  decoder: ' + dec + '\n  tokens: ' + tok);
 
     const sh = this._getSherpa();
     this._log('sherpa-onnx exports: ' + Object.keys(sh).join(', '));
 
-    // ── Config variants to try in order ─────────────────────────────────────
-    // sherpa-onnx 1.10.x changed several field names and added required fields.
-    // We try from most-specific to least-specific so the first one that works wins.
+    // createOfflineRecognizer is the stable API across 1.9–1.10.x
+    // OfflineRecognizer class exists in some builds as an alias — try both
+    const tryCreate = (cfg) => {
+      if (typeof sh.createOfflineRecognizer === 'function')
+        return sh.createOfflineRecognizer(cfg);
+      if (typeof sh.OfflineRecognizer === 'function')
+        return new sh.OfflineRecognizer(cfg);
+      throw new Error('sherpa-onnx has no recognizer factory. Exports: ' + Object.keys(sh).join(', '));
+    };
+
+    // ── Config variants — ordered by likelihood of success ───────────────────
     const variants = [
-      // Variant A — 1.10.x full config with language/task/tailPaddings
+      // A — 1.10.x canonical (tailPaddings 0, en, transcribe)
       {
-        label: '1.10.x full',
-        config: {
+        label: 'A: 1.10.x tailPaddings=0',
+        cfg: {
           modelConfig: {
-            whisper: {
-              encoder:      p.encoder,
-              decoder:      p.decoder,
-              language:     'en',
-              task:         'transcribe',
-              tailPaddings: -1,
-            },
-            tokens:     p.tokens,
-            numThreads: 1,
-            debug:      0,
-            provider:   'cpu',
-            modelType:  'whisper',
+            whisper: { encoder: enc, decoder: dec, language: 'en', task: 'transcribe', tailPaddings: 0 },
+            tokens: tok, numThreads: 1, debug: 0, provider: 'cpu', modelType: 'whisper',
           },
           decodingConfig: { method: 'greedy_search' },
         },
       },
-      // Variant B — 1.10.x without tailPaddings
+      // B — tailPaddings=-1
       {
-        label: '1.10.x no tailPaddings',
-        config: {
+        label: 'B: 1.10.x tailPaddings=-1',
+        cfg: {
           modelConfig: {
-            whisper: {
-              encoder:  p.encoder,
-              decoder:  p.decoder,
-              language: 'en',
-              task:     'transcribe',
-            },
-            tokens:     p.tokens,
-            numThreads: 1,
-            debug:      0,
-            provider:   'cpu',
-            modelType:  'whisper',
+            whisper: { encoder: enc, decoder: dec, language: 'en', task: 'transcribe', tailPaddings: -1 },
+            tokens: tok, numThreads: 1, debug: 0, provider: 'cpu', modelType: 'whisper',
           },
           decodingConfig: { method: 'greedy_search' },
         },
       },
-      // Variant C — minimal, no language/task (works on some 1.9.x builds)
+      // C — no tailPaddings field at all
       {
-        label: '1.9.x minimal',
-        config: {
+        label: 'C: 1.10.x no tailPaddings',
+        cfg: {
           modelConfig: {
-            whisper: {
-              encoder: p.encoder,
-              decoder: p.decoder,
-            },
-            tokens:     p.tokens,
-            numThreads: 1,
-            debug:      0,
-            provider:   'cpu',
-            modelType:  'whisper',
+            whisper: { encoder: enc, decoder: dec, language: 'en', task: 'transcribe' },
+            tokens: tok, numThreads: 1, debug: 0, provider: 'cpu', modelType: 'whisper',
           },
           decodingConfig: { method: 'greedy_search' },
         },
       },
-      // Variant D — 2 threads (some builds require >1)
+      // D — no language/task (minimal 1.9.x style)
       {
-        label: '1.10.x 2 threads',
-        config: {
+        label: 'D: 1.9.x minimal',
+        cfg: {
           modelConfig: {
-            whisper: {
-              encoder:      p.encoder,
-              decoder:      p.decoder,
-              language:     'en',
-              task:         'transcribe',
-              tailPaddings: -1,
-            },
-            tokens:     p.tokens,
-            numThreads: 2,
-            debug:      0,
-            provider:   'cpu',
-            modelType:  'whisper',
+            whisper: { encoder: enc, decoder: dec },
+            tokens: tok, numThreads: 1, debug: 0, provider: 'cpu', modelType: 'whisper',
+          },
+          decodingConfig: { method: 'greedy_search' },
+        },
+      },
+      // E — 2 threads, full config
+      {
+        label: 'E: 2 threads full',
+        cfg: {
+          modelConfig: {
+            whisper: { encoder: enc, decoder: dec, language: 'en', task: 'transcribe', tailPaddings: 0 },
+            tokens: tok, numThreads: 2, debug: 0, provider: 'cpu', modelType: 'whisper',
+          },
+          decodingConfig: { method: 'greedy_search' },
+        },
+      },
+      // F — no modelType (some 1.9.x builds infer it)
+      {
+        label: 'F: no modelType',
+        cfg: {
+          modelConfig: {
+            whisper: { encoder: enc, decoder: dec, language: 'en', task: 'transcribe', tailPaddings: 0 },
+            tokens: tok, numThreads: 1, debug: 0, provider: 'cpu',
           },
           decodingConfig: { method: 'greedy_search' },
         },
       },
     ];
 
-    const tryCreate = (sh, config) => {
-      if (typeof sh.OfflineRecognizer === 'function')
-        return new sh.OfflineRecognizer(config);
-      if (typeof sh.createOfflineRecognizer === 'function')
-        return sh.createOfflineRecognizer(config);
-      throw new Error('sherpa-onnx has no OfflineRecognizer. Exports: ' + Object.keys(sh).join(', '));
-    };
-
-    for (const { label, config } of variants) {
+    for (const { label, cfg } of variants) {
       try {
-        this._log('Trying STT config variant: ' + label);
-        const recognizer = tryCreate(sh, config);
+        this._log('Trying variant ' + label);
+        const recognizer = tryCreate(cfg);
         this._stt      = recognizer;
         this._sttReady = true;
-        this._log('STT ready using variant: ' + label);
+        this._log('STT ready — variant ' + label);
         return true;
       } catch (e) {
-        this._log('Variant [' + label + '] failed: ' + (e.message || e));
-        console.warn('STT variant [' + label + '] error:', e.message || e);
+        this._log('Variant ' + label + ' failed: ' + (e.message || String(e)));
+        console.warn('STT [' + label + ']:', e.message || e);
       }
     }
 
     this._log(
-      'All STT config variants failed.\n' +
-      'Model dir: ' + getModelsDir() + '\n' +
-      'Encoder:   ' + p.encoder + '\n' +
-      'Decoder:   ' + p.decoder + '\n' +
-      'Tokens:    ' + p.tokens + '\n' +
-      'sherpa-onnx version: check node_modules/sherpa-onnx/package.json'
+      'All STT variants failed. Diagnostics:\n' +
+      '  modelsDir: ' + getModelsDir() + '\n' +
+      '  encoder:   ' + enc + '\n' +
+      '  decoder:   ' + dec + '\n' +
+      '  tokens:    ' + tok
     );
     return false;
   }
