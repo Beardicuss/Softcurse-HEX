@@ -207,67 +207,136 @@ class LocalVoiceEngine {
   initSTT() {
     if (this._sttReady) return true;
 
-    const p       = getPATHS().stt;
+    const p = getPATHS().stt;
     const missing = this._checkFiles(p);
     if (missing.length) {
-      this._log('STT models missing: ' + missing.join(', '));
+      this._log('STT models missing:\n  ' + missing.join('\n  '));
       return false;
     }
 
-    try {
-      const sh = this._getSherpa();
+    this._log('STT files found:\n  encoder: ' + p.encoder +
+              '\n  decoder: ' + p.decoder + '\n  tokens: ' + p.tokens);
 
-      // ── Build config exactly as sherpa-onnx 1.x expects ──────────────────
-      // Reference: https://github.com/k2-fsa/sherpa-onnx/blob/master/nodejs-examples/
-      const config = {
-        modelConfig: {
-          whisper: {
-            encoder: p.encoder,
-            decoder: p.decoder,
-            // language and task are OPTIONAL and cause errors in some builds
-            // we omit them to let the model auto-detect
+    const sh = this._getSherpa();
+    this._log('sherpa-onnx exports: ' + Object.keys(sh).join(', '));
+
+    // ── Config variants to try in order ─────────────────────────────────────
+    // sherpa-onnx 1.10.x changed several field names and added required fields.
+    // We try from most-specific to least-specific so the first one that works wins.
+    const variants = [
+      // Variant A — 1.10.x full config with language/task/tailPaddings
+      {
+        label: '1.10.x full',
+        config: {
+          modelConfig: {
+            whisper: {
+              encoder:      p.encoder,
+              decoder:      p.decoder,
+              language:     'en',
+              task:         'transcribe',
+              tailPaddings: -1,
+            },
+            tokens:     p.tokens,
+            numThreads: 1,
+            debug:      0,
+            provider:   'cpu',
+            modelType:  'whisper',
           },
-          tokens:     p.tokens,
-          numThreads: 2,
-          debug:      0,
-          provider:   'cpu',
-          modelType:  'whisper',   // REQUIRED for Whisper models
+          decodingConfig: { method: 'greedy_search' },
         },
-        decodingConfig: {           // Note: decodingConfig, NOT decodingMethod
-          method: 'greedy_search',
+      },
+      // Variant B — 1.10.x without tailPaddings
+      {
+        label: '1.10.x no tailPaddings',
+        config: {
+          modelConfig: {
+            whisper: {
+              encoder:  p.encoder,
+              decoder:  p.decoder,
+              language: 'en',
+              task:     'transcribe',
+            },
+            tokens:     p.tokens,
+            numThreads: 1,
+            debug:      0,
+            provider:   'cpu',
+            modelType:  'whisper',
+          },
+          decodingConfig: { method: 'greedy_search' },
         },
-      };
+      },
+      // Variant C — minimal, no language/task (works on some 1.9.x builds)
+      {
+        label: '1.9.x minimal',
+        config: {
+          modelConfig: {
+            whisper: {
+              encoder: p.encoder,
+              decoder: p.decoder,
+            },
+            tokens:     p.tokens,
+            numThreads: 1,
+            debug:      0,
+            provider:   'cpu',
+            modelType:  'whisper',
+          },
+          decodingConfig: { method: 'greedy_search' },
+        },
+      },
+      // Variant D — 2 threads (some builds require >1)
+      {
+        label: '1.10.x 2 threads',
+        config: {
+          modelConfig: {
+            whisper: {
+              encoder:      p.encoder,
+              decoder:      p.decoder,
+              language:     'en',
+              task:         'transcribe',
+              tailPaddings: -1,
+            },
+            tokens:     p.tokens,
+            numThreads: 2,
+            debug:      0,
+            provider:   'cpu',
+            modelType:  'whisper',
+          },
+          decodingConfig: { method: 'greedy_search' },
+        },
+      },
+    ];
 
-      // Try new-style class first (sherpa-onnx >= 1.9)
-      let recognizer;
-      if (typeof sh.OfflineRecognizer === 'function') {
-        recognizer = new sh.OfflineRecognizer(config);
-      } else if (typeof sh.createOfflineRecognizer === 'function') {
-        // Older API fallback
-        recognizer = sh.createOfflineRecognizer(config);
-      } else {
-        throw new Error(
-          'sherpa-onnx does not export OfflineRecognizer. ' +
-          'Available exports: ' + Object.keys(sh).join(', ')
-        );
+    const tryCreate = (sh, config) => {
+      if (typeof sh.OfflineRecognizer === 'function')
+        return new sh.OfflineRecognizer(config);
+      if (typeof sh.createOfflineRecognizer === 'function')
+        return sh.createOfflineRecognizer(config);
+      throw new Error('sherpa-onnx has no OfflineRecognizer. Exports: ' + Object.keys(sh).join(', '));
+    };
+
+    for (const { label, config } of variants) {
+      try {
+        this._log('Trying STT config variant: ' + label);
+        const recognizer = tryCreate(sh, config);
+        this._stt      = recognizer;
+        this._sttReady = true;
+        this._log('STT ready using variant: ' + label);
+        return true;
+      } catch (e) {
+        this._log('Variant [' + label + '] failed: ' + (e.message || e));
+        console.warn('STT variant [' + label + '] error:', e.message || e);
       }
-
-      this._stt      = recognizer;
-      this._sttReady = true;
-      this._log('Local STT (Whisper tiny) ready.');
-      return true;
-    } catch (e) {
-      // Log the full error — numeric errors like "19096376" are sherpa-onnx
-      // internal ONNX-runtime codes. Most common causes:
-      //   • Wrong model files (non-int8, wrong architecture)
-      //   • sherpa-onnx not rebuilt for current Electron ABI (run: npm run rebuild)
-      //   • modelType field missing (now included above)
-      this._log('STT init failed: ' + (e.message || e) +
-        '\nIf you see a numeric error, run: npm run rebuild\n' +
-        'Model dir: ' + getModelsDir());
-      console.warn('STT init error:', e.message || e);
-      return false;
     }
+
+    this._log(
+      'All STT config variants failed.\n' +
+      'Model dir: ' + getModelsDir() + '\n' +
+      'Encoder:   ' + p.encoder + '\n' +
+      'Decoder:   ' + p.decoder + '\n' +
+      'Tokens:    ' + p.tokens + '\n' +
+      'sherpa-onnx version: check node_modules/sherpa-onnx/package.json'
+    );
+    return false;
   }
 
   async transcribe(float32Samples, lang = 'en') {
