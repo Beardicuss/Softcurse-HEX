@@ -262,10 +262,10 @@ class HexVoice {
   async _transcribePCM(pcm) {
     // ── VAD: RMS-based speech detection ──────────────────────────
     // Threshold tuned for typical mic levels — ignores keyboard, fans, AC
-    const SPEECH_RMS    = 0.025;   // minimum RMS to count as speech
-    const MIN_SPEECH_MS = 400;     // ignore anything shorter (clicks, pops)
-    const SILENCE_GRACE = 6;       // silent frames allowed before cutting segment
-    const COOLDOWN_MS   = 1200;    // don't send two transcriptions too close together
+    const SPEECH_RMS    = 0.04;    // raised — ignores more background noise
+    const MIN_SPEECH_MS = 500;     // ignore anything shorter (clicks, pops)
+    const SILENCE_GRACE = 5;       // silent frames allowed before cutting segment
+    const COOLDOWN_MS   = 1500;    // don't send two transcriptions too close together
     const SR            = 16000;
 
     const rms = this._rms(pcm);
@@ -335,16 +335,73 @@ class HexVoice {
 
     if (!text) return;
 
-    const lower = text.toLowerCase().trim();
+    // ── Hallucination filter ─────────────────────────────────────
+    // Whisper generates these phantom strings on near-silence or noise.
+    // List sourced from whisper.cpp and openai/whisper known issues.
+    const HALLUCINATIONS = [
+      'thank you', 'thanks for watching', 'thanks for listening',
+      'please subscribe', 'bye bye', 'bye-bye', 'goodbye',
+      'you', 'the', 'i', 'uh', 'um', 'hmm', 'hm', 'oh',
+      'subtitles by', 'transcribed by', 'translated by',
+      'www.', '.com', 'http',
+    ];
+    const cleaned = text.trim();
+    const lc = cleaned.toLowerCase();
+    // Reject if the entire result matches a hallucination phrase exactly
+    if (HALLUCINATIONS.includes(lc)) return;
+    // Reject if very short (1-2 words) and matches a hallucination prefix
+    if (cleaned.split(/\s+/).length <= 2 && HALLUCINATIONS.some(h => lc.includes(h))) return;
+
+    // ── Wake word matching — fuzzy to handle Whisper mishearings ─
+    // "hex" is often heard as "hicks", "hacks", "hex", "hecks", "next"
+    const matchesWakeWord = (transcript) => {
+      const t = transcript.toLowerCase();
+      if (t.includes(this.wakeWord)) return true;
+      // Build phonetic variants of the wake word
+      const variants = this._wakeWordVariants(this.wakeWord);
+      return variants.some(v => t.includes(v));
+    };
+
     if (this.wakeWordMode) {
-      if (lower.includes(this.wakeWord)) {
+      if (matchesWakeWord(cleaned)) {
         this.onWakeWord?.();
-        const after = lower.replace(this.wakeWord, '').trim();
+        // Strip any variant of the wake word from the command part
+        let after = lc;
+        const allVariants = [this.wakeWord, ...this._wakeWordVariants(this.wakeWord)];
+        for (const v of allVariants) after = after.replace(v, '');
+        after = after.trim();
         if (after) this.onTranscript?.(after, true);
       }
     } else {
-      this.onTranscript?.(text.trim(), true);
+      this.onTranscript?.(cleaned, true);
     }
+  }
+
+  // ── Generate phonetic variants of a wake word for fuzzy matching ─
+  _wakeWordVariants(wakeWord) {
+    const variants = new Set();
+    // Pre-built variants for "hey hex" specifically
+    const builtIn = {
+      'hey hex':  ['hey hicks', 'hey hacks', 'hey hecks', 'hey hex.', 'hey, hex',
+                   'hay hex',   'hey next',  'hey x',     'a hex',    'hey heck'],
+      'hey hex.': ['hey hex'],
+    };
+    if (builtIn[wakeWord]) {
+      builtIn[wakeWord].forEach(v => variants.add(v));
+    }
+    // Generic: replace last word with common mishearings of short words
+    const words = wakeWord.split(' ');
+    if (words.length >= 2) {
+      const last = words[words.length - 1];
+      const prefix = words.slice(0, -1).join(' ') + ' ';
+      // Vowel substitutions: e→i, e→a, e→ε
+      variants.add(prefix + last.replace(/e/g, 'i'));
+      variants.add(prefix + last.replace(/e/g, 'a'));
+      // Common English mishearing suffixes
+      variants.add(prefix + last + 's');
+      variants.add(prefix + last + 'x');
+    }
+    return [...variants];
   }
 
   // ── PCM → WAV encoder (pure JS, no external libs) ────────────
