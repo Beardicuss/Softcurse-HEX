@@ -25,7 +25,14 @@ const si = require('systeminformation');
 
 // Local voice engine (Whisper STT + Piper TTS)
 let localVoice;
-try { localVoice = require('./local-voice/engine'); } catch (e) { console.warn('Local voice not loaded:', e.message); }
+try {
+  localVoice = require('./local-voice/engine');
+  // If config has a custom models path, apply it immediately
+  const savedCfg = loadConfig();
+  if (savedCfg.voice && savedCfg.voice.modelsDir) {
+    localVoice.setModelsDir(savedCfg.voice.modelsDir);
+  }
+} catch (e) { console.warn('Local voice not loaded:', e.message); }
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
@@ -243,7 +250,15 @@ setInterval(() => {
 
 // ─── IPC: CONFIG ─────────────────────────────────────────────────────────────
 ipcMain.handle('config:get', () => config);
-ipcMain.handle('config:set', (_, newCfg) => { config = { ...config, ...newCfg }; saveConfig(config); return config; });
+ipcMain.handle('config:set', (_, newCfg) => {
+  config = { ...config, ...newCfg };
+  saveConfig(config);
+  // Propagate voice.modelsDir to engine if changed
+  if (localVoice && newCfg.voice && newCfg.voice.modelsDir) {
+    localVoice.setModelsDir(newCfg.voice.modelsDir);
+  }
+  return config;
+});
 
 
 // ─── IPC: MEMORY ─────────────────────────────────────────────────────────────
@@ -697,14 +712,81 @@ ipcMain.handle('voice:open-models-dir', () => {
 });
 
 ipcMain.handle('voice:status', () => {
-  if (!localVoice) return { available: false, reason: 'Engine not loaded' };
-  return { available: true, ...localVoice.getStatus() };
+  if (!localVoice) return { available: false, reason: 'Engine not loaded — check npm install' };
+  try {
+    const status = localVoice.getStatus();
+    return { available: true, ...status };
+  } catch (e) {
+    return { available: false, reason: e.message };
+  }
+});
+
+// Set models directory path from renderer
+ipcMain.handle('voice:set-models-dir', (_, dir) => {
+  if (localVoice && dir) {
+    localVoice.setModelsDir(dir);
+    config.voice = { ...(config.voice || {}), modelsDir: dir };
+    saveConfig(config);
+  }
+  return { success: true, dir };
+});
+
+// Open native folder picker so user can browse for models directory
+ipcMain.handle('voice:browse-dir', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select Voice Models Directory',
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  const dir = result.filePaths[0];
+  if (localVoice && dir) {
+    localVoice.setModelsDir(dir);
+    config.voice = { ...(config.voice || {}), modelsDir: dir };
+    saveConfig(config);
+  }
+  return dir;
+});
+
+// Raw webm/ogg blob → main process decodes with ffmpeg → Whisper
+ipcMain.handle('voice:transcribeRaw', async (_, { bytes, lang }) => {
+  if (!localVoice) throw new Error('Local voice engine not available');
+  const { execSync } = require('child_process');
+  const tmpIn  = path.join(os.tmpdir(), 'hex_stt_in.webm');
+  const tmpOut = path.join(os.tmpdir(), 'hex_stt_out.raw');
+  try {
+    fs.writeFileSync(tmpIn, Buffer.from(bytes));
+    // Decode webm to raw 16kHz mono PCM using ffmpeg
+    execSync(`ffmpeg -y -i "${tmpIn}" -ar 16000 -ac 1 -f f32le "${tmpOut}"`, { stdio: 'ignore' });
+    const raw     = fs.readFileSync(tmpOut);
+    const float32 = new Float32Array(raw.buffer, raw.byteOffset, raw.byteLength / 4);
+    localVoice.setLogger((msg) => mainWindow?.webContents.send('log:entry', { source: 'VOICE', message: msg, level: 'info' }));
+    return { text: await localVoice.transcribe(float32, lang || 'en') };
+  } catch (e) {
+    // ffmpeg not available — pass raw bytes directly and hope Whisper handles it
+    const float32 = new Float32Array(Buffer.from(bytes).buffer);
+    return { text: await localVoice.transcribe(float32, lang || 'en') };
+  } finally {
+    try { fs.unlinkSync(tmpIn);  } catch(_) {}
+    try { fs.unlinkSync(tmpOut); } catch(_) {}
+  }
 });
 
 ipcMain.handle('voice:transcribe', async (_, { samples, lang }) => {
   if (!localVoice) throw new Error('Local voice engine not available');
   localVoice.setLogger((msg) => sendLog('VOICE', msg));
-  const float32 = new Float32Array(Buffer.from(samples));
+  // samples arrives as a Buffer (renderer sends ArrayBuffer → IPC converts to Buffer)
+  // We need a Float32Array view into it — NOT Buffer.from(samples) which re-interprets bytes
+  let float32;
+  if (samples instanceof Buffer) {
+    // Correct: view existing buffer as float32
+    float32 = new Float32Array(samples.buffer, samples.byteOffset, samples.byteLength / 4);
+  } else if (samples && samples.buffer) {
+    float32 = new Float32Array(samples.buffer);
+  } else {
+    // Last resort — treat as raw byte sequence
+    const buf = Buffer.from(Object.values(samples));
+    float32 = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
+  }
   return { text: await localVoice.transcribe(float32, lang || 'en') };
 });
 
@@ -721,6 +803,10 @@ ipcMain.handle('voice:synthesize', async (_, { text, lang, speed }) => {
 
 ipcMain.handle('voice:download-models', async (_, targets) => {
   if (!localVoice) throw new Error('Local voice engine not available');
+  // Ensure the engine uses the user-configured models dir before downloading
+  if (config.voice && config.voice.modelsDir) {
+    localVoice.setModelsDir(config.voice.modelsDir);
+  }
   await localVoice.downloadModels(targets || ['stt', 'tts-en', 'tts-ru', 'tts-ka'], (progress) => {
     safeSend('voice:download-progress', progress);
   });

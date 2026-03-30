@@ -56,11 +56,14 @@ contextBridge.exposeInMainWorld('hexAPI', {
   // ── Local Voice Engine ────────────────────────
   voice: {
     status: () => ipcRenderer.invoke('voice:status'),
-    transcribe: (samples, lang) => ipcRenderer.invoke('voice:transcribe', { samples, lang }),
+    transcribe:    (samples, lang) => ipcRenderer.invoke('voice:transcribe',    { samples, lang }),
+    transcribeRaw: (bytes,   lang) => ipcRenderer.invoke('voice:transcribeRaw', { bytes,   lang }),
     synthesize: (text, lang, speed) => ipcRenderer.invoke('voice:synthesize', { text, lang, speed }),
     downloadModels: (targets) => ipcRenderer.invoke('voice:download-models', targets),
     onDownloadProgress: (cb) => ipcRenderer.on('voice:download-progress', (_, d) => cb(d)),
     openModelsDir: () => ipcRenderer.invoke('voice:open-models-dir'),
+    setModelsDir:  (dir) => ipcRenderer.invoke('voice:set-models-dir', dir),
+    browseDir:     () => ipcRenderer.invoke('voice:browse-dir'),
   },
 
   // ── Cleanup ───────────────────────────────────

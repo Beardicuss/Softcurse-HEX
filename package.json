@@ -1,12 +1,12 @@
 {
   "name": "softcurse-hex",
   "version": "1.0.0",
-  "description": "Softcurse H.E.X. \u2014 Intelligent Cyberpunk Desktop Assistant",
+  "description": "Softcurse H.E.X. — Intelligent Cyberpunk Desktop Assistant",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
-    "rebuild": "node -e \"require('@electron/rebuild').rebuild({force:true,onlyModules:['sherpa-onnx']})\""
+    "rebuild": "node scripts/rebuild.js"
   },
   "dependencies": {
     "node-schedule": "^2.1.1",

@@ -29,7 +29,7 @@ async function init() {
 
   // Configure subsystems
   window.hexAI.configure(config);
-  window.hexVoice.init(config.voice || {});
+  window.hexVoice.init({ ...(config.voice || {}), llm: config.llm });
 
   // When TTS voices finish loading, apply saved voice selection
   window.hexVoice.onVoicesLoaded = (voices) => {
@@ -835,16 +835,24 @@ async function refreshVoiceStatus() {
     // Show models folder path
     const pathEl = document.getElementById('models-dir-path');
     if (pathEl && s.modelsDir) pathEl.textContent = s.modelsDir;
+    const isOllama = window.hexVoice?._ollamaProvider;
+    let sttLine;
+    if (s.available && s.sttReady)
+      sttLine = '<b style="color:var(--cyan)">🎙 Active STT: Local Whisper (offline)</b>';
+    else if (isOllama)
+      sttLine = '<b style="color:var(--cyan)">🎙 Active STT: Ollama Whisper</b> — run: <code>ollama pull whisper</code>';
+    else
+      sttLine = '<b style="color:var(--magenta)">⚠ No STT engine — download Whisper below, or set AI provider to Ollama</b>';
+
     if (!s.available) {
-      el.innerHTML = '⚠ Local engine not available — run <code>npm install sherpa-onnx</code> first.';
+      el.innerHTML = sttLine + '<br><span style="color:var(--muted)">sherpa-onnx not built — run <code>npm run rebuild</code></span>';
       return;
     }
-    const stt = s.sttReady ? '✅ Whisper STT' : '❌ STT missing';
-    const en = s.ttsReady?.en ? '✅ TTS EN' : '❌ TTS EN missing';
-    const ru = s.ttsReady?.ru ? '✅ TTS RU' : '❌ TTS RU missing';
-    const ka = s.ttsReady?.ka ? '✅ TTS KA' : '❌ TTS KA missing';
-    const using = window.hexVoice?.usingLocal ? ' · <b style="color:var(--cyan);">ACTIVE</b>' : '';
-    el.innerHTML = `${stt} &nbsp; ${en} &nbsp; ${ru} &nbsp; ${ka}${using}`;
+    const stt = s.sttReady ? '✅ Whisper STT' : '❌ Whisper (not downloaded)';
+    const en  = s.ttsReady?.en ? '✅ TTS EN' : '❌ TTS EN';
+    const ru  = s.ttsReady?.ru ? '✅ TTS RU' : '❌ TTS RU';
+    const ka  = s.ttsReady?.ka ? '✅ TTS KA' : '❌ TTS KA';
+    el.innerHTML = sttLine + '<br>' + `${stt} &nbsp; ${en} &nbsp; ${ru} &nbsp; ${ka}`;
   } catch (e) {
     el.textContent = 'Status check failed: ' + (e?.message || String(e));
   }
@@ -899,6 +907,9 @@ async function openSettings() {
   document.getElementById('cfg-model').value = cfg.llm?.model || '';
   document.getElementById('cfg-apikey').value = cfg.llm?.apiKey || '';
   document.getElementById('cfg-wakeword').value = cfg.voice?.wakeWord || 'hey hex';
+  // Restore saved models directory into the input field
+  const mdirEl = document.getElementById('cfg-models-dir');
+  if (mdirEl && cfg.voice?.modelsDir) mdirEl.value = cfg.voice.modelsDir;
   document.getElementById('cfg-breakmin').value = cfg.monitoring?.breakIntervalMin || 90;
   document.getElementById('cfg-proactive').value = String(cfg.monitoring?.proactiveAdvice !== false);
   const se = document.getElementById('cfg-searchengine');
@@ -1566,4 +1577,70 @@ async function clearAllMemory() {
   refreshMemoryTab();
   showToast('◆ MEMORY WIPED', 'All memory erased. HEX starts fresh.', 'alert', 5000);
   addLog('HEX', 'All memory wiped.');
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  VOICE MODELS DIR HELPERS
+// ═══════════════════════════════════════════════════════════════
+async function applyModelsDir() {
+  const dir = document.getElementById('cfg-models-dir')?.value?.trim();
+  if (!dir) { showToast('◆ MODELS DIR', 'Enter a directory path first.', 'alert', 3000); return; }
+  try {
+    await window.hexAPI.voice.setModelsDir(dir);
+    config.voice = { ...(config.voice || {}), modelsDir: dir };
+    addLog('VOICE', 'Models directory set: ' + dir);
+    await checkVoiceStatus();
+  } catch (e) {
+    showToast('◆ MODELS DIR', 'Failed: ' + e.message, 'alert', 5000);
+  }
+}
+
+async function browseModelsDir() {
+  try {
+    const dir = await window.hexAPI.voice.browseDir();
+    if (!dir) return; // user cancelled
+    const input = document.getElementById('cfg-models-dir');
+    if (input) input.value = dir;
+    config.voice = { ...(config.voice || {}), modelsDir: dir };
+    addLog('VOICE', 'Models directory set via browse: ' + dir);
+    await checkVoiceStatus();
+  } catch (e) {
+    showToast('◆ MODELS DIR', 'Browse failed: ' + e.message, 'alert', 5000);
+  }
+}
+
+async function checkVoiceStatus() {
+  const msgEl = document.getElementById('voice-status-msg');
+  if (msgEl) msgEl.textContent = 'Checking...';
+  try {
+    const s = await window.hexAPI.voice.status();
+    if (!s.available) {
+      if (msgEl) { msgEl.textContent = '✗ Engine unavailable: ' + (s.reason || 'unknown'); msgEl.style.color = 'var(--magenta)'; }
+      return;
+    }
+
+    const lines = [];
+    lines.push('◆ Models dir: ' + (s.modelsDir || '—'));
+    lines.push('STT (Whisper): ' + (s.sttReady ? '✓ READY' : '✗ NOT FOUND — files expected:'));
+    if (!s.sttReady && s.sttFiles) {
+      lines.push('  encoder: ' + s.sttFiles.encoder);
+      lines.push('  decoder: ' + s.sttFiles.decoder);
+      lines.push('  tokens:  ' + s.sttFiles.tokens);
+    }
+    lines.push('TTS en: ' + (s.ttsReady?.en ? '✓' : '✗'));
+    lines.push('TTS ru: ' + (s.ttsReady?.ru ? '✓' : '✗'));
+    lines.push('TTS ka: ' + (s.ttsReady?.ka ? '✓' : '✗'));
+    lines.push('piper.exe: ' + (s.hasPiper ? '✓' : '✗ not found'));
+    lines.push('sherpa-onnx: ' + (s.hasSherpa ? '✓' : '✗ — run: npm run rebuild'));
+
+    const allGood = s.sttReady && s.hasSherpa;
+    if (msgEl) {
+      msgEl.textContent = lines.join('\n');
+      msgEl.style.color = allGood ? 'var(--cyan)' : 'var(--orange)';
+      msgEl.style.whiteSpace = 'pre';
+    }
+    addLog('VOICE', 'Status check — STT: ' + (s.sttReady ? 'OK' : 'missing') + ' | sherpa: ' + (s.hasSherpa ? 'OK' : 'missing'));
+  } catch (e) {
+    if (msgEl) { msgEl.textContent = 'Error: ' + e.message; msgEl.style.color = 'var(--magenta)'; }
+  }
 }

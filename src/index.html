@@ -175,6 +175,20 @@
         </div>
       </div>
 
+      <div class="settings-section-label">◆ VOICE MODELS DIRECTORY</div>
+      <div class="form-group">
+        <label class="form-label">MODELS PATH</label>
+        <div style="display:flex;gap:6px;">
+          <input type="text" id="cfg-models-dir" class="form-control" style="flex:1;font-size:11px;"
+            placeholder="e.g. D:\Dev\Assets\voices">
+          <button class="btn btn-secondary" onclick="browseModelsDir()" style="padding:4px 10px;font-size:9px;white-space:nowrap;">&#128193; BROWSE</button>
+          <button class="btn btn-secondary" onclick="applyModelsDir()" style="padding:4px 10px;font-size:9px;white-space:nowrap;">APPLY</button>
+          <button class="btn btn-secondary" onclick="checkVoiceStatus()" style="padding:4px 10px;font-size:9px;white-space:nowrap;">✓ CHECK</button>
+        </div>
+        <div class="form-hint">Folder containing: <code>whisper-tiny/</code> and <code>tts-en/</code> <code>tts-ka/</code> etc.</div>
+        <div id="voice-status-msg" class="form-hint" style="margin-top:4px;"></div>
+      </div>
+
       <div class="settings-section-label">◆ VOICE & SPEECH</div>
       <div class="form-group">
         <label class="form-label">WAKE WORD</label>

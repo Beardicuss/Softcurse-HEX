@@ -1,43 +1,51 @@
 'use strict';
 // ── voice.js — HEX Voice Engine ──────────────────────────────────────────────
 //
-// Priority order:
-//   STT: 1. Local Whisper (offline, all languages)  2. Web Speech API (online)
-//   TTS: 1. Local Piper   (offline, all languages)  2. Web Speech API (online)
-//                                                    3. Google Cloud TTS (key required)
+// STT: AudioWorklet captures raw 16kHz PCM → main process → Whisper / Ollama
+//      No OfflineAudioContext, no decodeAudioData — avoids renderer crashes.
+//
+// TTS: Local Piper → Google Cloud TTS → OS Web Speech synthesis
 
 class HexVoice {
   constructor() {
-    this.recognition = null;
-    this.isListening = false;
-    this.continuous = false;
-    this.langCode = 'en-US';
-    this._sttLang = 'en';
-    this.wakeWord = 'hey hex';
-    this.wakeWordMode = false;
-    this.onTranscript = null;
-    this.onStateChange = null;
-    this.onWakeWord = null;
-    this.onVoicesLoaded = null;
-    this._onError = null;
-    this.synthesis = window.speechSynthesis;
-    this._supported = false;
-    this._selectedVoice = null;
-    this._voiceName = '';
-    this._voices = [];
-    this._networkErrCount = 0;
-    this._gcloudKey = '';
-    this._gcloudVoice = 'ka-GE-Standard-A';
-    this._useGCloud = false;
-    this._localSTT = false;
-    this._localTTS = {};
-    this._ttsEngine = 'os';   // 'local' | 'os'
-    this._localVoiceLang = 'en'; // which Piper voice to use
-    this._localSpeed = 1.0;
-    this._audioCtx = null;
-    this._currentSource = null;
-    this._mediaRecorder = null;
-    this._audioChunks = [];
+    this.isListening     = false;
+    this.continuous      = false;
+    this.langCode        = 'en-US';
+    this._sttLang        = 'en';
+    this.wakeWord        = 'hey hex';
+    this.wakeWordMode    = false;
+
+    this.onTranscript    = null;
+    this.onStateChange   = null;
+    this.onWakeWord      = null;
+    this.onVoicesLoaded  = null;
+    this._onError        = null;
+
+    // TTS
+    this.synthesis       = window.speechSynthesis;
+    this._selectedVoice  = null;
+    this._voiceName      = '';
+    this._voices         = [];
+    this._gcloudKey      = '';
+    this._gcloudVoice    = 'ka-GE-Standard-A';
+    this._useGCloud      = false;
+    this._ttsEngine      = 'os';
+    this._localVoiceLang = 'en';
+    this._localSpeed     = 1.0;
+    this._ttsAudioCtx    = null;
+    this._currentSource  = null;
+
+    // STT — AudioWorklet pipeline
+    this._sttAudioCtx    = null;
+    this._micStream      = null;
+    this._sourceNode     = null;
+    this._workletNode    = null;
+
+    // Local engine
+    this._localSTT       = false;
+    this._localTTS       = {};
+    this._ollamaProvider = false;
+    this._ollamaUrl      = 'http://localhost:11434';
 
     if (this.synthesis) {
       this.synthesis.onvoiceschanged = () => this._loadVoices();
@@ -46,15 +54,21 @@ class HexVoice {
     this._checkLocalEngines();
   }
 
+  // ── Init ──────────────────────────────────────────────────────
   init(config = {}) {
-    this.wakeWord = (config.wakeWord || 'hey hex').toLowerCase();
-    this.wakeWordMode = config.wakeWordMode === true;
-    this._voiceName = config.voiceName || '';
-    this._gcloudKey = config.gcloudTtsKey || '';
-    this._useGCloud = !!this._gcloudKey;
-    this._gcloudVoice = config.gcloudVoice || 'ka-GE-Standard-A';
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SR) { this._supported = true; this._buildRecognition(); }
+    this.wakeWord        = (config.wakeWord || 'hey hex').toLowerCase();
+    this.wakeWordMode    = config.wakeWordMode === true;
+    this._voiceName      = config.voiceName      || '';
+    this._gcloudKey      = config.gcloudTtsKey   || '';
+    this._useGCloud      = !!this._gcloudKey;
+    this._gcloudVoice    = config.gcloudVoice    || 'ka-GE-Standard-A';
+    this._ttsEngine      = config.ttsEngine      || 'os';
+    this._localVoiceLang = config.localVoiceLang || 'en';
+    this._localSpeed     = config.localSpeed     ?? 1.0;
+    if (config.llm?.provider === 'ollama') {
+      this._ollamaProvider = true;
+      this._ollamaUrl      = config.llm?.baseUrl || 'http://localhost:11434';
+    }
     this._applyVoiceName(this._voiceName);
     return true;
   }
@@ -63,94 +77,87 @@ class HexVoice {
     try {
       const s = await window.hexAPI.voice.status();
       if (s.available) {
-        this._localSTT = s.sttReady || false;
-        this._localTTS = s.ttsReady || {};
+        this._localSTT = s.sttReady  || false;
+        this._localTTS = s.ttsReady  || {};
       }
-    } catch (_) { }
+    } catch (_) {}
   }
 
+  // ── TTS: Google Cloud ─────────────────────────────────────────
   setGCloudKey(key) { this._gcloudKey = key || ''; this._useGCloud = !!key; }
 
   getGeorgianGCloudVoices() {
     return [
       { name: 'ka-GE-Standard-A', gender: 'Female', type: 'Standard' },
-      { name: 'ka-GE-Standard-B', gender: 'Male', type: 'Standard' },
-      { name: 'ka-GE-Wavenet-A', gender: 'Female', type: 'WaveNet (best quality)' },
-      { name: 'ka-GE-Wavenet-B', gender: 'Male', type: 'WaveNet (best quality)' },
+      { name: 'ka-GE-Standard-B', gender: 'Male',   type: 'Standard' },
+      { name: 'ka-GE-Wavenet-A',  gender: 'Female', type: 'WaveNet' },
+      { name: 'ka-GE-Wavenet-B',  gender: 'Male',   type: 'WaveNet' },
     ];
   }
 
   async _speakGCloud(text, opts = {}) {
     if (!this._gcloudKey) throw new Error('No Google Cloud TTS key');
     const voiceName = opts.gcVoice || this._gcloudVoice || 'ka-GE-Standard-A';
-    const langCode = voiceName.substring(0, 5);
     const res = await fetch(
       'https://texttospeech.googleapis.com/v1/text:synthesize?key=' + this._gcloudKey,
-      {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+      { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           input: { text },
-          voice: { languageCode: langCode, name: voiceName },
+          voice: { languageCode: voiceName.substring(0, 5), name: voiceName },
           audioConfig: { audioEncoding: 'MP3', speakingRate: opts.rate || 1.0, pitch: opts.pitch ? (opts.pitch - 1) * 10 : 0 }
         })
       }
     );
     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error('GCloud TTS ' + res.status + ': ' + (e.error?.message || res.statusText)); }
-    const data = await res.json();
-    const raw = atob(data.audioContent);
+    const raw   = atob((await res.json()).audioContent);
     const bytes = new Uint8Array(raw.length);
     for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
     await this._playArrayBuffer(bytes.buffer);
   }
 
+  // ── TTS: Local Piper ──────────────────────────────────────────
   async _speakLocal(text, lang) {
-    const result = await window.hexAPI.voice.synthesize(text, lang, this._localSpeed ?? 1.0);
+    const result  = await window.hexAPI.voice.synthesize(text, lang, this._localSpeed ?? 1.0);
     const samples = result.samples;
     const float32 = new Float32Array(
       samples.buffer instanceof ArrayBuffer ? samples.buffer : new Uint8Array(Object.values(samples)).buffer
     );
-    const ctx = this._getAudioCtx();
+    const ctx = this._getTTSAudioCtx();
     const buf = ctx.createBuffer(1, float32.length, result.sampleRate);
     buf.getChannelData(0).set(float32);
-    if (this._currentSource) { try { this._currentSource.stop(); } catch (_) { } }
+    if (this._currentSource) { try { this._currentSource.stop(); } catch (_) {} }
     const src = ctx.createBufferSource();
     src.buffer = buf; src.connect(ctx.destination);
     this._currentSource = src; src.start(0);
   }
 
   async _playArrayBuffer(arrayBuffer) {
-    const ctx = this._getAudioCtx();
+    const ctx = this._getTTSAudioCtx();
     const buf = await ctx.decodeAudioData(arrayBuffer);
-    if (this._currentSource) { try { this._currentSource.stop(); } catch (_) { } }
+    if (this._currentSource) { try { this._currentSource.stop(); } catch (_) {} }
     const src = ctx.createBufferSource();
     src.buffer = buf; src.connect(ctx.destination);
     this._currentSource = src; src.start(0);
   }
 
-  _getAudioCtx() {
-    if (!this._audioCtx || this._audioCtx.state === 'closed')
-      this._audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    return this._audioCtx;
+  _getTTSAudioCtx() {
+    if (!this._ttsAudioCtx || this._ttsAudioCtx.state === 'closed')
+      this._ttsAudioCtx = new AudioContext();
+    return this._ttsAudioCtx;
   }
 
+  // ── Speak ─────────────────────────────────────────────────────
   async speak(text, opts = {}) {
     if (!text) return;
     const clean = text.replace(/\[ACTION:[^\]]+\]/g, '').replace(/[*_`#]/g, '').replace(/\n+/g, ' ').trim();
     if (!clean) return;
-    const lang = this._sttLang || 'en';
+    const ttsLang = this._ttsEngine === 'local' ? (this._localVoiceLang || this._sttLang || 'en') : (this._sttLang || 'en');
 
-    // Use local Piper if engine is set to 'local', regardless of current STT lang
-    const ttsLang = this._ttsEngine === 'local' ? (this._localVoiceLang || lang) : lang;
     if (this._ttsEngine === 'local') {
-      // For custom IDs like 'en:vasco', check if base lang has models; always try local when engine is set to 'local'
-      const baseLang = ttsLang.includes(':') ? ttsLang.split(':')[0] : ttsLang;
-      const hasLocal = this._localTTS?.[ttsLang] || this._localTTS?.[baseLang];
-      if (hasLocal || ttsLang.includes(':')) {
+      const base = ttsLang.includes(':') ? ttsLang.split(':')[0] : ttsLang;
+      if (this._localTTS?.[ttsLang] || this._localTTS?.[base]) {
         try { await this._speakLocal(clean, ttsLang); return; }
-        catch (e) {
-          console.warn('Local TTS failed:', e.message);
-          // Fall through to OS voices
-        }
+        catch (e) { console.warn('Local TTS failed:', e.message); }
       }
     }
     if (this._useGCloud && this._gcloudKey) {
@@ -170,139 +177,211 @@ class HexVoice {
 
   stopSpeaking() {
     this.synthesis?.cancel();
-    if (this._currentSource) { try { this._currentSource.stop(); } catch (_) { } this._currentSource = null; }
+    if (this._currentSource) { try { this._currentSource.stop(); } catch (_) {} this._currentSource = null; }
   }
 
-  // ── Local Whisper STT via MediaRecorder ───────────────────────
-  async _startLocalSTT() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
-      this._audioChunks = [];
-      this._mediaRecorder = new MediaRecorder(stream);
-      this._mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) this._audioChunks.push(e.data); };
-      this._mediaRecorder.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop());
-        if (!this.isListening) return;
-        try {
-          const blob = new Blob(this._audioChunks, { type: 'audio/webm' });
-          const arrBuf = await blob.arrayBuffer();
-          const ctx = this._getAudioCtx();
-          const decoded = await ctx.decodeAudioData(arrBuf);
-          let pcm;
-          if (decoded.sampleRate === 16000 && decoded.numberOfChannels === 1) {
-            pcm = decoded.getChannelData(0);
-          } else {
-            const offCtx = new OfflineAudioContext(1, Math.ceil(decoded.duration * 16000), 16000);
-            const src = offCtx.createBufferSource(); src.buffer = decoded; src.connect(offCtx.destination); src.start(0);
-            pcm = (await offCtx.startRendering()).getChannelData(0);
-          }
-          const buf = new Uint8Array(pcm.buffer);
-          const { text } = await window.hexAPI.voice.transcribe(buf, this._sttLang || 'en');
-          if (text && text.trim()) {
-            const lower = text.toLowerCase().trim();
-            if (this.wakeWordMode) {
-              if (lower.includes(this.wakeWord)) {
-                this.onWakeWord?.();
-                const after = lower.replace(this.wakeWord, '').trim();
-                if (after) this.onTranscript?.(after, true);
-              }
-            } else {
-              this.onTranscript?.(text.trim(), true);
-            }
-          }
-        } catch (e) { console.warn('Local STT error:', e.message); }
-        if (this.isListening && this.continuous) this._recordCycle();
-      };
-      this._recordCycle();
-      return true;
-    } catch (e) {
-      this._onError?.('Microphone access denied. Please allow microphone in system settings.');
-      this.isListening = false; this.onStateChange?.(false);
-      return false;
-    }
-  }
-
-  _recordCycle() {
-    if (!this.isListening || !this._mediaRecorder) return;
-    this._audioChunks = [];
-    try {
-      this._mediaRecorder.start();
-      setTimeout(() => { if (this._mediaRecorder?.state === 'recording') this._mediaRecorder.stop(); }, 5000);
-    } catch (e) { console.warn('Record cycle error:', e.message); }
-  }
-
-  // ── Web Speech API (online fallback) ──────────────────────────
-  _buildRecognition() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return;
-    this.recognition = new SR();
-    this.recognition.continuous = true; this.recognition.interimResults = true; this.recognition.maxAlternatives = 1;
-    this.recognition.lang = this._sttLang === 'ru' ? 'ru-RU' : 'en-US';
-    this.recognition.onresult = (e) => {
-      this._networkErrCount = 0;
-      let finalText = '', interimText = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) finalText += t; else interimText += t;
-      }
-      if (interimText) this.onTranscript?.(interimText, false);
-      if (finalText) {
-        const lower = finalText.toLowerCase().trim();
-        if (this.wakeWordMode) {
-          if (lower.includes(this.wakeWord)) { this.onWakeWord?.(); const a = lower.replace(this.wakeWord, '').trim(); if (a) this.onTranscript?.(a, true); }
-        } else { this.onTranscript?.(finalText.trim(), true); }
-      }
-    };
-    this.recognition.onerror = (e) => {
-      if (e.error === 'no-speech' || e.error === 'aborted') return;
-      this.isListening = false; this.onStateChange?.(false);
-      if (e.error === 'not-allowed') { this._networkErrCount = 0; this._onError?.('Microphone permission denied. Click mic to retry.'); return; }
-      if (e.error === 'network') {
-        this._networkErrCount++;
-        if (this._networkErrCount > 3) { this._networkErrCount = 0; this._onError?.('Google speech servers unreachable. Install local voice models (Settings → Voice Models) for offline use.'); return; }
-        setTimeout(() => { if (this.continuous) { this._buildRecognition(); this._startWebSpeech(); } }, this._networkErrCount * 2000);
-        return;
-      }
-      this._onError?.('Voice error: ' + e.error);
-    };
-    this.recognition.onend = () => {
-      if (this.continuous && this.isListening) { try { this.recognition.start(); } catch (_) { } }
-      else { this.isListening = false; this.onStateChange?.(false); }
-    };
-  }
-
-  _startWebSpeech() {
-    if (!this.recognition) return false;
-    try { this.recognition.lang = this._sttLang === 'ru' ? 'ru-RU' : 'en-US'; this.recognition.start(); return true; }
-    catch (e) { this._onError?.('Could not start mic: ' + (e?.message || String(e))); this.isListening = false; return false; }
-  }
+  // ── STT: AudioWorklet → raw 16kHz PCM → Whisper ───────────────
+  // Uses a separate AudioContext at 16kHz so no resampling is needed.
+  // The worklet batches 4-second chunks and posts them to this thread.
+  // We pass raw Float32 PCM directly to the main process — no decodeAudioData,
+  // no OfflineAudioContext, nothing that can crash the renderer.
 
   async startListening(continuous = true) {
     if (this.isListening) return;
-    this.continuous = continuous; this.isListening = true;
+    this.continuous  = continuous;
+    this.isListening = true;
     this.onStateChange?.(true);
+
     await this._checkLocalEngines();
+
+    if (!this._localSTT && !this._ollamaProvider) {
+      this._onError?.(
+        'No STT engine. Options: ① Settings → Voice → Download Whisper model, or ② set AI provider to Ollama and run: ollama pull whisper'
+      );
+      this.isListening = false; this.onStateChange?.(false);
+      return;
+    }
+
+    try {
+      // Request mic
+      this._micStream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      });
+    } catch (e) {
+      this._onError?.('Microphone access denied. Allow microphone in Windows Settings → Privacy → Microphone.');
+      this.isListening = false; this.onStateChange?.(false);
+      return;
+    }
+
+    try {
+      // AudioContext at 16kHz — avoids any resampling
+      this._sttAudioCtx = new AudioContext({ sampleRate: 16000 });
+
+      // Load the worklet
+      // Build absolute file URL for the worklet (import.meta.url not available in classic scripts)
+      const workletUrl = location.href.replace(/src\/[^/]+$/, '') + 'src/assets/pcm-processor.js';
+      await this._sttAudioCtx.audioWorklet.addModule(workletUrl);
+
+      this._sourceNode = this._sttAudioCtx.createMediaStreamSource(this._micStream);
+      this._workletNode = new AudioWorkletNode(this._sttAudioCtx, 'pcm-processor');
+
+      // Receive PCM chunks from worklet
+      this._workletNode.port.onmessage = (e) => {
+        if (!this.isListening) return;
+        const pcm = new Float32Array(e.data.chunk);
+        this._transcribePCM(pcm).catch(err => console.warn('STT error:', err.message));
+      };
+
+      this._sourceNode.connect(this._workletNode);
+      // Connect to destination with zero gain to keep the audio graph alive
+      const silencer = this._sttAudioCtx.createGain();
+      silencer.gain.value = 0;
+      this._workletNode.connect(silencer);
+      silencer.connect(this._sttAudioCtx.destination);
+
+    } catch (e) {
+      console.warn('AudioWorklet failed, falling back to MediaRecorder:', e.message);
+      // Fallback: MediaRecorder with simple blob → main process
+      this._startMediaRecorderFallback();
+    }
+  }
+
+  async _transcribePCM(pcm) {
+    // Silence gate — skip very quiet chunks
+    let maxAmp = 0;
+    for (let i = 0; i < pcm.length; i++) {
+      const a = Math.abs(pcm[i]);
+      if (a > maxAmp) maxAmp = a;
+    }
+    if (maxAmp < 0.005) return;
+
+    let text = '';
+
+    // Backend 1: sherpa-onnx Whisper (local)
     if (this._localSTT) {
-      const ok = await this._startLocalSTT();
-      if (ok) return;
+      try {
+        const r = await window.hexAPI.voice.transcribe(new Uint8Array(pcm.buffer), this._sttLang || 'en');
+        text = (r.text || '').trim();
+      } catch (e) { console.warn('Whisper STT error:', e.message); }
     }
-    if (!this._supported) {
-      this._onError?.('No speech engine available. Download local models: Settings → Voice Models.');
-      this.isListening = false; this.onStateChange?.(false); return;
+
+    // Backend 2: Ollama
+    if (!text && this._ollamaProvider) {
+      try {
+        // Encode PCM as WAV for Ollama
+        const wav = this._pcmToWav(pcm, 16000);
+        const blob = new Blob([wav], { type: 'audio/wav' });
+        const form = new FormData();
+        form.append('file', blob, 'audio.wav');
+        form.append('model', 'whisper');
+        const res = await fetch(this._ollamaUrl + '/v1/audio/transcriptions', { method: 'POST', body: form });
+        if (res.ok) text = ((await res.json()).text || '').trim();
+      } catch (e) { console.warn('Ollama STT error:', e.message); }
     }
-    this._startWebSpeech();
+
+    if (!text) return;
+
+    const lower = text.toLowerCase().trim();
+    if (this.wakeWordMode) {
+      if (lower.includes(this.wakeWord)) {
+        this.onWakeWord?.();
+        const after = lower.replace(this.wakeWord, '').trim();
+        if (after) this.onTranscript?.(after, true);
+      }
+    } else {
+      this.onTranscript?.(text.trim(), true);
+    }
+  }
+
+  // ── PCM → WAV encoder (pure JS, no external libs) ────────────
+  _pcmToWav(float32, sampleRate) {
+    const numCh      = 1;
+    const bitsPerSmp = 16;
+    const bytesPerSmp = bitsPerSmp / 8;
+    const dataLen    = float32.length * bytesPerSmp;
+    const buf        = new ArrayBuffer(44 + dataLen);
+    const view       = new DataView(buf);
+    const write      = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
+    write(0, 'RIFF');
+    view.setUint32(4,  36 + dataLen, true);
+    write(8, 'WAVE');
+    write(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1,  true);   // PCM
+    view.setUint16(22, numCh, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * numCh * bytesPerSmp, true);
+    view.setUint16(32, numCh * bytesPerSmp, true);
+    view.setUint16(34, bitsPerSmp, true);
+    write(36, 'data');
+    view.setUint32(40, dataLen, true);
+    // Convert Float32 → Int16
+    let off = 44;
+    for (let i = 0; i < float32.length; i++, off += 2) {
+      const s = Math.max(-1, Math.min(1, float32[i]));
+      view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    }
+    return buf;
+  }
+
+  // ── MediaRecorder fallback (if AudioWorklet not available) ────
+  _startMediaRecorderFallback() {
+    if (!this._micStream || !this.isListening) return;
+    this._doRecordCycle();
+  }
+
+  _doRecordCycle() {
+    if (!this.isListening || !this._micStream) return;
+    const chunks = [];
+    let mr;
+    try { mr = new MediaRecorder(this._micStream); }
+    catch (e) { this._onError?.('Recorder error: ' + e.message); this.stopListening(); return; }
+
+    mr.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+    mr.onstop = async () => {
+      if (!this.isListening) return;
+      if (chunks.length) {
+        try {
+          const blob    = new Blob(chunks, { type: 'audio/webm' });
+          // Send raw blob to main process for decoding — avoids renderer crash
+          const arrBuf  = await blob.arrayBuffer();
+          const r = await window.hexAPI.voice.transcribeRaw(new Uint8Array(arrBuf), this._sttLang || 'en');
+          const text = (r?.text || '').trim();
+          if (text) this.onTranscript?.(text, true);
+        } catch (e) { console.warn('Fallback STT error:', e.message); }
+      }
+      if (this.isListening && this.continuous) this._doRecordCycle();
+    };
+
+    mr.start();
+    setTimeout(() => { if (mr.state === 'recording') mr.stop(); }, 5000);
   }
 
   stopListening() {
-    this.continuous = false; this.isListening = false;
-    if (this._mediaRecorder && this._mediaRecorder.state !== 'inactive') try { this._mediaRecorder.stop(); } catch (_) { }
-    this._mediaRecorder = null;
-    if (this.recognition) try { this.recognition.stop(); } catch (_) { }
+    this.continuous  = false;
+    this.isListening = false;
+
+    // Tear down AudioWorklet pipeline
+    if (this._workletNode) { try { this._workletNode.disconnect(); } catch (_) {} this._workletNode = null; }
+    if (this._sourceNode)  { try { this._sourceNode.disconnect();  } catch (_) {} this._sourceNode  = null; }
+    if (this._sttAudioCtx) {
+      try { this._sttAudioCtx.close(); } catch (_) {}
+      this._sttAudioCtx = null;
+    }
+    if (this._micStream) {
+      this._micStream.getTracks().forEach(t => t.stop());
+      this._micStream = null;
+    }
+
     this.onStateChange?.(false);
   }
 
-  toggleListening() { if (this.isListening) this.stopListening(); else this.startListening(true); }
+  toggleListening() {
+    if (this.isListening) this.stopListening();
+    else this.startListening(true);
+  }
 
+  // ── TTS voice list ────────────────────────────────────────────
   _loadVoices() {
     const all = this.synthesis?.getVoices?.() || [];
     if (!all.length) return;
@@ -314,18 +393,17 @@ class HexVoice {
     return [...this._voices.filter(v => v.lang === l), ...this._voices.filter(v => v.lang.startsWith(b) && v.lang !== l), ...this._voices.filter(v => !v.lang.startsWith(b))];
   }
   setVoiceByName(name) { this._voiceName = name; this._applyVoiceName(name); }
-  _applyVoiceName(name) { if (!name || !this._voices.length) { this._selectedVoice = null; return; } this._selectedVoice = this._voices.find(v => v.name === name) || null; }
+  _applyVoiceName(name) {
+    if (!name || !this._voices.length) { this._selectedVoice = null; return; }
+    this._selectedVoice = this._voices.find(v => v.name === name) || null;
+  }
 
   setLanguage(lang) {
     const tts = { en: 'en-US', ru: 'ru-RU', ka: 'ka-GE' };
     this.langCode = tts[lang] || 'en-US';
     this._sttLang = lang;
     if (!this._voiceName) this._selectedVoice = null;
-    if (this.recognition) {
-      const was = this.isListening;
-      if (was) this.stopListening();
-      if (was) setTimeout(() => this.startListening(true), 300);
-    }
+    if (this.isListening) { this.stopListening(); setTimeout(() => this.startListening(true), 400); }
     this._checkLocalEngines();
   }
 
@@ -346,10 +424,10 @@ class HexVoice {
     finally { this._gcloudKey = sk; this._gcloudVoice = sv; }
   }
 
-  get supported() { return this._supported || this._localSTT; }
+  get supported()        { return true; }
   get currentVoiceName() { return this._selectedVoice?.name || ''; }
-  get usingGCloud() { return this._useGCloud && !!this._gcloudKey; }
-  get usingLocal() { return this._localSTT; }
+  get usingGCloud()      { return this._useGCloud && !!this._gcloudKey; }
+  get usingLocal()       { return this._localSTT; }
 }
 
 window.hexVoice = new HexVoice();
