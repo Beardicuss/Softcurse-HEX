@@ -35,40 +35,174 @@ class HexAI {
     const systemStateBlock = [
       'CURRENT SYSTEM STATE:',
       '  Time: ' + now.toLocaleTimeString() + ' | Date: ' + now.toLocaleDateString(),
-      '  Uptime: ' + (state.uptime || '-') + ' | CPU: ' + (state.cpu || '-') + '% | RAM: ' + (state.ram || '-') + '%',
-      '  Active task: ' + (state.activeTask || 'none') + ' | Platform: ' + (state.platform || '-')
+      '  Uptime: ' + (state.uptime || '-'),
+      '  CPU: ' + (state.cpu || '-') + '%  RAM: ' + (state.ram || '-') + '%  Disk: ' + (state.disk || '-') + '% (' + (state.diskFree || '-') + ' free)',
+      '  Network: ↓' + (state.netRx || '-') + ' ↑' + (state.netTx || '-') + '  Temp: ' + (state.temp || '-'),
+      '  Platform: ' + (state.platform || '-') + ' | AI: ' + (state.aiProvider || '-') + ' | TTS: ' + (state.ttsEngine || '-'),
+      '  Active task: ' + (state.activeTask || 'none'),
+      '  NOTE: For detailed PC info, use actions: [ACTION:sys_info] [ACTION:disk_usage] [ACTION:list_processes] [ACTION:get_ip]',
     ].join('\n');
 
     const actionsBlock = [
-      'ACTIONS you can invoke (include in response when appropriate):',
+      '═══ PC CONTROL & BUTLER ACTIONS ═══',
+      'You control this Windows PC by including [ACTION:...] tags in your response.',
+      'MANDATORY: When the user asks you to DO something on the PC, include the tag. Put tags at END of message.',
       '',
-      'SYSTEM TASKS:',
-      '[ACTION:run_defrag] [ACTION:run_scan] [ACTION:clear_cache] [ACTION:open_processes]',
-      '[ACTION:check_drivers] [ACTION:run_cleanup] [ACTION:run_network_diag]',
-      '[ACTION:list_startup] [ACTION:check_updates] [ACTION:check_firewall] [ACTION:run_memory_diag]',
+      'EXAMPLES:',
+      '  "open notepad"           → [ACTION:open_app:notepad]',
+      '  "open downloads folder"  → [ACTION:open_folder:downloads]',
+      '  "take a screenshot"      → [ACTION:screenshot]',
+      '  "what is my IP?"         → [ACTION:get_ip]',
+      '  "set volume to 40"       → [ACTION:set_volume:40]',
+      '  "list desktop files"     → [ACTION:list_dir:desktop]',
+      '  "ping google.com"        → [ACTION:ping:google.com]',
+      '  "copy file A to B"       → [ACTION:copy:A:B]',
       '',
-      'BUTLER / PC CONTROL (use these to interact with the PC directly):',
-      '[ACTION:open_app:APP_NAME] — Open any application (e.g. notepad, chrome, calculator, vscode, spotify)',
-      '[ACTION:create_file:FILENAME:CONTENT] — Create a text file on Desktop',
-      '[ACTION:create_doc:FILENAME:CONTENT] — Create a Word document on Desktop',
-      '[ACTION:open_folder:PATH_OR_ALIAS] — Open a folder (aliases: desktop, documents, downloads, pictures, music, videos, home)',
-      '[ACTION:open_file:FILEPATH] — Open a file with its default application',
-      '[ACTION:empty_trash] — Empty the Recycle Bin (asks user confirmation)',
-      '[ACTION:lock_screen] — Lock the workstation',
-      '[ACTION:shutdown] — Shut down the computer (asks user confirmation)',
-      '[ACTION:restart] — Restart the computer (asks user confirmation)',
+      'FILE & FOLDER:',
+      'IMPORTANT: Use | (pipe) to separate arguments that may contain file paths.',
+      '[ACTION:open_folder:ALIAS]                  desktop|documents|downloads|pictures|music|videos|home',
+      '[ACTION:open_file:C:\\\\Users\\\\name\\\\file.txt]  open file with default app',
+      '[ACTION:list_dir:desktop]                   list directory contents (use alias or full path)',
+      '[ACTION:file_info:C:\\\\path\\\\file.txt]        size, dates, type',
+      '[ACTION:create_file:NAME.txt:CONTENT]       create text file on Desktop',
+      '[ACTION:create_doc:NAME:CONTENT]            create Word document on Desktop',
+      '[ACTION:create_folder:C:\\\\path\\\\newfolder]   create folder',
+      '[ACTION:copy:C:\\\\source.txt|D:\\\\dest.txt]    copy — use | between src and dest',
+      '[ACTION:move:C:\\\\old|D:\\\\new]               move — use | between src and dest',
+      '[ACTION:rename:C:\\\\old.txt|C:\\\\new.txt]     rename — use | between old and new',
+      '[ACTION:delete:C:\\\\path\\\\file.txt]          move to Recycle Bin (asks confirmation)',
+      '[ACTION:delete_perm:C:\\\\path\\\\file.txt]     permanently delete (asks confirmation)',
+      '',
+      'APPS & PROGRAMS:',
+      '[ACTION:open_app:NAME]              notepad|chrome|vscode|spotify|discord|calc|paint|cmd|terminal|steam|epic etc.',
+      '[ACTION:launch_game:GAME NAME]      launch any game from Steam, Epic, or installed (e.g. Elden Ring, Minecraft, GTA)',
+      '[ACTION:list_games]                 list all installed Steam and Epic games',
+      '[ACTION:open_settings]              open HEX settings panel',
+      '',
+      'SYSTEM INFO:',
+      '[ACTION:sys_info]                   OS, CPU, RAM, hostname, uptime',
+      '[ACTION:battery]                    battery percentage and charging status',
+      '[ACTION:disk_usage:DRIVE]           disk space (e.g. C: or leave blank for all)',
+      '[ACTION:list_processes]             top 10 processes by CPU',
+      '[ACTION:kill_process:NAME]          kill process by name (asks confirmation)',
+      '[ACTION:kill_pid:PID]               kill process by PID',
+      '',
+      'CLIPBOARD:',
+      '[ACTION:get_clipboard]              read clipboard text',
+      '[ACTION:set_clipboard:TEXT]         write text to clipboard',
+      '[ACTION:clear_clipboard]            empty clipboard',
+      '',
+      'AUDIO:',
+      '[ACTION:set_volume:0-100]           set system volume percentage',
+      '[ACTION:mute]                       mute audio',
+      '[ACTION:unmute]                     unmute audio',
+      '[ACTION:get_volume]                 read current volume',
+      '',
+      'NETWORK:',
+      '[ACTION:get_ip]                     local + public IP addresses',
+      '[ACTION:ping:HOST]                  ping a host',
+      '[ACTION:flush_dns]                  flush DNS cache',
+      '[ACTION:list_wifi]                  scan nearby Wi-Fi networks',
+      '',
+      'ENVIRONMENT:',
+      '[ACTION:get_env:VARNAME]            read environment variable',
+      '[ACTION:set_env:VAR:VALUE]          set environment variable',
+      '',
+      'MAINTENANCE:',
+      '[ACTION:clean_temp]                 clean %TEMP% folder',
+      '[ACTION:empty_trash]                empty Recycle Bin (asks confirmation)',
+      '[ACTION:set_wallpaper:IMAGE_PATH]   set desktop wallpaper',
+      '',
+      'POWER:',
+      '[ACTION:screenshot]                 take screenshot, save to Desktop',
+      '[ACTION:lock_screen]                lock workstation',
+      '[ACTION:logoff]                     log off current user (asks confirmation)',
+      '[ACTION:shutdown]                   shut down PC (asks confirmation)',
+      '[ACTION:restart]                    restart PC (asks confirmation)',
+      '',
+      'SCRIPTING (DANGEROUS — always asks confirmation):',
+      '[ACTION:run_ps:POWERSHELL_SCRIPT]   execute PowerShell',
+      '[ACTION:run_cmd:COMMAND]            execute CMD command',
       '',
       'UTILITIES:',
-      '[ACTION:open_settings] [ACTION:open_url:URL] [ACTION:set_reminder:LABEL:MINUTES]'
+      '[ACTION:open_url:URL]               open URL in browser',
+      '[ACTION:set_reminder:LABEL:MINUTES] set a reminder',
+      '[ACTION:run_defrag] [ACTION:run_scan] [ACTION:clear_cache] [ACTION:open_processes]',
+      '',
+      'FILE (use | separator for paths with colons/backslashes):',
+      '[ACTION:zip:C:\\path\\folder|C:\\out.zip]    compress   [ACTION:unzip:archive.zip|C:\\dest]  extract',
+      '',
+      'WINDOW CONTROL:',
+      '[ACTION:list_windows]                       list all open windows with titles',
+      '[ACTION:window:minimize:Chrome]             minimize/maximize/focus/restore/close window by title',
+      '[ACTION:send_keys:{ENTER}]                  send keystrokes to active window',
+      '[ACTION:mouse_move:960:540]                 move mouse to X,Y  [ACTION:mouse_click:left]  click',
+      '[ACTION:paste_clipboard]                    simulate Ctrl+V',
+      '[ACTION:get_clipboard_img]                  save clipboard image to file',
+      '',
+      'NETWORK:',
+      '[ACTION:connect_wifi:MySSID:password]       connect to WiFi',
+      '[ACTION:net_adapter:Wi-Fi:disable]          enable/disable network adapter',
+      '',
+      'AUTOMATION:',
+      '[ACTION:sleep:3]                            wait 3 seconds',
+      '[ACTION:schedule_once:14:30:notepad.exe]    schedule a task at HH:MM',
+      '[ACTION:cancel_task:HEX_12345]              cancel scheduled task by name',
+      '[ACTION:startup:add:notepad.exe:MyApp]      add/remove from Windows startup',
+      '',
+      'REGISTRY:',
+      '[ACTION:reg_read:HKLM|SOFTWARE\\Microsoft\\Windows\\CurrentVersion|ProductName]',
+      '[ACTION:reg_write:HKCU|SOFTWARE\\MyApp|Setting|Value|REG_SZ]  (⚠ confirmation required)',
+      '',
+      'SOFTWARE:',
+      '[ACTION:list_software]                      list all installed programs',
+      '[ACTION:check_updates]                      check for updates via winget',
+      '[ACTION:install_pkg:vlc]                    install via winget (⚠ confirmation required)',
+      '[ACTION:uninstall:VLC media player]         uninstall via winget (⚠ confirmation required)',
+      '',
+      'PERIPHERALS & MAINTENANCE:',
+      '[ACTION:eject_usb:E]                        safely eject USB drive E:',
+      '[ACTION:chkdsk:C]                           check disk for errors (⚠ may need reboot)',
+      '[ACTION:run:notepad.exe:C:\\file.txt]       run program with arguments',
+      '[ACTION:run_as_admin:ipconfig /release]     run as administrator (⚠ UAC dialog)',
+      '[ACTION:run_js:Math.round(Math.PI*100)/100] run sandboxed JavaScript and return result',
     ].join('\n');
 
     const rules = [
       'RULES:',
       '- Respond ONLY in ' + langName + '.',
-      '- Keep responses under 150 words unless detail is asked.',
-      '- Use markdown sparingly. Include [ACTION:...] tags when relevant.',
-      '- Reference memory naturally (e.g. "last time you mentioned...") — do NOT list memories robotically.',
-      '- Be honest. Occasionally check user wellbeing based on system state.'
+      '',
+      '- You are a REAL PC butler. When told to DO something on this PC, DO IT — include the action tag.',
+      '- MANDATORY: The [ACTION:...] tag is what executes commands. Without it, nothing happens.',
+      '',
+      '⚠ CRITICAL — NEVER FABRICATE PC DATA:',
+      '- NEVER guess, invent, or "assume" hardware specs, software, processes, IP addresses, disk usage, or any PC state.',
+      '- You do NOT know what is installed, what OS version, what hardware, what is running — you only know what the actions return.',
+      '- If the user asks about their PC (software, specs, processes, storage, network): USE ACTIONS, do not guess.',
+      '- Wrong answer example: "You have Windows 10, 16GB RAM, Chrome installed" — this is HALLUCINATION. NEVER do this.',
+      '- Right answer: trigger the action and let the real data speak: [ACTION:sys_info] [ACTION:list_software] [ACTION:get_ip]',
+      '',
+      '- For websites: [ACTION:open_url:https://facebook.com]',
+      '- For games: [ACTION:launch_game:Elden Ring]',
+      '- Keep response text SHORT (1 sentence) + action tag at end.',
+      '',
+      '- ACTION TAG RULES:',
+      '    • App names must NOT include punctuation: [ACTION:open_app:chrome] NOT [ACTION:open_app:chrome.]',
+      '    • Put the tag at the very end of your message, after any text.',
+      '    • One tag per action. Multiple tags allowed in one response.',
+      '',
+      '- EXAMPLES:',
+      '    User: open steam        → "Opening Steam. [ACTION:open_app:steam]"',
+      '    User: open chrome       → "Opening Chrome. [ACTION:open_app:chrome]"',
+      '    User: open google       → "Opening Google. [ACTION:open_url:https://google.com]"',
+      '    User: launch elden ring → "Launching. [ACTION:launch_game:Elden Ring]"',
+      '    User: what games?       → "Checking your libraries. [ACTION:list_games]"',
+      '    User: whats on my pc?   → "Let me check. [ACTION:sys_info] [ACTION:list_software]"',
+      '    User: my ip?            → "[ACTION:get_ip]"',
+      '    User: disk space?       → "[ACTION:disk_usage]"',
+      '    User: set volume 50     → "Done. [ACTION:set_volume:50]"',
+      '',
+      '- If you cannot do something, say so briefly and honestly.',
     ].join('\n');
 
     return [
@@ -335,8 +469,28 @@ class HexAI {
     const re = /\[ACTION:([^\]]+)\]/g;
     let m;
     while ((m = re.exec(text)) !== null) {
-      const parts = m[1].split(':');
-      actions.push({ type: parts[0], args: parts.slice(1) });
+      const inner = m[1].trim();
+      const colonIdx = inner.indexOf(':');
+      if (colonIdx === -1) {
+        actions.push({ type: inner, args: [] });
+        continue;
+      }
+      const type = inner.slice(0, colonIdx).trim();
+      const rest = inner.slice(colonIdx + 1);
+      // Args split on | for paths, otherwise on :
+      // Split args: use | for paths, but preserve https:// URLs intact
+      let rawArgs;
+      if (rest.includes('|')) {
+        rawArgs = rest.split('|');
+      } else if (/^https?:\/\//i.test(rest) || rest.split(':').length <= 2) {
+        // Single arg (URL or simple value) — don't split
+        rawArgs = [rest];
+      } else {
+        rawArgs = rest.split(':');
+      }
+      // Clean each arg: trim whitespace AND trailing punctuation that bleeds from AI sentences
+      const args = rawArgs.map(function(a){ return a.trim().replace(/[.!?,;]+$/, ''); });
+      actions.push({ type, args });
     }
     return actions;
   }
