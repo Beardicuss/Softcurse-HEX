@@ -98,6 +98,11 @@ async function openSettings() {
   const se = document.getElementById('cfg-searchengine');
   if (se) se.value = cfg.browser?.searchEngine || 'google';
 
+  const sysAuto = document.getElementById('cfg-autostart');
+  const sysTray = document.getElementById('cfg-minimize-tray');
+  if (sysAuto) sysAuto.value = String(cfg.system?.autostart === true);
+  if (sysTray) sysTray.value = String(cfg.system?.minimizeToTray === true);
+
   document.getElementById('cfg-model').value = cfg.llm?.model || '';
   document.getElementById('cfg-apikey').value = cfg.llm?.apiKey || '';
   if (document.getElementById('cfg-visionkey')) document.getElementById('cfg-visionkey').value = cfg.llm?.visionApiKey || '';
@@ -421,6 +426,11 @@ async function saveSettings() {
       ...config.monitoring,
       breakIntervalMin: parseInt(document.getElementById('cfg-breakmin').value) || 90,
       proactiveAdvice: document.getElementById('cfg-proactive').value === 'true'
+    },
+    system: {
+      ...config.system,
+      autostart: document.getElementById('cfg-autostart')?.value === 'true',
+      minimizeToTray: document.getElementById('cfg-minimize-tray')?.value === 'true'
     }
   };
 

@@ -10,7 +10,7 @@ console.error = (...args) => {
   _origConsoleError.apply(console, args);
 };
 
-const { app, BrowserWindow, ipcMain, powerMonitor, shell, dialog, session } = require('electron');
+const { app, BrowserWindow, ipcMain, powerMonitor, shell, dialog, session, Tray, Menu, nativeImage } = require('electron');
 
 // Audio safety flags
 app.commandLine.appendSwitch('disable-features', 'AudioServiceOutOfProcess');
@@ -114,13 +114,58 @@ function createWindow() {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.reload();
   });
 
+  mainWindow.on('close', (event) => {
+    if (config.system && config.system.minimizeToTray && !app.isQuiting) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
+  });
+
   mainWindow.on('closed', () => {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     mainWindow = null;
   });
 }
 
-app.whenReady().then(createWindow);
+let tray = null;
+function applySystemSettings() {
+  if (!config.system) return;
+
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: !!config.system.autostart,
+      path: app.getPath('exe')
+    });
+  } catch (e) { console.warn('setLoginItemSettings failed:', e); }
+
+  if (config.system.minimizeToTray) {
+    if (!tray) {
+      try {
+        const iconPath = path.join(__dirname, 'src', 'assets', 'hex.png');
+        const icon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
+        tray = new Tray(icon);
+        tray.setToolTip('Softcurse H.E.X.');
+        const contextMenu = Menu.buildFromTemplate([
+          { label: 'Show HEX', click: () => { if (mainWindow) mainWindow.show(); } },
+          { type: 'separator' },
+          { label: 'Quit', click: () => { app.isQuiting = true; app.quit(); } }
+        ]);
+        tray.setContextMenu(contextMenu);
+        tray.on('click', () => {
+          if (mainWindow) mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
+        });
+      } catch (e) { console.error('Failed to create tray:', e); }
+    }
+  } else if (tray) {
+    tray.destroy();
+    tray = null;
+  }
+}
+
+app.whenReady().then(() => {
+  createWindow();
+  applySystemSettings();
+});
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (!mainWindow) createWindow(); });
 
@@ -253,6 +298,7 @@ ipcMain.handle('config:get', () => config);
 ipcMain.handle('config:set', (_, newCfg) => {
   config = { ...config, ...newCfg };
   saveConfig(config);
+  applySystemSettings();
   // Propagate voice.modelsDir to engine if changed
   if (localVoice && newCfg.voice && newCfg.voice.modelsDir) {
     localVoice.setModelsDir(newCfg.voice.modelsDir);

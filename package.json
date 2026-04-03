@@ -34,15 +34,19 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "src/assets/icon.ico"
+      "icon": "src/assets/hex.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
     },
     "mac": {
       "target": "dmg",
-      "icon": "src/assets/icon.icns"
+      "icon": "src/assets/hex.icns"
     },
     "linux": {
       "target": "AppImage",
-      "icon": "src/assets/icon.png"
+      "icon": "src/assets/hex.png"
     }
   }
 }
