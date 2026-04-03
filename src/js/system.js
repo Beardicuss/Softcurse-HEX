@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 // ── system.js — Renderer-side system utilities ────────────────────────────────
 // Wraps hexAPI calls with UI feedback and provides shared helper functions
 // used across renderer, ai, and activity modules.

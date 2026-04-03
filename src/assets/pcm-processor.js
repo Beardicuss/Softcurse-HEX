@@ -1,4 +1,4 @@
-// pcm-processor.js — AudioWorklet processor
+﻿// pcm-processor.js — AudioWorklet processor
 // Captures raw Float32 PCM at 16kHz and sends to main thread in chunks.
 // Runs in the audio worklet thread — completely separate from the renderer.
 class PCMProcessor extends AudioWorkletProcessor {

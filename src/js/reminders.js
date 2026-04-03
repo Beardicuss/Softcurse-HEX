@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 // ── Reminders ────────────────────────────────────────────────────────────────
 
 class ReminderManager {

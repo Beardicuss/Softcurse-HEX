@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 // ── butler-docx.js ──────────────────────────────────────────
 // Creates a minimal valid .docx file (Open XML) using Node.js built-in zlib
 // No external dependencies needed!

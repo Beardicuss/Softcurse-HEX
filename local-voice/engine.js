@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 // ── local-voice/engine.js ─────────────────────────────────────────────────────
 // STT: sherpa-onnx OfflineRecognizer (Whisper tiny)
 // TTS: piper.exe binary

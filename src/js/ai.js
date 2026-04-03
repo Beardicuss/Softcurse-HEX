@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 // ── HexAI: LLM conversation engine ───────────────────────────────────────────
 // Providers: Ollama · OpenAI · Anthropic · Google Gemini · Grok (xAI)
 //            OpenRouter · Mistral · Cohere · Together AI · Groq
@@ -14,209 +14,7 @@ class HexAI {
 
   // ── System prompt ─────────────────────────────────────────
   _systemPrompt(state, lang) {
-    const langName = { en: 'English', ru: 'Russian', ka: 'Georgian' }[lang] || 'English';
-    const now = new Date();
-
-    // Active personality prompt
-    const personalityPrompt = (window.hexPersonalities)
-      ? window.hexPersonalities.getActivePrompt()
-      : 'You are HEX — a cyberpunk AI assistant. You are witty, intelligent, slightly rebellious, and caring.';
-
-    const personalityName = (window.hexPersonalities)
-      ? window.hexPersonalities.getActiveName()
-      : 'HEX — Default';
-
-    // Long-term memory context
-    const memoryCtx = (window.hexMemory) ? window.hexMemory.getContext(userMsg) : '';
-    const memoryBlock = memoryCtx
-      ? '\n--- LONG-TERM MEMORY ---\n' + memoryCtx + '\n--- END MEMORY ---'
-      : '';
-
-    const systemStateBlock = [
-      'CURRENT SYSTEM STATE:',
-      '  Time: ' + now.toLocaleTimeString() + ' | Date: ' + now.toLocaleDateString(),
-      '  Uptime: ' + (state.uptime || '-'),
-      '  CPU: ' + (state.cpu || '-') + '%  RAM: ' + (state.ram || '-') + '%  Disk: ' + (state.disk || '-') + '% (' + (state.diskFree || '-') + ' free)',
-      '  Network: ↓' + (state.netRx || '-') + ' ↑' + (state.netTx || '-') + '  Temp: ' + (state.temp || '-'),
-      '  Platform: ' + (state.platform || '-') + ' | AI: ' + (state.aiProvider || '-') + ' | TTS: ' + (state.ttsEngine || '-'),
-      '  Active task: ' + (state.activeTask || 'none'),
-      '  NOTE: For detailed PC info, use actions: [ACTION:sys_info] [ACTION:disk_usage] [ACTION:list_processes] [ACTION:get_ip]',
-    ].join('\n');
-
-    const actionsBlock = [
-      '═══ PC CONTROL & BUTLER ACTIONS ═══',
-      'You control this Windows PC by including [ACTION:...] tags in your response.',
-      'MANDATORY: When the user asks you to DO something on the PC, include the tag. Put tags at END of message.',
-      '',
-      'EXAMPLES:',
-      '  "open notepad"           → [ACTION:open_app:notepad]',
-      '  "open downloads folder"  → [ACTION:open_folder:downloads]',
-      '  "take a screenshot"      → [ACTION:screenshot]',
-      '  "what is my IP?"         → [ACTION:get_ip]',
-      '  "set volume to 40"       → [ACTION:set_volume:40]',
-      '  "list desktop files"     → [ACTION:list_dir:desktop]',
-      '  "ping google.com"        → [ACTION:ping:google.com]',
-      '  "copy file A to B"       → [ACTION:copy:A:B]',
-      '',
-      'FILE & FOLDER:',
-      'IMPORTANT: Use | (pipe) to separate arguments that may contain file paths.',
-      '[ACTION:open_folder:ALIAS]                  desktop|documents|downloads|pictures|music|videos|home',
-      '[ACTION:open_file:C:\\\\Users\\\\name\\\\file.txt]  open file with default app',
-      '[ACTION:list_dir:desktop]                   list directory contents (use alias or full path)',
-      '[ACTION:file_info:C:\\\\path\\\\file.txt]        size, dates, type',
-      '[ACTION:create_file:NAME.txt:CONTENT]       create text file on Desktop',
-      '[ACTION:create_doc:NAME:CONTENT]            create Word document on Desktop',
-      '[ACTION:create_folder:C:\\\\path\\\\newfolder]   create folder',
-      '[ACTION:copy:C:\\\\source.txt|D:\\\\dest.txt]    copy — use | between src and dest',
-      '[ACTION:move:C:\\\\old|D:\\\\new]               move — use | between src and dest',
-      '[ACTION:rename:C:\\\\old.txt|C:\\\\new.txt]     rename — use | between old and new',
-      '[ACTION:delete:C:\\\\path\\\\file.txt]          move to Recycle Bin (asks confirmation)',
-      '[ACTION:delete_perm:C:\\\\path\\\\file.txt]     permanently delete (asks confirmation)',
-      '',
-      'APPS & PROGRAMS:',
-      '[ACTION:open_app:NAME]              notepad|chrome|vscode|spotify|discord|calc|paint|cmd|terminal|steam|epic etc.',
-      '[ACTION:launch_game:GAME NAME]      launch any game from Steam, Epic, or installed (e.g. Elden Ring, Minecraft, GTA)',
-      '[ACTION:list_games]                 list all installed Steam and Epic games',
-      '[ACTION:open_settings]              open HEX settings panel',
-      '',
-      'SYSTEM INFO:',
-      '[ACTION:sys_info]                   OS, CPU, RAM, hostname, uptime',
-      '[ACTION:battery]                    battery percentage and charging status',
-      '[ACTION:disk_usage:DRIVE]           disk space (e.g. C: or leave blank for all)',
-      '[ACTION:list_processes]             top 10 processes by CPU',
-      '[ACTION:kill_process:NAME]          kill process by name (asks confirmation)',
-      '[ACTION:kill_pid:PID]               kill process by PID',
-      '',
-      'CLIPBOARD:',
-      '[ACTION:get_clipboard]              read clipboard text',
-      '[ACTION:set_clipboard:TEXT]         write text to clipboard',
-      '[ACTION:clear_clipboard]            empty clipboard',
-      '',
-      'AUDIO:',
-      '[ACTION:set_volume:0-100]           set system volume percentage',
-      '[ACTION:mute]                       mute audio',
-      '[ACTION:unmute]                     unmute audio',
-      '[ACTION:get_volume]                 read current volume',
-      '',
-      'NETWORK:',
-      '[ACTION:get_ip]                     local + public IP addresses',
-      '[ACTION:ping:HOST]                  ping a host',
-      '[ACTION:flush_dns]                  flush DNS cache',
-      '[ACTION:list_wifi]                  scan nearby Wi-Fi networks',
-      '',
-      'ENVIRONMENT:',
-      '[ACTION:get_env:VARNAME]            read environment variable',
-      '[ACTION:set_env:VAR:VALUE]          set environment variable',
-      '',
-      'MAINTENANCE:',
-      '[ACTION:clean_temp]                 clean %TEMP% folder',
-      '[ACTION:empty_trash]                empty Recycle Bin (asks confirmation)',
-      '[ACTION:set_wallpaper:IMAGE_PATH]   set desktop wallpaper',
-      '',
-      'POWER:',
-      '[ACTION:screenshot]                 take screenshot, save to Desktop',
-      '[ACTION:lock_screen]                lock workstation',
-      '[ACTION:logoff]                     log off current user (asks confirmation)',
-      '[ACTION:shutdown]                   shut down PC (asks confirmation)',
-      '[ACTION:restart]                    restart PC (asks confirmation)',
-      '',
-      'SCRIPTING (DANGEROUS — always asks confirmation):',
-      '[ACTION:run_ps:POWERSHELL_SCRIPT]   execute PowerShell',
-      '[ACTION:run_cmd:COMMAND]            execute CMD command',
-      '',
-      'UTILITIES:',
-      '[ACTION:open_url:URL]               open URL in browser',
-      '[ACTION:set_reminder:LABEL:MINUTES] set a reminder',
-      '[ACTION:run_defrag] [ACTION:run_scan] [ACTION:clear_cache] [ACTION:open_processes]',
-      '',
-      'FILE (use | separator for paths with colons/backslashes):',
-      '[ACTION:zip:C:\\path\\folder|C:\\out.zip]    compress   [ACTION:unzip:archive.zip|C:\\dest]  extract',
-      '',
-      'WINDOW CONTROL:',
-      '[ACTION:list_windows]                       list all open windows with titles',
-      '[ACTION:window:minimize:Chrome]             minimize/maximize/focus/restore/close window by title',
-      '[ACTION:send_keys:{ENTER}]                  send keystrokes to active window',
-      '[ACTION:mouse_move:960:540]                 move mouse to X,Y  [ACTION:mouse_click:left]  click',
-      '[ACTION:paste_clipboard]                    simulate Ctrl+V',
-      '[ACTION:get_clipboard_img]                  save clipboard image to file',
-      '',
-      'NETWORK:',
-      '[ACTION:connect_wifi:MySSID:password]       connect to WiFi',
-      '[ACTION:net_adapter:Wi-Fi:disable]          enable/disable network adapter',
-      '',
-      'AUTOMATION:',
-      '[ACTION:sleep:3]                            wait 3 seconds',
-      '[ACTION:schedule_once:14:30:notepad.exe]    schedule a task at HH:MM',
-      '[ACTION:cancel_task:HEX_12345]              cancel scheduled task by name',
-      '[ACTION:startup:add:notepad.exe:MyApp]      add/remove from Windows startup',
-      '',
-      'REGISTRY:',
-      '[ACTION:reg_read:HKLM|SOFTWARE\\Microsoft\\Windows\\CurrentVersion|ProductName]',
-      '[ACTION:reg_write:HKCU|SOFTWARE\\MyApp|Setting|Value|REG_SZ]  (⚠ confirmation required)',
-      '',
-      'SOFTWARE:',
-      '[ACTION:list_software]                      list all installed programs',
-      '[ACTION:check_updates]                      check for updates via winget',
-      '[ACTION:install_pkg:vlc]                    install via winget (⚠ confirmation required)',
-      '[ACTION:uninstall:VLC media player]         uninstall via winget (⚠ confirmation required)',
-      '',
-      'PERIPHERALS & MAINTENANCE:',
-      '[ACTION:eject_usb:E]                        safely eject USB drive E:',
-      '[ACTION:chkdsk:C]                           check disk for errors (⚠ may need reboot)',
-      '[ACTION:run:notepad.exe:C:\\file.txt]       run program with arguments',
-      '[ACTION:run_as_admin:ipconfig /release]     run as administrator (⚠ UAC dialog)',
-      '[ACTION:run_js:Math.round(Math.PI*100)/100] run sandboxed JavaScript and return result',
-    ].join('\n');
-
-    const rules = [
-      'RULES:',
-      '- Respond ONLY in ' + langName + '.',
-      '',
-      '- You are a REAL PC butler. When told to DO something on this PC, DO IT — include the action tag.',
-      '- MANDATORY: The [ACTION:...] tag is what executes commands. Without it, nothing happens.',
-      '',
-      '⚠ CRITICAL — NEVER FABRICATE PC DATA:',
-      '- NEVER guess, invent, or "assume" hardware specs, software, processes, IP addresses, disk usage, or any PC state.',
-      '- You do NOT know what is installed, what OS version, what hardware, what is running — you only know what the actions return.',
-      '- If the user asks about their PC (software, specs, processes, storage, network): USE ACTIONS, do not guess.',
-      '- Wrong answer example: "You have Windows 10, 16GB RAM, Chrome installed" — this is HALLUCINATION. NEVER do this.',
-      '- Right answer: trigger the action and let the real data speak: [ACTION:sys_info] [ACTION:list_software] [ACTION:get_ip]',
-      '',
-      '- For websites: [ACTION:open_url:https://facebook.com]',
-      '- For games: [ACTION:launch_game:Elden Ring]',
-      '- Keep response text SHORT (1 sentence) + action tag at end.',
-      '',
-      '- ACTION TAG RULES:',
-      '    • App names must NOT include punctuation: [ACTION:open_app:chrome] NOT [ACTION:open_app:chrome.]',
-      '    • Put the tag at the very end of your message, after any text.',
-      '    • One tag per action. Multiple tags allowed in one response.',
-      '',
-      '- EXAMPLES:',
-      '    User: open steam        → "Opening Steam. [ACTION:open_app:steam]"',
-      '    User: open chrome       → "Opening Chrome. [ACTION:open_app:chrome]"',
-      '    User: open google       → "Opening Google. [ACTION:open_url:https://google.com]"',
-      '    User: launch elden ring → "Launching. [ACTION:launch_game:Elden Ring]"',
-      '    User: what games?       → "Checking your libraries. [ACTION:list_games]"',
-      '    User: whats on my pc?   → "Let me check. [ACTION:sys_info] [ACTION:list_software]"',
-      '    User: my ip?            → "[ACTION:get_ip]"',
-      '    User: disk space?       → "[ACTION:disk_usage]"',
-      '    User: set volume 50     → "Done. [ACTION:set_volume:50]"',
-      '',
-      '- If you cannot do something, say so briefly and honestly.',
-    ].join('\n');
-
-    return [
-      personalityPrompt,
-      '',
-      'USER: ' + (state.userName || 'Operator') + ' | ACTIVE PERSONALITY: ' + personalityName,
-      '',
-      systemStateBlock,
-      memoryBlock,
-      '',
-      actionsBlock,
-      '',
-      rules
-    ].join('\n');
+    return window.buildHexSystemPrompt(state, lang, window._lastUserMsg || '');
   }
 
   _trim() {
@@ -225,7 +23,8 @@ class HexAI {
   }
 
   // ── Main chat entry ───────────────────────────────────────
-  async chat(userMsg, systemState, lang = 'ka') {
+  async chat(userMsg, systemState, lang = 'ka', visionData = null) {
+    window._lastUserMsg = userMsg;
     // Use persistent memory history if available
     if (window.hexMemory) {
       window.hexTaskBus?.push('Saving user message to memory...');
@@ -245,11 +44,29 @@ class HexAI {
     try {
       const p = this.config && this.config.llm ? this.config.llm.provider : 'none';
       window.hexTaskBus?.push(`Querying ${p} model...`);
-      switch (p) {
-        case 'ollama': text = await this._ollama(sysPrompt); break;
+
+      let routeProvider = p;
+      const fallbackKey = this.config?.llm?.visionApiKey;
+      if (visionData && p === 'ollama' && fallbackKey) {
+        routeProvider = 'gemini';
+        window.hexTaskBus?.push('Delegating visual payload to Gemini Vision API...');
+      }
+
+      switch (routeProvider) {
+        case 'ollama': text = await this._ollama(sysPrompt, visionData); break;
         case 'openai': text = await this._openai(sysPrompt); break;
         case 'anthropic': text = await this._anthropic(sysPrompt); break;
-        case 'gemini': text = await this._gemini(sysPrompt); break;
+        case 'gemini': {
+          if (routeProvider === 'gemini' && p === 'ollama') {
+            const oldKey = this.config.llm.apiKey;
+            this.config.llm.apiKey = fallbackKey;
+            try { text = await this._gemini(sysPrompt, visionData, 'gemini-2.0-flash'); }
+            finally { this.config.llm.apiKey = oldKey; }
+          } else {
+            text = await this._gemini(sysPrompt, visionData);
+          }
+          break;
+        }
         case 'grok': text = await this._grok(sysPrompt); break;
         case 'openrouter': text = await this._openrouter(sysPrompt); break;
         case 'mistral': text = await this._mistral(sysPrompt); break;
@@ -279,15 +96,27 @@ class HexAI {
   }
 
   // ── Ollama (local) ────────────────────────────────────────
-  async _ollama(system) {
+  async _ollama(system, visionData = null) {
     const baseUrl = this.config.llm.baseUrl || 'http://localhost:11434';
     const model = this.config.llm.model || 'llama3';
+
+    // Inject image into the latest user message for multimodal Ollama models (llava, minicpm-v, etc.)
+    const msgs = this._msgs();
+    const historyParts = msgs.map((m, i) => {
+      const part = { role: m.role, content: m.content };
+      if (i === msgs.length - 1 && visionData) {
+        const b64 = visionData.includes(',') ? visionData.split(',')[1] : visionData;
+        part.images = [b64];
+      }
+      return part;
+    });
+
     const res = await fetch(baseUrl + '/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model,
-        messages: [{ role: 'system', content: system }, ...this._msgs()],
+        messages: [{ role: 'system', content: system }, ...historyParts],
         stream: false,
         options: { temperature: 0.75, num_predict: 350 }
       })
@@ -332,23 +161,48 @@ class HexAI {
   }
 
   // ── Google Gemini ─────────────────────────────────────────
-  async _gemini(system) {
-    const rawModel = this.config.llm.model || '';
-    const model = (rawModel && rawModel !== 'gemini') ? rawModel : 'gemini-2.0-flash';
+  async _gemini(system, visionData = null, overrideModel = null) {
+    const rawModel = overrideModel || this.config.llm.model || '';
+    let model = (rawModel && rawModel !== 'gemini') ? rawModel.trim().split(/\s+/)[0] : 'gemini-1.5-flash-latest';
+    if (model === 'gemini-1.5-flash') model = 'gemini-1.5-flash-latest'; // Avoid regional v1beta 404s
     const apiKey = this.config.llm.apiKey;
-    const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + apiKey;
+
+    // Map history and inject visionData into the very last user message if present
+    const msgs = this._msgs();
+    const historyParts = msgs.map((m, i) => {
+      const parts = [{ text: m.content }];
+      if (i === msgs.length - 1 && visionData) {
+        const mimeMatch = visionData.match(/^data:(image\/\w+);base64,(.*)$/);
+        if (mimeMatch) parts.push({ inlineData: { mimeType: mimeMatch[1], data: mimeMatch[2] } });
+      }
+      return { role: m.role === 'assistant' ? 'model' : 'user', parts };
+    });
+
     const contents = [
       { role: 'user', parts: [{ text: '[SYSTEM]\n' + system + '\n[/SYSTEM]\n\nAcknowledge briefly.' }] },
       { role: 'model', parts: [{ text: 'Understood. HEX online.' }] },
-      ...this._msgs().map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }))
+      ...historyParts
     ];
-    const res = await fetch(url, {
+
+    const payload = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contents, generationConfig: { maxOutputTokens: 350, temperature: 0.75 } })
-    });
-    if (!res.ok) { const e = await res.json(); throw new Error('Gemini ' + res.status + ': ' + (e.error?.message || e.error?.status || JSON.stringify(e.error) || res.statusText)); }
-    return (await res.json()).candidates?.[0]?.content?.parts?.[0]?.text || '…';
+    };
+
+    let res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, payload);
+    if (!res.ok) {
+      let e = await res.json().catch(() => ({}));
+      if ((res.status === 404 || res.status === 429 || res.status === 400) && model !== 'gemini-1.5-flash-latest') {
+        window.hexTaskBus?.push(`Gemini ${res.status} on ${model}. Rerouting to gemini-1.5-flash-latest...`);
+        res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, payload);
+        if (!res.ok) e = await res.json().catch(() => ({}));
+      }
+      if (!res.ok) throw new Error(`Gemini ${res.status}: ${e.error?.message || e.error?.status || JSON.stringify(e.error) || res.statusText}`);
+    }
+
+    const finalData = await res.json();
+    return finalData.candidates?.[0]?.content?.parts?.[0]?.text || '…';
   }
 
   // ── Grok (xAI) ────────────────────────────────────────────

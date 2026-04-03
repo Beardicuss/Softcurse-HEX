@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 /**
  * rebuild.js — rebuilds sherpa-onnx native module against the installed Electron.
  *

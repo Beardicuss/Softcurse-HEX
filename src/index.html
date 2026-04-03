@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="ka">
+
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self';
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self';
              script-src 'self' 'unsafe-inline';
              style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
              font-src 'self' https://fonts.gstatic.com data:;
@@ -29,727 +29,838 @@
   <title>Softcurse H.E.X.</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
+
 <body>
 
-<div id="scanline"></div>
-<div id="toast-container"></div>
+  <div id="scanline"></div>
+  <div id="toast-container"></div>
 
-<!-- ── Settings Modal ───────────────────────────────── -->
-<div id="settings-overlay">
-  <div id="settings-modal">
+  <!-- ── Settings Modal ───────────────────────────────── -->
+  <div id="settings-overlay">
+    <div id="settings-modal">
 
-    <!-- Tab bar -->
-    <div class="settings-tabs">
-      <button class="stab active" data-tab="tab-general"   onclick="switchSettingsTab('tab-general')">⚙ GENERAL</button>
-      <button class="stab"        data-tab="tab-ai"        onclick="switchSettingsTab('tab-ai')">🤖 AI</button>
-      <button class="stab"        data-tab="tab-voice"     onclick="switchSettingsTab('tab-voice')">🎙 VOICE</button>
-      <button class="stab"        data-tab="tab-persona"   onclick="switchSettingsTab('tab-persona')">◆ PERSONA</button>
-      <button class="stab"        data-tab="tab-memory"    onclick="switchSettingsTab('tab-memory')">🧠 MEMORY</button>
-    </div>
-
-    <!-- ══ TAB: GENERAL ══════════════════════════════════ -->
-    <div class="stab-panel active" id="tab-general">
-      <div class="settings-section-label">◆ IDENTITY</div>
-      <div class="form-group">
-        <label class="form-label" data-i18n="user_name">YOUR NAME</label>
-        <input type="text" id="cfg-username" class="form-control" placeholder="Operator">
-      </div>
-      <div class="form-group">
-        <label class="form-label" data-i18n="language">INTERFACE LANGUAGE</label>
-        <select id="cfg-language" class="form-control">
-          <option value="ka">ქართული (Georgian)</option>
-          <option value="en">English</option>
-          <option value="ru">Русский (Russian)</option>
-        </select>
+      <!-- Tab bar -->
+      <div class="settings-tabs">
+        <button class="stab active" data-tab="tab-general" onclick="switchSettingsTab('tab-general')">⚙ GENERAL</button>
+        <button class="stab" data-tab="tab-ai" onclick="switchSettingsTab('tab-ai')">🤖 AI</button>
+        <button class="stab" data-tab="tab-voice" onclick="switchSettingsTab('tab-voice')">🎙 VOICE</button>
+        <button class="stab" data-tab="tab-persona" onclick="switchSettingsTab('tab-persona')">◆ PERSONA</button>
+        <button class="stab" data-tab="tab-memory" onclick="switchSettingsTab('tab-memory')">🧠 MEMORY</button>
       </div>
 
-      <div class="settings-section-label">◆ BROWSER</div>
-      <div class="form-group">
-        <label class="form-label">DEFAULT SEARCH ENGINE</label>
-        <select id="cfg-searchengine" class="form-control">
-          <option value="google">Google</option>
-          <option value="duckduckgo">DuckDuckGo</option>
-          <option value="bing">Bing</option>
-          <option value="youtube">YouTube</option>
-          <option value="github">GitHub</option>
-        </select>
-      </div>
-
-      <div class="settings-section-label">◆ MONITORING</div>
-      <div class="form-group">
-        <label class="form-label">BREAK INTERVAL (MINUTES)</label>
-        <input type="number" id="cfg-breakmin" class="form-control" value="90" min="30" max="240">
-      </div>
-      <div class="form-group">
-        <label class="form-label">PROACTIVE ADVICE</label>
-        <select id="cfg-proactive" class="form-control">
-          <option value="true">Enabled</option>
-          <option value="false">Disabled</option>
-        </select>
-      </div>
-    </div>
-
-    <!-- ══ TAB: AI ════════════════════════════════════════ -->
-    <div class="stab-panel" id="tab-ai">
-      <div class="settings-section-label">◆ AI CONFIGURATION</div>
-      <div class="form-group">
-        <label class="form-label" data-i18n="provider">LLM PROVIDER</label>
-        <select id="cfg-provider" class="form-control" onchange="updateProviderUI()">
-          <option value="none">— None (offline) —</option>
-          <option value="ollama">🖥 Ollama (Local / Free)</option>
-          <option value="openai">🤖 OpenAI (GPT-4o, GPT-4o-mini)</option>
-          <option value="anthropic">🟠 Anthropic (Claude)</option>
-          <option value="gemini">✦ Google Gemini</option>
-          <option value="grok">✗ Grok (xAI)</option>
-          <option value="openrouter">🔀 OpenRouter (100+ models)</option>
-          <option value="mistral">💫 Mistral AI</option>
-          <option value="groq">⚡ Groq (Ultra-fast)</option>
-          <option value="together">🤝 Together AI</option>
-          <option value="cohere">🌊 Cohere</option>
-        </select>
-      </div>
-      <div class="form-group" id="cfg-baseurl-group">
-        <label class="form-label" data-i18n="base_url">BASE URL</label>
-        <input type="text" id="cfg-baseurl" class="form-control" value="http://localhost:11434">
-      </div>
-      <div class="form-group">
-        <label class="form-label" data-i18n="model">MODEL NAME</label>
-        <div style="display:flex;gap:6px;align-items:center;">
-          <input type="text" id="cfg-model" class="form-control" placeholder="" style="flex:1;">
-          <button type="button" id="fetch-models-btn" onclick="fetchAvailableModels()"
-            title="Fetch available models from provider API"
-            style="flex-shrink:0;padding:0 10px;height:36px;background:var(--surface2);border:1px solid var(--accent);color:var(--accent);cursor:pointer;font-size:11px;letter-spacing:.05em;white-space:nowrap;">
-            ⬇ FETCH
-          </button>
+      <!-- ══ TAB: GENERAL ══════════════════════════════════ -->
+      <div class="stab-panel active" id="tab-general">
+        <div class="settings-section-label">◆ IDENTITY</div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="user_name">YOUR NAME</label>
+          <input type="text" id="cfg-username" class="form-control" placeholder="Operator">
         </div>
-        <div id="model-hint" class="form-hint"></div>
-        <div id="model-fetch-status" class="form-hint" style="color:var(--accent);display:none;"></div>
-        <div id="model-picker" style="display:none;max-height:180px;overflow-y:auto;border:1px solid var(--accent);background:var(--surface2);margin-top:4px;border-radius:3px;"></div>
-      </div>
-      <div class="form-group" id="cfg-apikey-group">
-        <label class="form-label" data-i18n="api_key">API KEY</label>
-        <input type="password" id="cfg-apikey" class="form-control" placeholder="">
-        <div id="apikey-hint" class="form-hint"></div>
-      </div>
-    </div>
-
-    <!-- ══ TAB: VOICE ═════════════════════════════════════ -->
-    <div class="stab-panel" id="tab-voice">
-      <div class="settings-section-label">◆ LOCAL VOICE MODELS (offline)</div>
-      <div class="form-group">
-        <div id="local-voice-status" class="form-hint" style="margin-bottom:8px;">Checking...</div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
-          <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">
-            <input type="checkbox" id="dl-stt"   value="stt"    checked> Whisper STT (~40MB)
-          </label>
-          <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">
-            <input type="checkbox" id="dl-en"    value="tts-en" checked> TTS English (~65MB)
-          </label>
-          <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">
-            <input type="checkbox" id="dl-ru"    value="tts-ru" checked> TTS Russian (~65MB)
-          </label>
-          <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">
-            <input type="checkbox" id="dl-ka"    value="tts-ka" checked> TTS Georgian (~65MB)
-          </label>
-        </div>
-        <div style="display:flex;gap:6px;">
-          <button class="btn btn-secondary" onclick="downloadVoiceModels()"
-            id="download-models-btn" style="border-color:var(--cyan);color:var(--cyan);">
-            ⬇ DOWNLOAD SELECTED
-          </button>
-          <button class="btn btn-secondary" onclick="refreshVoiceStatus()" style="font-size:10px;">↻</button>
-        </div>
-        <div id="download-progress" style="display:none;margin-top:8px;">
-          <div id="download-progress-bar" style="height:4px;background:var(--surface3);border-radius:2px;overflow:hidden;">
-            <div id="download-progress-fill" style="height:100%;width:0%;background:var(--cyan);transition:width .3s;"></div>
-          </div>
-          <div id="download-progress-label" class="form-hint" style="margin-top:4px;"></div>
-        </div>
-        <div class="form-hint" style="margin-top:6px;">Models stored locally — one-time download. After download, voice works completely offline.</div>
-        <div style="display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap;">
-          <code id="models-dir-path" style="font-size:10px;color:var(--muted);flex:1;word-break:break-all;">...</code>
-          <button class="btn btn-secondary" onclick="openModelsDir()" style="font-size:10px;white-space:nowrap;flex-shrink:0;">📂 OPEN FOLDER</button>
-        </div>
-        <div class="form-hint" style="margin-top:4px;">
-          To add custom Piper voices: place <code>.onnx</code> + <code>.onnx.json</code> files in the <code>tts-en/</code>, <code>tts-ru/</code> or <code>tts-ka/</code> subfolder matching the expected filenames, then restart HEX.
-        </div>
-      </div>
-
-      <div class="settings-section-label">◆ VOICE MODELS DIRECTORY</div>
-      <div class="form-group">
-        <label class="form-label">MODELS PATH</label>
-        <div style="display:flex;gap:6px;">
-          <input type="text" id="cfg-models-dir" class="form-control" style="flex:1;font-size:11px;"
-            placeholder="e.g. D:\Dev\Assets\voices">
-          <button class="btn btn-secondary" onclick="browseModelsDir()" style="padding:4px 10px;font-size:9px;white-space:nowrap;">&#128193; BROWSE</button>
-          <button class="btn btn-secondary" onclick="applyModelsDir()" style="padding:4px 10px;font-size:9px;white-space:nowrap;">APPLY</button>
-          <button class="btn btn-secondary" onclick="checkVoiceStatus()" style="padding:4px 10px;font-size:9px;white-space:nowrap;">✓ CHECK</button>
-        </div>
-        <div class="form-hint">Folder containing: <code>whisper-tiny/</code> and <code>tts-en/</code> <code>tts-ka/</code> etc.</div>
-        <div id="voice-status-msg" class="form-hint" style="margin-top:4px;"></div>
-      </div>
-
-      <div class="settings-section-label">◆ VOICE & SPEECH</div>
-      <div class="form-group">
-        <label class="form-label">WAKE WORD</label>
-        <input type="text" id="cfg-wakeword" class="form-control" placeholder="hey hex" value="hey hex">
-      </div>
-      <div class="form-group">
-        <label class="form-label">TTS ENGINE</label>
-        <div style="display:flex;gap:6px;margin-bottom:6px;">
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;">
-            <input type="radio" name="tts-engine" id="tts-engine-local" value="local" onchange="updateTtsEngineUI()">
-            🖥 Local Piper (offline)
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;">
-            <input type="radio" name="tts-engine" id="tts-engine-os" value="os" onchange="updateTtsEngineUI()">
-            🔊 OS / Web Speech
-          </label>
-        </div>
-
-        <!-- Local Piper voice selector -->
-        <div id="local-voice-picker" style="display:none;margin-bottom:8px;">
-          <select id="cfg-local-voice" class="form-control" style="margin-bottom:4px;" onchange="window.hexVoice._localVoiceLang=this.value;updateTtsEngineUI()">
-            <!-- Populated dynamically from discovered voice models -->
+        <div class="form-group">
+          <label class="form-label" data-i18n="language">INTERFACE LANGUAGE</label>
+          <select id="cfg-language" class="form-control">
+            <option value="ka">ქართული (Georgian)</option>
+            <option value="en">English</option>
+            <option value="ru">Русский (Russian)</option>
           </select>
-          <div style="display:flex;gap:6px;">
-            <input type="range" id="cfg-local-speed" min="0.5" max="2" step="0.05" value="1.0"
-              oninput="document.getElementById('local-speed-val').textContent=parseFloat(this.value).toFixed(2)"
-              style="flex:1;accent-color:var(--cyan);">
-            <span id="local-speed-val" class="mono" style="font-size:11px;width:34px;">1.00</span>
-            <button class="btn btn-secondary" onclick="previewLocalVoice()" style="padding:4px 10px;font-size:9px;white-space:nowrap;">▶ TEST</button>
+        </div>
+
+        <div class="settings-section-label">◆ BROWSER</div>
+        <div class="form-group">
+          <label class="form-label">DEFAULT SEARCH ENGINE</label>
+          <select id="cfg-searchengine" class="form-control">
+            <option value="google">Google</option>
+            <option value="duckduckgo">DuckDuckGo</option>
+            <option value="bing">Bing</option>
+            <option value="youtube">YouTube</option>
+            <option value="github">GitHub</option>
+          </select>
+        </div>
+
+        <div class="settings-section-label">◆ MONITORING</div>
+        <div class="form-group">
+          <label class="form-label">BREAK INTERVAL (MINUTES)</label>
+          <input type="number" id="cfg-breakmin" class="form-control" value="90" min="30" max="240">
+        </div>
+        <div class="form-group">
+          <label class="form-label">PROACTIVE ADVICE</label>
+          <select id="cfg-proactive" class="form-control">
+            <option value="true">Enabled</option>
+            <option value="false">Disabled</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- ══ TAB: AI ════════════════════════════════════════ -->
+      <div class="stab-panel" id="tab-ai">
+        <div class="settings-section-label">◆ AI CONFIGURATION</div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="provider">LLM PROVIDER</label>
+          <select id="cfg-provider" class="form-control" onchange="updateProviderUI()">
+            <option value="none">— None (offline) —</option>
+            <option value="ollama">🖥 Ollama (Local / Free)</option>
+            <option value="openai">🤖 OpenAI (GPT-4o, GPT-4o-mini)</option>
+            <option value="anthropic">🟠 Anthropic (Claude)</option>
+            <option value="gemini">✦ Google Gemini</option>
+            <option value="grok">✗ Grok (xAI)</option>
+            <option value="openrouter">🔀 OpenRouter (100+ models)</option>
+            <option value="mistral">💫 Mistral AI</option>
+            <option value="groq">⚡ Groq (Ultra-fast)</option>
+            <option value="together">🤝 Together AI</option>
+            <option value="cohere">🌊 Cohere</option>
+          </select>
+        </div>
+        <div class="form-group" id="cfg-baseurl-group">
+          <label class="form-label" data-i18n="base_url">BASE URL</label>
+          <input type="text" id="cfg-baseurl" class="form-control" value="http://localhost:11434">
+        </div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="model">MODEL NAME</label>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input type="text" id="cfg-model" class="form-control" placeholder="" style="flex:1;">
+            <button type="button" id="fetch-models-btn" onclick="fetchAvailableModels()"
+              title="Fetch available models from provider API"
+              style="flex-shrink:0;padding:0 10px;height:36px;background:var(--surface2);border:1px solid var(--accent);color:var(--accent);cursor:pointer;font-size:11px;letter-spacing:.05em;white-space:nowrap;">
+              ⬇ FETCH
+            </button>
           </div>
-          <div id="local-voice-unavail" class="form-hint" style="color:var(--magenta);display:none;">
-            ⚠ Model not downloaded. Go to LOCAL VOICE MODELS above and download it first.
+          <div id="model-hint" class="form-hint"></div>
+          <div id="model-fetch-status" class="form-hint" style="color:var(--accent);display:none;"></div>
+          <div id="model-picker"
+            style="display:none;max-height:180px;overflow-y:auto;border:1px solid var(--accent);background:var(--surface2);margin-top:4px;border-radius:3px;">
+          </div>
+        </div>
+        <div class="form-group" id="cfg-apikey-group">
+          <label class="form-label" data-i18n="api_key">API KEY</label>
+          <input type="password" id="cfg-apikey" class="form-control" placeholder="">
+          <div id="apikey-hint" class="form-hint"></div>
+        </div>
+        <div class="form-group" id="cfg-visionkey-group">
+          <label class="form-label">VISION API KEY (Fallback)</label>
+          <input type="password" id="cfg-visionkey" class="form-control"
+            placeholder="Optional. For Gemini API visual delegation.">
+          <div class="form-hint" style="margin-top:4px;">Paste your free Google Gemini API key here if you want to use
+            it for Vision while keeping Ollama as your primary chat engine.</div>
+        </div>
+      </div>
+
+      <!-- ══ TAB: VOICE ═════════════════════════════════════ -->
+      <div class="stab-panel" id="tab-voice">
+        <div class="settings-section-label">◆ LOCAL VOICE MODELS (offline)</div>
+        <div class="form-group">
+          <div id="local-voice-status" class="form-hint" style="margin-bottom:8px;">Checking...</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
+            <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">
+              <input type="checkbox" id="dl-stt" value="stt" checked> Whisper STT (~40MB)
+            </label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">
+              <input type="checkbox" id="dl-en" value="tts-en" checked> TTS English (~65MB)
+            </label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">
+              <input type="checkbox" id="dl-ru" value="tts-ru" checked> TTS Russian (~65MB)
+            </label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">
+              <input type="checkbox" id="dl-ka" value="tts-ka" checked> TTS Georgian (~65MB)
+            </label>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-secondary" onclick="downloadVoiceModels()" id="download-models-btn"
+              style="border-color:var(--cyan);color:var(--cyan);">
+              ⬇ DOWNLOAD SELECTED
+            </button>
+            <button class="btn btn-secondary" onclick="refreshVoiceStatus()" style="font-size:10px;">↻</button>
+          </div>
+          <div id="download-progress" style="display:none;margin-top:8px;">
+            <div id="download-progress-bar"
+              style="height:4px;background:var(--surface3);border-radius:2px;overflow:hidden;">
+              <div id="download-progress-fill"
+                style="height:100%;width:0%;background:var(--cyan);transition:width .3s;"></div>
+            </div>
+            <div id="download-progress-label" class="form-hint" style="margin-top:4px;"></div>
+          </div>
+          <div class="form-hint" style="margin-top:6px;">Models stored locally — one-time download. After download,
+            voice works completely offline.</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap;">
+            <code id="models-dir-path" style="font-size:10px;color:var(--muted);flex:1;word-break:break-all;">...</code>
+            <button class="btn btn-secondary" onclick="openModelsDir()"
+              style="font-size:10px;white-space:nowrap;flex-shrink:0;">📂 OPEN FOLDER</button>
+          </div>
+          <div class="form-hint" style="margin-top:4px;">
+            To add custom Piper voices: place <code>.onnx</code> + <code>.onnx.json</code> files in the
+            <code>tts-en/</code>, <code>tts-ru/</code> or <code>tts-ka/</code> subfolder matching the expected
+            filenames, then restart HEX.
           </div>
         </div>
 
-        <!-- OS voice selector -->
-        <div id="os-voice-picker">
+        <div class="settings-section-label">◆ VOICE MODELS DIRECTORY</div>
+        <div class="form-group">
+          <label class="form-label">MODELS PATH</label>
           <div style="display:flex;gap:6px;">
-            <select id="cfg-voice" class="form-control" style="flex:1;">
-              <option value="">— Auto (best match for language) —</option>
+            <input type="text" id="cfg-models-dir" class="form-control" style="flex:1;font-size:11px;"
+              placeholder="e.g. D:\Dev\Assets\voices">
+            <button class="btn btn-secondary" onclick="browseModelsDir()"
+              style="padding:4px 10px;font-size:9px;white-space:nowrap;">&#128193; BROWSE</button>
+            <button class="btn btn-secondary" onclick="applyModelsDir()"
+              style="padding:4px 10px;font-size:9px;white-space:nowrap;">APPLY</button>
+            <button class="btn btn-secondary" onclick="checkVoiceStatus()"
+              style="padding:4px 10px;font-size:9px;white-space:nowrap;">✓ CHECK</button>
+          </div>
+          <div class="form-hint">Folder containing: <code>whisper-tiny/</code> and <code>tts-en/</code>
+            <code>tts-ka/</code> etc.
+          </div>
+          <div id="voice-status-msg" class="form-hint" style="margin-top:4px;"></div>
+        </div>
+
+        <div class="settings-section-label">◆ VOICE & SPEECH</div>
+        <div class="form-group">
+          <label class="form-label">WAKE WORD</label>
+          <input type="text" id="cfg-wakeword" class="form-control" placeholder="hey hex" value="hey hex">
+        </div>
+        <div class="form-group">
+          <label class="form-label">TTS ENGINE</label>
+          <div style="display:flex;gap:6px;margin-bottom:6px;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;">
+              <input type="radio" name="tts-engine" id="tts-engine-local" value="local" onchange="updateTtsEngineUI()">
+              🖥 Local Piper (offline)
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;">
+              <input type="radio" name="tts-engine" id="tts-engine-os" value="os" onchange="updateTtsEngineUI()">
+              🔊 OS / Web Speech
+            </label>
+          </div>
+
+          <!-- Local Piper voice selector -->
+          <div id="local-voice-picker" style="display:none;margin-bottom:8px;">
+            <select id="cfg-local-voice" class="form-control" style="margin-bottom:4px;"
+              onchange="window.hexVoice._localVoiceLang=this.value;updateTtsEngineUI()">
+              <!-- Populated dynamically from discovered voice models -->
             </select>
-            <button class="btn btn-secondary" onclick="previewSelectedVoice()" style="padding:4px 10px;font-size:9px;white-space:nowrap;">▶ TEST</button>
+            <div style="display:flex;gap:6px;">
+              <input type="range" id="cfg-local-speed" min="0.5" max="2" step="0.05" value="1.0"
+                oninput="document.getElementById('local-speed-val').textContent=parseFloat(this.value).toFixed(2)"
+                style="flex:1;accent-color:var(--cyan);">
+              <span id="local-speed-val" class="mono" style="font-size:11px;width:34px;">1.00</span>
+              <button class="btn btn-secondary" onclick="previewLocalVoice()"
+                style="padding:4px 10px;font-size:9px;white-space:nowrap;">▶ TEST</button>
+            </div>
+            <div id="local-voice-unavail" class="form-hint" style="color:var(--magenta);display:none;">
+              ⚠ Model not downloaded. Go to LOCAL VOICE MODELS above and download it first.
+            </div>
           </div>
-          <div class="form-hint">Voices depend on your OS. Georgian requires a language pack.</div>
-        </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">SPEECH RATE</label>
-        <div style="display:flex;align-items:center;gap:10px;">
-          <input type="range" id="cfg-rate" min="0.5" max="2" step="0.05" value="0.95"
-            oninput="document.getElementById('rate-val').textContent=this.value"
-            style="flex:1;accent-color:var(--cyan);">
-          <span id="rate-val" class="mono" style="font-size:11px;width:34px;">0.95</span>
-        </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">SPEECH PITCH</label>
-        <div style="display:flex;align-items:center;gap:10px;">
-          <input type="range" id="cfg-pitch" min="0.5" max="2" step="0.05" value="0.85"
-            oninput="document.getElementById('pitch-val').textContent=this.value"
-            style="flex:1;accent-color:var(--cyan);">
-          <span id="pitch-val" class="mono" style="font-size:11px;width:34px;">0.85</span>
-        </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">VOLUME</label>
-        <div style="display:flex;align-items:center;gap:10px;">
-          <input type="range" id="cfg-volume" min="0" max="1" step="0.05" value="0.9"
-            oninput="document.getElementById('volume-val').textContent=parseFloat(this.value).toFixed(2)"
-            style="flex:1;accent-color:var(--orange);">
-          <span id="volume-val" class="mono" style="font-size:11px;width:34px;">0.90</span>
-        </div>
-      </div>
-      <div class="form-hint" style="margin-top:2px;">Rate and Pitch apply to OS/Web Speech. Volume applies to all engines.</div>
-    </div>
 
-    <!-- ══ TAB: PERSONA ═══════════════════════════════════ -->
-    <div class="stab-panel" id="tab-persona">
-      <div class="settings-section-label">◆ ACTIVE PERSONALITY</div>
-
-      <!-- Active personality display -->
-      <div id="active-persona-display" class="persona-active-card">
-        <span id="active-persona-name" class="persona-active-name">HEX — Default</span>
-        <span id="active-persona-desc" class="form-hint" style="margin-top:4px;display:block;">Loading...</span>
-      </div>
-
-      <div class="settings-section-label" style="margin-top:14px;">◆ ALL PERSONALITIES</div>
-
-      <!-- Personality list -->
-      <div id="persona-list" class="persona-list"></div>
-
-      <!-- Create / edit form -->
-      <div class="settings-section-label" style="margin-top:14px;">◆ CREATE / EDIT PERSONALITY</div>
-      <input type="hidden" id="persona-edit-id">
-      <div class="form-group">
-        <label class="form-label">NAME</label>
-        <input type="text" id="persona-name" class="form-control" placeholder="e.g. HEX — Sarcastic">
-      </div>
-      <div class="form-group">
-        <label class="form-label">DESCRIPTION (SHORT)</label>
-        <input type="text" id="persona-desc" class="form-control" placeholder="One-line summary shown in list">
-      </div>
-      <div class="form-group">
-        <label class="form-label">SYSTEM PROMPT</label>
-        <textarea id="persona-prompt" class="form-control" rows="6"
-          placeholder="You are HEX — [define character, tone, style, rules]. Be specific about how HEX speaks, what it cares about, and how it responds. This text becomes the AI's personality core."></textarea>
-        <div class="form-hint">This is exactly what the AI sees as its identity. Be detailed and specific.</div>
-      </div>
-      <div style="display:flex;gap:8px;margin-top:4px;">
-        <button class="btn btn-primary" onclick="savePersonality()" style="flex:1;">💾 SAVE PERSONALITY</button>
-        <button class="btn btn-secondary" onclick="clearPersonaForm()" style="padding:6px 14px;">✕ CLEAR</button>
-      </div>
-    </div>
-
-    <!-- ══ TAB: MEMORY ════════════════════════════════════ -->
-    <div class="stab-panel" id="tab-memory">
-      <div class="settings-section-label">◆ MEMORY STATUS</div>
-
-      <div class="memory-stats-grid" id="memory-stats-grid">
-        <div class="mem-stat-card">
-          <span class="label-tag">ACTIVE FACTS</span>
-          <span class="mem-stat-val" id="mem-stat-facts">—</span>
+          <!-- OS voice selector -->
+          <div id="os-voice-picker">
+            <div style="display:flex;gap:6px;">
+              <select id="cfg-voice" class="form-control" style="flex:1;">
+                <option value="">— Auto (best match for language) —</option>
+              </select>
+              <button class="btn btn-secondary" onclick="previewSelectedVoice()"
+                style="padding:4px 10px;font-size:9px;white-space:nowrap;">▶ TEST</button>
+            </div>
+            <div class="form-hint">Voices depend on your OS. Georgian requires a language pack.</div>
+          </div>
         </div>
-        <div class="mem-stat-card">
-          <span class="label-tag">CONVERSATIONS</span>
-          <span class="mem-stat-val" id="mem-stat-turns">—</span>
+        <div class="form-group">
+          <label class="form-label">SPEECH RATE</label>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <input type="range" id="cfg-rate" min="0.5" max="2" step="0.05" value="0.95"
+              oninput="document.getElementById('rate-val').textContent=this.value"
+              style="flex:1;accent-color:var(--cyan);">
+            <span id="rate-val" class="mono" style="font-size:11px;width:34px;">0.95</span>
+          </div>
         </div>
-        <div class="mem-stat-card">
-          <span class="label-tag">SESSIONS</span>
-          <span class="mem-stat-val" id="mem-stat-sessions">—</span>
+        <div class="form-group">
+          <label class="form-label">SPEECH PITCH</label>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <input type="range" id="cfg-pitch" min="0.5" max="2" step="0.05" value="0.85"
+              oninput="document.getElementById('pitch-val').textContent=this.value"
+              style="flex:1;accent-color:var(--cyan);">
+            <span id="pitch-val" class="mono" style="font-size:11px;width:34px;">0.85</span>
+          </div>
         </div>
-        <div class="mem-stat-card">
-          <span class="label-tag">OLDEST MEMORY</span>
-          <span class="mem-stat-val" id="mem-stat-oldest" style="font-size:11px;">—</span>
+        <div class="form-group">
+          <label class="form-label">VOLUME</label>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <input type="range" id="cfg-volume" min="0" max="1" step="0.05" value="0.9"
+              oninput="document.getElementById('volume-val').textContent=parseFloat(this.value).toFixed(2)"
+              style="flex:1;accent-color:var(--orange);">
+            <span id="volume-val" class="mono" style="font-size:11px;width:34px;">0.90</span>
+          </div>
+        </div>
+        <div class="form-hint" style="margin-top:2px;">Rate and Pitch apply to OS/Web Speech. Volume applies to all
+          engines.</div>
+      </div>
+
+      <!-- ══ TAB: PERSONA ═══════════════════════════════════ -->
+      <div class="stab-panel" id="tab-persona">
+        <div class="settings-section-label">◆ ACTIVE PERSONALITY</div>
+
+        <!-- Active personality display -->
+        <div id="active-persona-display" class="persona-active-card">
+          <span id="active-persona-name" class="persona-active-name">HEX — Default</span>
+          <span id="active-persona-desc" class="form-hint" style="margin-top:4px;display:block;">Loading...</span>
+        </div>
+
+        <div class="settings-section-label" style="margin-top:14px;">◆ ALL PERSONALITIES</div>
+
+        <!-- Personality list -->
+        <div id="persona-list" class="persona-list"></div>
+
+        <!-- Create / edit form -->
+        <div class="settings-section-label" style="margin-top:14px;">◆ CREATE / EDIT PERSONALITY</div>
+        <input type="hidden" id="persona-edit-id">
+        <div class="form-group">
+          <label class="form-label">NAME</label>
+          <input type="text" id="persona-name" class="form-control" placeholder="e.g. HEX — Sarcastic">
+        </div>
+        <div class="form-group">
+          <label class="form-label">DESCRIPTION (SHORT)</label>
+          <input type="text" id="persona-desc" class="form-control" placeholder="One-line summary shown in list">
+        </div>
+        <div class="form-group">
+          <label class="form-label">SYSTEM PROMPT</label>
+          <textarea id="persona-prompt" class="form-control" rows="6"
+            placeholder="You are HEX — [define character, tone, style, rules]. Be specific about how HEX speaks, what it cares about, and how it responds. This text becomes the AI's personality core."></textarea>
+          <div class="form-hint">This is exactly what the AI sees as its identity. Be detailed and specific.</div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:4px;">
+          <button class="btn btn-primary" onclick="savePersonality()" style="flex:1;">💾 SAVE PERSONALITY</button>
+          <button class="btn btn-secondary" onclick="clearPersonaForm()" style="padding:6px 14px;">✕ CLEAR</button>
         </div>
       </div>
 
-      <!-- Tier breakdown -->
-      <div id="mem-tier-bar" style="display:flex;gap:4px;margin:10px 0;font-family:var(--font-m);font-size:9px;">
-        <div style="display:flex;align-items:center;gap:3px;"><span style="width:8px;height:8px;background:#00ffc8;display:inline-block;border-radius:2px;"></span><span id="mem-tier-0">0</span> PROTECTED</div>
-        <div style="display:flex;align-items:center;gap:3px;margin-left:8px;"><span style="width:8px;height:8px;background:#0088ff;display:inline-block;border-radius:2px;"></span><span id="mem-tier-1">0</span> HIGH</div>
-        <div style="display:flex;align-items:center;gap:3px;margin-left:8px;"><span style="width:8px;height:8px;background:#ff6b35;display:inline-block;border-radius:2px;"></span><span id="mem-tier-2">0</span> ACTIVE</div>
-        <div style="display:flex;align-items:center;gap:3px;margin-left:8px;"><span style="width:8px;height:8px;background:rgba(255,255,255,0.2);display:inline-block;border-radius:2px;"></span><span id="mem-tier-3">0</span> WEAK</div>
+      <!-- ══ TAB: MEMORY ════════════════════════════════════ -->
+      <div class="stab-panel" id="tab-memory">
+        <div class="settings-section-label">◆ MEMORY STATUS</div>
+
+        <div class="memory-stats-grid" id="memory-stats-grid">
+          <div class="mem-stat-card">
+            <span class="label-tag">ACTIVE FACTS</span>
+            <span class="mem-stat-val" id="mem-stat-facts">—</span>
+          </div>
+          <div class="mem-stat-card">
+            <span class="label-tag">CONVERSATIONS</span>
+            <span class="mem-stat-val" id="mem-stat-turns">—</span>
+          </div>
+          <div class="mem-stat-card">
+            <span class="label-tag">SESSIONS</span>
+            <span class="mem-stat-val" id="mem-stat-sessions">—</span>
+          </div>
+          <div class="mem-stat-card">
+            <span class="label-tag">OLDEST MEMORY</span>
+            <span class="mem-stat-val" id="mem-stat-oldest" style="font-size:11px;">—</span>
+          </div>
+        </div>
+
+        <!-- Tier breakdown -->
+        <div id="mem-tier-bar" style="display:flex;gap:4px;margin:10px 0;font-family:var(--font-m);font-size:9px;">
+          <div style="display:flex;align-items:center;gap:3px;"><span
+              style="width:8px;height:8px;background:#00ffc8;display:inline-block;border-radius:2px;"></span><span
+              id="mem-tier-0">0</span> PROTECTED</div>
+          <div style="display:flex;align-items:center;gap:3px;margin-left:8px;"><span
+              style="width:8px;height:8px;background:#0088ff;display:inline-block;border-radius:2px;"></span><span
+              id="mem-tier-1">0</span> HIGH</div>
+          <div style="display:flex;align-items:center;gap:3px;margin-left:8px;"><span
+              style="width:8px;height:8px;background:#ff6b35;display:inline-block;border-radius:2px;"></span><span
+              id="mem-tier-2">0</span> ACTIVE</div>
+          <div style="display:flex;align-items:center;gap:3px;margin-left:8px;"><span
+              style="width:8px;height:8px;background:rgba(255,255,255,0.2);display:inline-block;border-radius:2px;"></span><span
+              id="mem-tier-3">0</span> WEAK</div>
+        </div>
+
+        <!-- Working memory -->
+        <div class="settings-section-label">◆ CURRENT SESSION</div>
+        <div id="mem-working" class="form-hint"
+          style="margin-bottom:8px;font-family:monospace;white-space:pre-wrap;line-height:1.6;">—</div>
+
+        <!-- Known facts -->
+        <div class="settings-section-label" style="margin-top:12px;">◆ KNOWN FACTS <span id="mem-filter-hint"
+            class="form-hint" style="display:inline;margin-left:8px;"></span></div>
+        <div style="display:flex;gap:6px;margin-bottom:6px;">
+          <input type="text" id="mem-search" class="form-control" placeholder="filter facts..."
+            style="flex:1;font-size:11px;" oninput="filterMemoryFacts(this.value)">
+          <select id="mem-type-filter" class="form-control" style="width:120px;font-size:11px;"
+            onchange="filterMemoryFacts(document.getElementById('mem-search').value)">
+            <option value="">All types</option>
+            <option value="user">User</option>
+            <option value="preference">Preference</option>
+            <option value="skill">Skill</option>
+            <option value="habit">Habit</option>
+            <option value="system">System</option>
+            <option value="task">Task</option>
+            <option value="belief">Belief</option>
+          </select>
+        </div>
+        <div id="facts-list" class="facts-list"></div>
+
+        <!-- Actions -->
+        <div class="settings-section-label" style="margin-top:12px;">◆ ACTIONS</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+          <button class="btn btn-secondary" onclick="compressSession()" style="font-size:9px;">
+            💾 COMPRESS SESSION
+          </button>
+          <button class="btn btn-secondary" onclick="showMemoryReport()" style="font-size:9px;">
+            📊 HEALTH REPORT
+          </button>
+        </div>
+        <div id="mem-report" class="form-hint"
+          style="white-space:pre-wrap;line-height:1.6;display:none;margin-bottom:8px;"></div>
+
+        <div class="settings-section-label">◆ DANGER ZONE</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-secondary" onclick="clearMemoryFacts()"
+            style="border-color:var(--orange);color:var(--orange);">
+            🗑 CLEAR FACTS
+          </button>
+          <button class="btn btn-secondary" onclick="clearMemoryHistory()"
+            style="border-color:var(--orange);color:var(--orange);">
+            🗑 CLEAR HISTORY
+          </button>
+          <button class="btn btn-secondary" onclick="clearAllMemory()"
+            style="border-color:var(--magenta);color:var(--magenta);">
+            ☢ WIPE ALL
+          </button>
+        </div>
+        <div class="form-hint" style="margin-top:8px;color:rgba(255,107,53,0.5);">
+          Cleared memory cannot be recovered.
+        </div>
       </div>
 
-      <!-- Working memory -->
-      <div class="settings-section-label">◆ CURRENT SESSION</div>
-      <div id="mem-working" class="form-hint" style="margin-bottom:8px;font-family:monospace;white-space:pre-wrap;line-height:1.6;">—</div>
-
-      <!-- Known facts -->
-      <div class="settings-section-label" style="margin-top:12px;">◆ KNOWN FACTS <span id="mem-filter-hint" class="form-hint" style="display:inline;margin-left:8px;"></span></div>
-      <div style="display:flex;gap:6px;margin-bottom:6px;">
-        <input type="text" id="mem-search" class="form-control" placeholder="filter facts..." style="flex:1;font-size:11px;" oninput="filterMemoryFacts(this.value)">
-        <select id="mem-type-filter" class="form-control" style="width:120px;font-size:11px;" onchange="filterMemoryFacts(document.getElementById('mem-search').value)">
-          <option value="">All types</option>
-          <option value="user">User</option>
-          <option value="preference">Preference</option>
-          <option value="skill">Skill</option>
-          <option value="habit">Habit</option>
-          <option value="system">System</option>
-          <option value="task">Task</option>
-          <option value="belief">Belief</option>
-        </select>
+      <!-- Footer buttons -->
+      <div class="modal-btns">
+        <button class="btn btn-secondary" onclick="closeSettings()" data-i18n="cancel">CANCEL</button>
+        <button class="btn btn-primary" onclick="saveSettings()" data-i18n="save">SAVE</button>
       </div>
-      <div id="facts-list" class="facts-list"></div>
-
-      <!-- Actions -->
-      <div class="settings-section-label" style="margin-top:12px;">◆ ACTIONS</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-        <button class="btn btn-secondary" onclick="compressSession()" style="font-size:9px;">
-          💾 COMPRESS SESSION
-        </button>
-        <button class="btn btn-secondary" onclick="showMemoryReport()" style="font-size:9px;">
-          📊 HEALTH REPORT
-        </button>
-      </div>
-      <div id="mem-report" class="form-hint" style="white-space:pre-wrap;line-height:1.6;display:none;margin-bottom:8px;"></div>
-
-      <div class="settings-section-label">◆ DANGER ZONE</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-secondary" onclick="clearMemoryFacts()" style="border-color:var(--orange);color:var(--orange);">
-          🗑 CLEAR FACTS
-        </button>
-        <button class="btn btn-secondary" onclick="clearMemoryHistory()" style="border-color:var(--orange);color:var(--orange);">
-          🗑 CLEAR HISTORY
-        </button>
-        <button class="btn btn-secondary" onclick="clearAllMemory()" style="border-color:var(--magenta);color:var(--magenta);">
-          ☢ WIPE ALL
-        </button>
-      </div>
-      <div class="form-hint" style="margin-top:8px;color:rgba(255,107,53,0.5);">
-        Cleared memory cannot be recovered.
-      </div>
-    </div>
-
-    <!-- Footer buttons -->
-    <div class="modal-btns">
-      <button class="btn btn-secondary" onclick="closeSettings()" data-i18n="cancel">CANCEL</button>
-      <button class="btn btn-primary"   onclick="saveSettings()"  data-i18n="save">SAVE</button>
     </div>
   </div>
-</div>
 
-<!-- ── Process Modal ─────────────────────────────────── -->
-<div id="process-overlay">
-  <div id="process-modal">
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-      <div class="section-title" data-i18n="processes_title">ACTIVE PROCESSES</div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-secondary" onclick="refreshProcesses()" style="padding:4px 12px;font-size:9px;">↻ REFRESH</button>
-        <button class="btn btn-secondary" onclick="closeProcesses()" style="padding:4px 12px;font-size:9px;">✕ CLOSE</button>
-      </div>
-    </div>
-    <div style="display:grid;grid-template-columns:50px 1fr 60px 70px 80px;gap:8px;padding:6px 8px;margin-top:8px;">
-      <span class="label-tag">PID</span><span class="label-tag">NAME</span>
-      <span class="label-tag">CPU%</span><span class="label-tag">MEM</span>
-      <span class="label-tag">ACTION</span>
-    </div>
-    <div id="process-list"></div>
-  </div>
-</div>
-
-<!-- ── Main App ──────────────────────────────────────── -->
-<div id="app">
-
-  <!-- TOP BAR -->
-  <header id="topbar">
-    <div class="topbar-left">
-      <span id="app-title" class="display">◆ Softcurse H.E.X.</span>
-      <span class="topbar-badge">v1.0.0</span>
-    </div>
-
-    <div class="topbar-center">
-      <div id="clock" class="mono">00:00:00</div>
-      <div id="date-display" class="mono"></div>
-    </div>
-
-    <div class="topbar-right">
-      <div id="lang-selector">
-        <button class="lang-btn" data-lang="ka">KA</button>
-        <button class="lang-btn" data-lang="en">EN</button>
-        <button class="lang-btn" data-lang="ru">RU</button>
-      </div>
-
-      <div id="mic-status" onclick="toggleMic()">
-        <div class="mic-dot"></div>
-        <span id="mic-label" data-i18n="microphone_off">MIC OFF</span>
-      </div>
-
-      <div id="active-persona-badge" onclick="openSettings();switchSettingsTab('tab-persona')" title="Active personality">◆ HEX — Default</div>
-      <button id="settings-btn" onclick="openSettings()" title="Settings">⚙</button>
-
-      <div class="win-controls">
-        <div class="win-btn min" onclick="window.hexAPI.minimize()"></div>
-        <div class="win-btn max" onclick="window.hexAPI.maximize()"></div>
-        <div class="win-btn cls" onclick="window.hexAPI.close()"></div>
-      </div>
-    </div>
-  </header>
-
-  <!-- LEFT PANEL — Task Cards -->
-  <aside id="panel-left" class="panel">
-    <div class="section-title" data-i18n="system_tasks">SYSTEM TASKS</div>
-
-    <div class="task-card" id="card-defrag">
-      <div class="task-card-header">
-        <span class="task-name" data-i18n="defrag">DEFRAGMENTATION</span>
-        <span class="status-badge idle" id="badge-defrag" data-i18n="idle">IDLE</span>
-      </div>
-      <div class="task-progress"><div class="task-progress-bar" id="prog-defrag"></div></div>
-      <div class="task-meta">
-        <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-defrag" data-i18n="never">NEVER</span></span>
-        <span id="dur-defrag">—</span>
-      </div>
-      <button class="task-run-btn" id="btn-defrag" onclick="runTask('defrag')" data-i18n="run">RUN</button>
-    </div>
-
-    <div class="task-card">
-      <div class="task-card-header">
-        <span class="task-name" data-i18n="component_store">COMPONENT STORE</span>
-        <span class="status-badge idle" id="badge-component_store" data-i18n="idle">IDLE</span>
-      </div>
-      <div class="task-progress"><div class="task-progress-bar" id="prog-component_store"></div></div>
-      <div class="task-meta">
-        <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-component_store" data-i18n="never">NEVER</span></span>
-        <span id="dur-component_store">—</span>
-      </div>
-      <button class="task-run-btn" id="btn-component_store" onclick="runTask('component_store')" data-i18n="run">RUN</button>
-    </div>
-
-    <div class="task-card">
-      <div class="task-card-header">
-        <span class="task-name" data-i18n="defender_scan">DEFENDER SCAN</span>
-        <span class="status-badge idle" id="badge-defender_scan" data-i18n="idle">IDLE</span>
-      </div>
-      <div class="task-progress"><div class="task-progress-bar" id="prog-defender_scan"></div></div>
-      <div class="task-meta">
-        <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-defender_scan" data-i18n="never">NEVER</span></span>
-        <span id="dur-defender_scan">—</span>
-      </div>
-      <button class="task-run-btn" id="btn-defender_scan" onclick="runTask('defender_scan')" data-i18n="run">RUN</button>
-    </div>
-
-    <div class="task-card">
-      <div class="task-card-header">
-        <span class="task-name" data-i18n="process_monitor">PROCESS MONITOR</span>
-        <span class="status-badge idle" data-i18n="idle">IDLE</span>
-      </div>
-      <div class="task-meta"><span class="label-tag">REAL-TIME PROCESS VIEW</span></div>
-      <button class="task-run-btn" onclick="openProcesses()" data-i18n="run">RUN</button>
-    </div>
-
-    <div class="task-card">
-      <div class="task-card-header">
-        <span class="task-name" data-i18n="browser_cache">BROWSER CACHE</span>
-        <span class="status-badge idle" id="badge-browser_cache" data-i18n="idle">IDLE</span>
-      </div>
-      <div class="task-progress"><div class="task-progress-bar" id="prog-browser_cache"></div></div>
-      <div class="task-meta">
-        <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-browser_cache" data-i18n="never">NEVER</span></span>
-        <span id="dur-browser_cache">—</span>
-      </div>
-      <button class="task-run-btn" id="btn-browser_cache" onclick="runTask('browser_cache')" data-i18n="run">RUN</button>
-    </div>
-
-    <div class="task-card">
-      <div class="task-card-header">
-        <span class="task-name" data-i18n="driver_health">DRIVER HEALTH</span>
-        <span class="status-badge idle" id="badge-driver_health" data-i18n="idle">IDLE</span>
-      </div>
-      <div class="task-progress"><div class="task-progress-bar" id="prog-driver_health"></div></div>
-      <div class="task-meta">
-        <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-driver_health" data-i18n="never">NEVER</span></span>
-        <span id="dur-driver_health">—</span>
-      </div>
-      <button class="task-run-btn" id="btn-driver_health" onclick="runTask('driver_health')" data-i18n="run">RUN</button>
-    </div>
-
-    <div class="task-card">
-      <div class="task-card-header">
-        <span class="task-name" data-i18n="disk_cleanup">DISK CLEANUP</span>
-        <span class="status-badge idle" id="badge-disk_cleanup" data-i18n="idle">IDLE</span>
-      </div>
-      <div class="task-progress"><div class="task-progress-bar" id="prog-disk_cleanup"></div></div>
-      <div class="task-meta">
-        <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-disk_cleanup" data-i18n="never">NEVER</span></span>
-        <span id="dur-disk_cleanup">—</span>
-      </div>
-      <button class="task-run-btn" id="btn-disk_cleanup" onclick="runTask('disk_cleanup')" data-i18n="run">RUN</button>
-    </div>
-
-    <div class="task-card">
-      <div class="task-card-header">
-        <span class="task-name" data-i18n="network_diag">NETWORK DIAGNOSTICS</span>
-        <span class="status-badge idle" id="badge-network_diag" data-i18n="idle">IDLE</span>
-      </div>
-      <div class="task-progress"><div class="task-progress-bar" id="prog-network_diag"></div></div>
-      <div class="task-meta">
-        <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-network_diag" data-i18n="never">NEVER</span></span>
-        <span id="dur-network_diag">—</span>
-      </div>
-      <button class="task-run-btn" id="btn-network_diag" onclick="runTask('network_diag')" data-i18n="run">RUN</button>
-    </div>
-
-    <div class="task-card">
-      <div class="task-card-header">
-        <span class="task-name" data-i18n="startup_apps">STARTUP PROGRAMS</span>
-        <span class="status-badge idle" id="badge-startup_apps" data-i18n="idle">IDLE</span>
-      </div>
-      <div class="task-progress"><div class="task-progress-bar" id="prog-startup_apps"></div></div>
-      <div class="task-meta">
-        <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-startup_apps" data-i18n="never">NEVER</span></span>
-        <span id="dur-startup_apps">—</span>
-      </div>
-      <button class="task-run-btn" id="btn-startup_apps" onclick="runTask('startup_apps')" data-i18n="run">RUN</button>
-    </div>
-
-    <div class="task-card">
-      <div class="task-card-header">
-        <span class="task-name" data-i18n="update_check">UPDATE CHECK</span>
-        <span class="status-badge idle" id="badge-update_check" data-i18n="idle">IDLE</span>
-      </div>
-      <div class="task-progress"><div class="task-progress-bar" id="prog-update_check"></div></div>
-      <div class="task-meta">
-        <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-update_check" data-i18n="never">NEVER</span></span>
-        <span id="dur-update_check">—</span>
-      </div>
-      <button class="task-run-btn" id="btn-update_check" onclick="runTask('update_check')" data-i18n="run">RUN</button>
-    </div>
-
-    <div class="task-card">
-      <div class="task-card-header">
-        <span class="task-name" data-i18n="firewall_status">FIREWALL STATUS</span>
-        <span class="status-badge idle" id="badge-firewall_status" data-i18n="idle">IDLE</span>
-      </div>
-      <div class="task-progress"><div class="task-progress-bar" id="prog-firewall_status"></div></div>
-      <div class="task-meta">
-        <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-firewall_status" data-i18n="never">NEVER</span></span>
-        <span id="dur-firewall_status">—</span>
-      </div>
-      <button class="task-run-btn" id="btn-firewall_status" onclick="runTask('firewall_status')" data-i18n="run">RUN</button>
-    </div>
-
-    <div class="task-card">
-      <div class="task-card-header">
-        <span class="task-name" data-i18n="memory_diag">MEMORY DIAGNOSTICS</span>
-        <span class="status-badge idle" id="badge-memory_diag" data-i18n="idle">IDLE</span>
-      </div>
-      <div class="task-progress"><div class="task-progress-bar" id="prog-memory_diag"></div></div>
-      <div class="task-meta">
-        <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-memory_diag" data-i18n="never">NEVER</span></span>
-        <span id="dur-memory_diag">—</span>
-      </div>
-      <button class="task-run-btn" id="btn-memory_diag" onclick="runTask('memory_diag')" data-i18n="run">RUN</button>
-    </div>
-  </aside>
-
-  <!-- CENTER PANEL — AI & Chat -->
-  <main id="panel-center" class="panel">
-    <div id="hex-area">
-      <canvas id="hex-canvas"></canvas>
-    </div>
-
-    <!-- Browser URL / Search Bar -->
-    <div id="browser-bar">
-      <span class="browser-bar-label mono">◆ URL</span>
-      <input type="text" id="browser-input" class="form-control"
-        placeholder="https://... or search query"
-        onkeydown="handleBrowserKey(event)">
-      <button class="browser-bar-btn" onclick="launchBrowser()" title="Go">⏎</button>
-      <button class="browser-bar-btn" id="search-engine-btn"
-        onclick="cycleSearchEngine()" title="Cycle search engine">🔍</button>
-    </div>
-
-    <div id="chat-log" aria-live="polite">
-      <div id="typing-indicator">
-        <div class="chat-bubble" style="background:rgba(0,255,200,0.03);border-color:rgba(0,255,200,0.15);padding:8px 16px;display:flex;gap:4px;align-items:center;">
-          <div class="typing-dot"></div>
-          <div class="typing-dot"></div>
-          <div class="typing-dot"></div>
+  <!-- ── Process Modal ─────────────────────────────────── -->
+  <div id="process-overlay">
+    <div id="process-modal">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div class="section-title" data-i18n="processes_title">ACTIVE PROCESSES</div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-secondary" onclick="refreshProcesses()" style="padding:4px 12px;font-size:9px;">↻
+            REFRESH</button>
+          <button class="btn btn-secondary" onclick="closeProcesses()" style="padding:4px 12px;font-size:9px;">✕
+            CLOSE</button>
         </div>
       </div>
+      <div style="display:grid;grid-template-columns:50px 1fr 60px 70px 80px;gap:8px;padding:6px 8px;margin-top:8px;">
+        <span class="label-tag">PID</span><span class="label-tag">NAME</span>
+        <span class="label-tag">CPU%</span><span class="label-tag">MEM</span>
+        <span class="label-tag">ACTION</span>
+      </div>
+      <div id="process-list"></div>
     </div>
+  </div>
 
-    <div id="chat-input-area">
-      <button id="mic-btn" onclick="toggleMic()" title="Toggle Voice Input">🎙</button>
-      <textarea id="chat-input" rows="1" data-i18n-placeholder="chat_placeholder"
-        onkeydown="handleInputKey(event)"></textarea>
-      <button class="chat-send-btn" onclick="sendMessage()" data-i18n="send">SEND</button>
-    </div>
+  <!-- ── Main App ──────────────────────────────────────── -->
+  <div id="app">
 
-    <div id="vitals-strip">
-      <div class="vital-item">
-        <span class="vital-label" data-i18n="cpu">CPU</span>
-        <span class="vital-value mono" id="v-cpu">—%</span>
+    <!-- TOP BAR -->
+    <header id="topbar">
+      <div class="topbar-left">
+        <span id="app-title" class="display">◆ Softcurse H.E.X.</span>
+        <span class="topbar-badge">v1.0.0</span>
       </div>
-      <div class="vital-sep"></div>
-      <div class="vital-item">
-        <span class="vital-label" data-i18n="ram">RAM</span>
-        <span class="vital-value mono" id="v-ram">—%</span>
-      </div>
-      <div class="vital-sep"></div>
-      <div class="vital-item">
-        <span class="vital-label" data-i18n="disk">DISK</span>
-        <span class="vital-value mono" id="v-disk">—%</span>
-      </div>
-      <div class="vital-sep"></div>
-      <div class="vital-item">
-        <span class="vital-label">↓</span>
-        <span class="vital-value mono net" id="v-netrx">—</span>
-      </div>
-      <div class="vital-item">
-        <span class="vital-label">↑</span>
-        <span class="vital-value mono net" id="v-nettx">—</span>
-      </div>
-      <div class="vital-sep"></div>
-      <div class="vital-item">
-        <span class="vital-label" data-i18n="temp">TEMP</span>
-        <span class="vital-value mono" id="v-temp">—</span>
-      </div>
-      <div class="vital-sep"></div>
-      <div class="vital-item">
-        <span class="vital-label" data-i18n="uptime">UPTIME</span>
-        <span class="vital-value mono" id="v-uptime" style="font-size:11px;">00:00:00</span>
-      </div>
-    </div>
-  </main>
 
-  <!-- RIGHT PANEL — Health Stats -->
-  <aside id="panel-right" class="panel">
-    <div class="section-title" data-i18n="health_stats">HEALTH STATS</div>
-    <div class="stat-block">
-      <span class="label-tag" data-i18n="files_scanned">FILES SCANNED</span>
-      <span class="stat-value" id="stat-files">0</span>
-    </div>
-    <div class="divider"></div>
-    <div class="stat-block">
-      <span class="label-tag" data-i18n="space_freed">SPACE FREED</span>
-      <span class="stat-value" id="stat-space">0 B</span>
-    </div>
-    <div class="divider"></div>
-    <div class="stat-block">
-      <span class="label-tag" data-i18n="threats_killed">THREATS NEUTRALIZED</span>
-      <span class="stat-value" id="stat-threats" style="color:var(--magenta);">0</span>
-    </div>
-    <div class="divider"></div>
-    <div class="stat-block">
-      <div style="display:flex;align-items:center;gap:6px;">
-        <span class="label-tag">SESSION HEALTH</span>
-        <span class="stat-tooltip" title="Session Health = maintenance tasks completed this session. 100% = all tasks run at least once. Resets on restart.">?</span>
+      <div class="topbar-center">
+        <div id="clock" class="mono">00:00:00</div>
+        <div id="date-display" class="mono"></div>
       </div>
-      <span class="stat-value" id="stat-integrity" style="color:#00ff88;">0%</span>
-      <div class="integrity-bar-bg" style="margin-top:6px;">
-        <div class="integrity-bar-fill" id="integrity-bar" style="width:0%;"></div>
+
+      <div class="topbar-right">
+        <div id="lang-selector">
+          <button class="lang-btn" data-lang="ka">KA</button>
+          <button class="lang-btn" data-lang="en">EN</button>
+          <button class="lang-btn" data-lang="ru">RU</button>
+        </div>
+
+        <div id="mic-status" onclick="toggleMic()">
+          <div class="mic-dot"></div>
+          <span id="mic-label" data-i18n="microphone_off">MIC OFF</span>
+        </div>
+
+        <div id="active-persona-badge" onclick="openSettings();switchSettingsTab('tab-persona')"
+          title="Active personality">◆ HEX — Default</div>
+        <button id="settings-btn" onclick="openSettings()" title="Settings">⚙</button>
+
+        <div class="win-controls">
+          <div class="win-btn min" onclick="window.hexAPI.minimize()"></div>
+          <div class="win-btn max" onclick="window.hexAPI.maximize()"></div>
+          <div class="win-btn cls" onclick="window.hexAPI.close()"></div>
+        </div>
       </div>
-      <div class="form-hint" style="margin-top:4px;">Tasks run this session ÷ total tasks</div>
-    </div>
-    <div class="divider"></div>
-    <div class="section-title" style="font-size:12px;">◆ TASKS RUN THIS SESSION</div>
-    <div id="task-run-log" class="task-run-log">
-      <div class="form-hint" style="padding:4px 0;">No tasks run yet.</div>
-    </div>
-    <div class="divider"></div>
-    <div class="stat-block">
-      <span class="label-tag">CPU LOAD</span>
-      <div class="stat-bar-bg"><div class="stat-bar-fill" id="bar-cpu" style="width:0%"></div></div>
-    </div>
-    <div class="stat-block">
-      <span class="label-tag">RAM USAGE</span>
-      <div class="stat-bar-bg"><div class="stat-bar-fill" id="bar-ram" style="width:0%"></div></div>
-    </div>
-    <div class="stat-block">
-      <span class="label-tag">DISK USAGE</span>
-      <div class="stat-bar-bg"><div class="stat-bar-fill" id="bar-disk" style="width:0%"></div></div>
-    </div>
-  </aside>
+    </header>
 
-  <!-- BOTTOM TERMINAL -->
-  <footer id="panel-bottom" class="panel">
-    <div id="terminal-header">
-      <span id="terminal-title" class="mono" data-i18n="terminal_title">TERMINAL FEED</span>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <button id="terminal-clear" onclick="clearTerminal()" data-i18n="clear_terminal">CLEAR</button>
-        <button id="terminal-toggle" onclick="toggleTerminal()" title="Hide/Show terminal" style="font-family:var(--font-m);font-size:9px;letter-spacing:2px;color:rgba(0,255,200,0.35);cursor:pointer;background:none;border:none;transition:color 0.15s;" onmouseenter="this.style.color='var(--cyan)'" onmouseleave="this.style.color='rgba(0,255,200,0.35)'">▼ HIDE</button>
+    <!-- LEFT PANEL — Task Cards -->
+    <aside id="panel-left" class="panel">
+      <div class="resizer" id="resz-left"></div>
+      <div class="section-title" data-i18n="system_tasks">SYSTEM TASKS</div>
+
+      <div class="task-card" id="card-defrag">
+        <div class="task-card-header">
+          <span class="task-name" data-i18n="defrag">DEFRAGMENTATION</span>
+          <span class="status-badge idle" id="badge-defrag" data-i18n="idle">IDLE</span>
+        </div>
+        <div class="task-progress">
+          <div class="task-progress-bar" id="prog-defrag"></div>
+        </div>
+        <div class="task-meta">
+          <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-defrag"
+              data-i18n="never">NEVER</span></span>
+          <span id="dur-defrag">—</span>
+        </div>
+        <button class="task-run-btn" id="btn-defrag" onclick="runTask('defrag')" data-i18n="run">RUN</button>
       </div>
-    </div>
-    <div id="terminal-log" ondblclick="clearTerminal()"></div>
-  </footer>
 
-</div>
+      <div class="task-card">
+        <div class="task-card-header">
+          <span class="task-name" data-i18n="component_store">COMPONENT STORE</span>
+          <span class="status-badge idle" id="badge-component_store" data-i18n="idle">IDLE</span>
+        </div>
+        <div class="task-progress">
+          <div class="task-progress-bar" id="prog-component_store"></div>
+        </div>
+        <div class="task-meta">
+          <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-component_store"
+              data-i18n="never">NEVER</span></span>
+          <span id="dur-component_store">—</span>
+        </div>
+        <button class="task-run-btn" id="btn-component_store" onclick="runTask('component_store')"
+          data-i18n="run">RUN</button>
+      </div>
 
-<script src="js/taskbus.js"></script>
-<script src="js/i18n.js"></script>
-<script src="js/system.js"></script>
-<script src="js/voice.js"></script>
-<script src="js/ai.js"></script>
-<script src="js/activity.js"></script>
-<script src="js/reminders.js"></script>
-<script src="js/browser.js"></script>
-<script src="js/memory.js"></script>
-<script src="js/personalities.js"></script>
-<script src="js/renderer.js"></script>
+      <div class="task-card">
+        <div class="task-card-header">
+          <span class="task-name" data-i18n="defender_scan">DEFENDER SCAN</span>
+          <span class="status-badge idle" id="badge-defender_scan" data-i18n="idle">IDLE</span>
+        </div>
+        <div class="task-progress">
+          <div class="task-progress-bar" id="prog-defender_scan"></div>
+        </div>
+        <div class="task-meta">
+          <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-defender_scan"
+              data-i18n="never">NEVER</span></span>
+          <span id="dur-defender_scan">—</span>
+        </div>
+        <button class="task-run-btn" id="btn-defender_scan" onclick="runTask('defender_scan')"
+          data-i18n="run">RUN</button>
+      </div>
+
+      <div class="task-card">
+        <div class="task-card-header">
+          <span class="task-name" data-i18n="process_monitor">PROCESS MONITOR</span>
+          <span class="status-badge idle" data-i18n="idle">IDLE</span>
+        </div>
+        <div class="task-meta"><span class="label-tag">REAL-TIME PROCESS VIEW</span></div>
+        <button class="task-run-btn" onclick="openProcesses()" data-i18n="run">RUN</button>
+      </div>
+
+      <div class="task-card">
+        <div class="task-card-header">
+          <span class="task-name" data-i18n="browser_cache">BROWSER CACHE</span>
+          <span class="status-badge idle" id="badge-browser_cache" data-i18n="idle">IDLE</span>
+        </div>
+        <div class="task-progress">
+          <div class="task-progress-bar" id="prog-browser_cache"></div>
+        </div>
+        <div class="task-meta">
+          <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-browser_cache"
+              data-i18n="never">NEVER</span></span>
+          <span id="dur-browser_cache">—</span>
+        </div>
+        <button class="task-run-btn" id="btn-browser_cache" onclick="runTask('browser_cache')"
+          data-i18n="run">RUN</button>
+      </div>
+
+      <div class="task-card">
+        <div class="task-card-header">
+          <span class="task-name" data-i18n="driver_health">DRIVER HEALTH</span>
+          <span class="status-badge idle" id="badge-driver_health" data-i18n="idle">IDLE</span>
+        </div>
+        <div class="task-progress">
+          <div class="task-progress-bar" id="prog-driver_health"></div>
+        </div>
+        <div class="task-meta">
+          <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-driver_health"
+              data-i18n="never">NEVER</span></span>
+          <span id="dur-driver_health">—</span>
+        </div>
+        <button class="task-run-btn" id="btn-driver_health" onclick="runTask('driver_health')"
+          data-i18n="run">RUN</button>
+      </div>
+
+      <div class="task-card">
+        <div class="task-card-header">
+          <span class="task-name" data-i18n="disk_cleanup">DISK CLEANUP</span>
+          <span class="status-badge idle" id="badge-disk_cleanup" data-i18n="idle">IDLE</span>
+        </div>
+        <div class="task-progress">
+          <div class="task-progress-bar" id="prog-disk_cleanup"></div>
+        </div>
+        <div class="task-meta">
+          <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-disk_cleanup"
+              data-i18n="never">NEVER</span></span>
+          <span id="dur-disk_cleanup">—</span>
+        </div>
+        <button class="task-run-btn" id="btn-disk_cleanup" onclick="runTask('disk_cleanup')"
+          data-i18n="run">RUN</button>
+      </div>
+
+      <div class="task-card">
+        <div class="task-card-header">
+          <span class="task-name" data-i18n="network_diag">NETWORK DIAGNOSTICS</span>
+          <span class="status-badge idle" id="badge-network_diag" data-i18n="idle">IDLE</span>
+        </div>
+        <div class="task-progress">
+          <div class="task-progress-bar" id="prog-network_diag"></div>
+        </div>
+        <div class="task-meta">
+          <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-network_diag"
+              data-i18n="never">NEVER</span></span>
+          <span id="dur-network_diag">—</span>
+        </div>
+        <button class="task-run-btn" id="btn-network_diag" onclick="runTask('network_diag')"
+          data-i18n="run">RUN</button>
+      </div>
+
+      <div class="task-card">
+        <div class="task-card-header">
+          <span class="task-name" data-i18n="startup_apps">STARTUP PROGRAMS</span>
+          <span class="status-badge idle" id="badge-startup_apps" data-i18n="idle">IDLE</span>
+        </div>
+        <div class="task-progress">
+          <div class="task-progress-bar" id="prog-startup_apps"></div>
+        </div>
+        <div class="task-meta">
+          <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-startup_apps"
+              data-i18n="never">NEVER</span></span>
+          <span id="dur-startup_apps">—</span>
+        </div>
+        <button class="task-run-btn" id="btn-startup_apps" onclick="runTask('startup_apps')"
+          data-i18n="run">RUN</button>
+      </div>
+
+      <div class="task-card">
+        <div class="task-card-header">
+          <span class="task-name" data-i18n="update_check">UPDATE CHECK</span>
+          <span class="status-badge idle" id="badge-update_check" data-i18n="idle">IDLE</span>
+        </div>
+        <div class="task-progress">
+          <div class="task-progress-bar" id="prog-update_check"></div>
+        </div>
+        <div class="task-meta">
+          <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-update_check"
+              data-i18n="never">NEVER</span></span>
+          <span id="dur-update_check">—</span>
+        </div>
+        <button class="task-run-btn" id="btn-update_check" onclick="runTask('update_check')"
+          data-i18n="run">RUN</button>
+      </div>
+
+      <div class="task-card">
+        <div class="task-card-header">
+          <span class="task-name" data-i18n="firewall_status">FIREWALL STATUS</span>
+          <span class="status-badge idle" id="badge-firewall_status" data-i18n="idle">IDLE</span>
+        </div>
+        <div class="task-progress">
+          <div class="task-progress-bar" id="prog-firewall_status"></div>
+        </div>
+        <div class="task-meta">
+          <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-firewall_status"
+              data-i18n="never">NEVER</span></span>
+          <span id="dur-firewall_status">—</span>
+        </div>
+        <button class="task-run-btn" id="btn-firewall_status" onclick="runTask('firewall_status')"
+          data-i18n="run">RUN</button>
+      </div>
+
+      <div class="task-card">
+        <div class="task-card-header">
+          <span class="task-name" data-i18n="memory_diag">MEMORY DIAGNOSTICS</span>
+          <span class="status-badge idle" id="badge-memory_diag" data-i18n="idle">IDLE</span>
+        </div>
+        <div class="task-progress">
+          <div class="task-progress-bar" id="prog-memory_diag"></div>
+        </div>
+        <div class="task-meta">
+          <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-memory_diag"
+              data-i18n="never">NEVER</span></span>
+          <span id="dur-memory_diag">—</span>
+        </div>
+        <button class="task-run-btn" id="btn-memory_diag" onclick="runTask('memory_diag')" data-i18n="run">RUN</button>
+      </div>
+    </aside>
+
+    <!-- CENTER PANEL — AI & Chat -->
+    <main id="panel-center" class="panel">
+      <div id="hex-area">
+        <canvas id="hex-canvas"></canvas>
+        <div class="resizer" id="resz-top"></div>
+      </div>
+
+      <!-- Browser URL / Search Bar -->
+      <div id="browser-bar">
+        <span class="browser-bar-label mono">◆ URL</span>
+        <input type="text" id="browser-input" class="form-control" placeholder="https://... or search query"
+          onkeydown="handleBrowserKey(event)">
+        <button class="browser-bar-btn" onclick="launchBrowser()" title="Go">⏎</button>
+        <button class="browser-bar-btn" id="search-engine-btn" onclick="cycleSearchEngine()"
+          title="Cycle search engine">🔍</button>
+      </div>
+
+      <div id="chat-log" aria-live="polite">
+        <div id="typing-indicator">
+          <div class="chat-bubble"
+            style="background:rgba(0,255,200,0.03);border-color:rgba(0,255,200,0.15);padding:8px 16px;display:flex;gap:4px;align-items:center;">
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="chat-input-area">
+        <button id="vision-btn" onclick="toggleVision()" title="Toggle Vision (Look at screen)"
+          style="filter: grayscale(1); margin-right: 4px;">👁</button>
+        <button id="mic-btn" onclick="toggleMic()" title="Toggle Voice Input">🎙</button>
+        <textarea id="chat-input" rows="1" data-i18n-placeholder="chat_placeholder"
+          onkeydown="handleInputKey(event)"></textarea>
+        <button class="chat-send-btn" onclick="sendMessage()" data-i18n="send">SEND</button>
+      </div>
+
+      <div id="vitals-strip">
+        <div class="vital-item">
+          <span class="vital-label" data-i18n="cpu">CPU</span>
+          <span class="vital-value mono" id="v-cpu">—%</span>
+        </div>
+        <div class="vital-sep"></div>
+        <div class="vital-item">
+          <span class="vital-label" data-i18n="ram">RAM</span>
+          <span class="vital-value mono" id="v-ram">—%</span>
+        </div>
+        <div class="vital-sep"></div>
+        <div class="vital-item">
+          <span class="vital-label" data-i18n="disk">DISK</span>
+          <span class="vital-value mono" id="v-disk">—%</span>
+        </div>
+        <div class="vital-sep"></div>
+        <div class="vital-item">
+          <span class="vital-label">↓</span>
+          <span class="vital-value mono net" id="v-netrx">—</span>
+        </div>
+        <div class="vital-item">
+          <span class="vital-label">↑</span>
+          <span class="vital-value mono net" id="v-nettx">—</span>
+        </div>
+        <div class="vital-sep"></div>
+        <div class="vital-item">
+          <span class="vital-label" data-i18n="temp">TEMP</span>
+          <span class="vital-value mono" id="v-temp">—</span>
+        </div>
+        <div class="vital-sep"></div>
+        <div class="vital-item">
+          <span class="vital-label" data-i18n="uptime">UPTIME</span>
+          <span class="vital-value mono" id="v-uptime" style="font-size:11px;">00:00:00</span>
+        </div>
+      </div>
+    </main>
+
+    <!-- RIGHT PANEL — Health Stats -->
+    <aside id="panel-right" class="panel">
+      <div class="resizer" id="resz-right"></div>
+      <div class="section-title" data-i18n="health_stats">HEALTH STATS</div>
+      <div class="stat-block">
+        <span class="label-tag" data-i18n="files_scanned">FILES SCANNED</span>
+        <span class="stat-value" id="stat-files">0</span>
+      </div>
+      <div class="divider"></div>
+      <div class="stat-block">
+        <span class="label-tag" data-i18n="space_freed">SPACE FREED</span>
+        <span class="stat-value" id="stat-space">0 B</span>
+      </div>
+      <div class="divider"></div>
+      <div class="stat-block">
+        <span class="label-tag" data-i18n="threats_killed">THREATS NEUTRALIZED</span>
+        <span class="stat-value" id="stat-threats" style="color:var(--magenta);">0</span>
+      </div>
+      <div class="divider"></div>
+      <div class="stat-block">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="label-tag">SESSION HEALTH</span>
+          <span class="stat-tooltip"
+            title="Session Health = maintenance tasks completed this session. 100% = all tasks run at least once. Resets on restart.">?</span>
+        </div>
+        <span class="stat-value" id="stat-integrity" style="color:#00ff88;">0%</span>
+        <div class="integrity-bar-bg" style="margin-top:6px;">
+          <div class="integrity-bar-fill" id="integrity-bar" style="width:0%;"></div>
+        </div>
+        <div class="form-hint" style="margin-top:4px;">Tasks run this session ÷ total tasks</div>
+      </div>
+      <div class="divider"></div>
+      <div class="section-title" style="font-size:12px;">◆ TASKS RUN THIS SESSION</div>
+      <div id="task-run-log" class="task-run-log">
+        <div class="form-hint" style="padding:4px 0;">No tasks run yet.</div>
+      </div>
+      <div class="divider"></div>
+      <div class="stat-block">
+        <span class="label-tag">CPU LOAD</span>
+        <div class="stat-bar-bg">
+          <div class="stat-bar-fill" id="bar-cpu" style="width:0%"></div>
+        </div>
+      </div>
+      <div class="stat-block">
+        <span class="label-tag">RAM USAGE</span>
+        <div class="stat-bar-bg">
+          <div class="stat-bar-fill" id="bar-ram" style="width:0%"></div>
+        </div>
+      </div>
+      <div class="stat-block">
+        <span class="label-tag">DISK USAGE</span>
+        <div class="stat-bar-bg">
+          <div class="stat-bar-fill" id="bar-disk" style="width:0%"></div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- BOTTOM TERMINAL -->
+    <footer id="panel-bottom" class="panel">
+      <div class="resizer" id="resz-bot"></div>
+      <div id="terminal-header">
+        <span id="terminal-title" class="mono" data-i18n="terminal_title">TERMINAL FEED</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button id="terminal-clear" onclick="clearTerminal()" data-i18n="clear_terminal">CLEAR</button>
+          <button id="terminal-toggle" onclick="toggleTerminal()" title="Hide/Show terminal"
+            style="font-family:var(--font-m);font-size:9px;letter-spacing:2px;color:rgba(0,255,200,0.35);cursor:pointer;background:none;border:none;transition:color 0.15s;"
+            onmouseenter="this.style.color='var(--cyan)'" onmouseleave="this.style.color='rgba(0,255,200,0.35)'">▼
+            HIDE</button>
+        </div>
+      </div>
+      <div id="terminal-log" ondblclick="clearTerminal()"></div>
+    </footer>
+
+  </div>
+
+  <script src="js/layout.js"></script>
+  <script src="js/taskbus.js"></script>
+  <script src="js/i18n.js"></script>
+  <script src="js/system.js"></script>
+  <script src="js/voice.js"></script>
+  <script src="js/ai-prompt.js"></script>
+  <script src="js/ai.js"></script>
+  <script src="js/activity.js"></script>
+  <script src="js/reminders.js"></script>
+  <script src="js/browser.js"></script>
+  <script src="js/memory.js"></script>
+  <script src="js/memory-ui.js"></script>
+  <script src="js/commands.js"></script>
+  <script src="js/personality-ui.js"></script>
+  <script src="js/settings-ui.js"></script>
+  <script src="js/personalities.js"></script>
+  <script src="js/orb.js"></script>
+  <script src="js/actions.js"></script>
+  <script src="js/renderer.js"></script>
 </body>
+
 </html>

@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 // ── voice.js — HEX Voice Engine ──────────────────────────────────────────────
 //
 // STT: AudioWorklet captures raw 16kHz PCM → main process → Whisper / Ollama

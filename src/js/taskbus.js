@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 // ── taskbus.js — Real-time task status bus for H.E.X. ──────────────────────
 // Components push their current operation status here.
 // The orb animation reads from it to display what HEX is actually doing.

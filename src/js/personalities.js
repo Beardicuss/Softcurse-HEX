@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 // ── personalities.js — HEX personality manager ───────────────────────────────
 //
 // A personality = { id, name, description, prompt, createdAt, isBuiltIn }

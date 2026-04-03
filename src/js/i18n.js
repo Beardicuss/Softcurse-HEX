@@ -1,18 +1,18 @@
-'use strict';
+﻿'use strict';
 // ── i18n: translation engine with smart break suggestion system ───────────────
 
 class I18n {
   constructor() {
-    this.locale  = 'en';
+    this.locale = 'en';
     this.strings = {};
-    this.loaded  = {};
+    this.loaded = {};
     this._lastBreakIdx = -1;   // anti-repeat: never pick the same phrase twice in a row
   }
 
   async load(locale) {
     if (!this.loaded[locale]) {
       try {
-        const res = await fetch(`../locales/${locale}.json`);
+        const res = await fetch(`locales/${locale}.json`);
         this.loaded[locale] = await res.json();
       } catch (e) {
         console.warn(`i18n: failed to load ${locale}`, e);
@@ -22,11 +22,11 @@ class I18n {
     // Always ensure English is loaded as fallback base
     if (locale !== 'en' && !this.loaded['en']) {
       try {
-        const res = await fetch('../locales/en.json');
+        const res = await fetch('locales/en.json');
         this.loaded['en'] = await res.json();
-      } catch (_) {}
+      } catch (_) { }
     }
-    this.locale  = locale;
+    this.locale = locale;
     this.strings = this.loaded[locale];
     this._lastBreakIdx = -1;  // reset anti-repeat on locale change
     this.apply();
@@ -47,8 +47,8 @@ class I18n {
   //   • Graceful fallback if pool is missing
   getRandomBreakSuggestion(name, minutes) {
     const userName = (name || 'Operator').trim();
-    const min      = parseInt(minutes) || 90;
-    const hour     = new Date().getHours();
+    const min = parseInt(minutes) || 90;
+    const hour = new Date().getHours();
 
     // Get the phrase pool for current locale, fall back to English
     let pool = this.t('break_suggestions');
@@ -83,14 +83,14 @@ class I18n {
     // Substitute placeholders
     return pool[chosenIdx]
       .replace(/\{name\}/g, userName)
-      .replace(/\{min\}/g,  String(min));
+      .replace(/\{min\}/g, String(min));
   }
 
   apply() {
     document.querySelectorAll('[data-i18n]').forEach(el => {
-      const key  = el.getAttribute('data-i18n');
+      const key = el.getAttribute('data-i18n');
       const attr = el.getAttribute('data-i18n-attr');
-      const val  = this.t(key);
+      const val = this.t(key);
       if (attr) el.setAttribute(attr, val);
       else if (!Array.isArray(val)) el.textContent = val;
     });

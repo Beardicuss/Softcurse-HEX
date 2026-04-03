@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 // ── browser.js — Renderer-side browser interaction layer ──────────────────────
 // Handles URL launching, web search dispatch, and maintains a
 // short navigation history for context display in the terminal.
