@@ -15,36 +15,36 @@
 class HexMemory {
   constructor() {
     // ── Core storage ──────────────────────────────────────────────────────
-    this.nodes   = [];   // knowledge graph nodes
-    this.edges   = [];   // relationships between nodes
+    this.nodes = [];   // knowledge graph nodes
+    this.edges = [];   // relationships between nodes
     this.clusters = [];  // auto-generated summary clusters
     this.episodes = [];  // compressed session summaries
-    this.summary  = '';  // legacy rolling summary (kept for compat)
-    this.history  = [];  // conversation turns
+    this.summary = '';  // legacy rolling summary (kept for compat)
+    this.history = [];  // conversation turns
     this.selfKnowledge = null;  // meta-memory index
 
     // ── Working memory (session-only, not persisted) ──────────────────────
     this.working = {
-      currentTask:        null,
-      currentEntities:    [],
+      currentTask: null,
+      currentEntities: [],
       sessionPreferences: [],
-      hypotheses:         [],
-      pendingFacts:       [],
-      sessionStarted:     Date.now(),
-      messageCount:       0,
-      mood:               'neutral',  // neutral / focused / frustrated / exploratory
+      hypotheses: [],
+      pendingFacts: [],
+      sessionStarted: Date.now(),
+      messageCount: 0,
+      mood: 'neutral',  // neutral / focused / frustrated / exploratory
     };
 
     // ── Config ────────────────────────────────────────────────────────────
-    this.MAX_HISTORY_KEEP    = 120;
-    this.MAX_HISTORY_INJECT  = 20;
-    this.FACT_CAP            = 500;
-    this.EXTRACTION_ENABLED  = true;   // LLM extraction (requires configured AI)
+    this.MAX_HISTORY_KEEP = 120;
+    this.MAX_HISTORY_INJECT = 20;
+    this.FACT_CAP = 500;
+    this.EXTRACTION_ENABLED = true;   // LLM extraction (requires configured AI)
 
-    this._dirty      = false;
-    this._saveTimer  = null;
+    this._dirty = false;
+    this._saveTimer = null;
     this._extracting = false;   // prevent concurrent extraction
-    this.onLog       = null;
+    this.onLog = null;
 
     // ── Tier definitions ──────────────────────────────────────────────────
     this.PROTECTED_TYPES = new Set(['user', 'health', 'system']);
@@ -57,16 +57,17 @@ class HexMemory {
 
   async load() {
     try {
+      window.hexTaskBus?.push('Loading memory from disk...');
       const data = await window.hexAPI.getMemory();
       if (data) {
         if (data.schema_version === '2.0') {
           // Native v2 format
-          this.nodes    = data.nodes    || [];
-          this.edges    = data.edges    || [];
+          this.nodes = data.nodes || [];
+          this.edges = data.edges || [];
           this.clusters = data.clusters || [];
           this.episodes = data.episodes || [];
-          this.history  = data.history  || [];
-          this.summary  = data.summary  || '';
+          this.history = data.history || [];
+          this.summary = data.summary || '';
           this.selfKnowledge = data.selfKnowledge || null;
         } else {
           // Migrate from v1 flat facts
@@ -88,18 +89,18 @@ class HexMemory {
     this.summary = data.summary || '';
     for (const f of legacyFacts) {
       this.nodes.push({
-        id:                f.id || this._uid(),
-        type:              f.category || 'general',
-        content:           f.content || '',
-        confidence:        f.confidence || 0.7,
-        created_at:        f.ts || Date.now(),
+        id: f.id || this._uid(),
+        type: f.category || 'general',
+        content: f.content || '',
+        confidence: f.confidence || 0.7,
+        created_at: f.ts || Date.now(),
         last_confirmed_at: f.ts || Date.now(),
-        mention_count:     1,
-        status:            'active',
-        tier:              this._classifyTier({ type: f.category, confidence: f.confidence || 0.7, mention_count: 1, created_at: f.ts || Date.now() }),
-        temporal:          'current',
-        implicit:          false,
-        migrated:          true,
+        mention_count: 1,
+        status: 'active',
+        tier: this._classifyTier({ type: f.category, confidence: f.confidence || 0.7, mention_count: 1, created_at: f.ts || Date.now() }),
+        temporal: 'current',
+        implicit: false,
+        migrated: true,
       });
     }
     this._log(`Migrated ${legacyFacts.length} legacy facts to v2 nodes.`);
@@ -114,16 +115,17 @@ class HexMemory {
   async _flush() {
     if (!this._dirty) return;
     try {
+      window.hexTaskBus?.push('Flushing memory to disk...');
       await window.hexAPI.setMemory({
         schema_version: '2.0',
-        saved_at:       new Date().toISOString(),
-        nodes:          this.nodes,
-        edges:          this.edges,
-        clusters:       this.clusters,
-        episodes:       this.episodes,
-        history:        this.history.slice(-this.MAX_HISTORY_KEEP),
-        summary:        this.summary,
-        selfKnowledge:  this.selfKnowledge,
+        saved_at: new Date().toISOString(),
+        nodes: this.nodes,
+        edges: this.edges,
+        clusters: this.clusters,
+        episodes: this.episodes,
+        history: this.history.slice(-this.MAX_HISTORY_KEEP),
+        summary: this.summary,
+        selfKnowledge: this.selfKnowledge,
       });
       this._dirty = false;
     } catch (e) {
@@ -141,12 +143,12 @@ class HexMemory {
   // ══════════════════════════════════════════════════════════════════════════
 
   updateWorking(updates) {
-    if (updates.currentTask)           this.working.currentTask        = updates.currentTask;
-    if (updates.currentEntities)       this.working.currentEntities    = updates.currentEntities;
-    if (updates.sessionPreferences)    this.working.sessionPreferences = [...this.working.sessionPreferences, ...updates.sessionPreferences];
-    if (updates.hypotheses)            this.working.hypotheses         = updates.hypotheses;
-    if (updates.pendingFacts)          this.working.pendingFacts       = [...this.working.pendingFacts, ...updates.pendingFacts];
-    if (updates.mood)                  this.working.mood               = updates.mood;
+    if (updates.currentTask) this.working.currentTask = updates.currentTask;
+    if (updates.currentEntities) this.working.currentEntities = updates.currentEntities;
+    if (updates.sessionPreferences) this.working.sessionPreferences = [...this.working.sessionPreferences, ...updates.sessionPreferences];
+    if (updates.hypotheses) this.working.hypotheses = updates.hypotheses;
+    if (updates.pendingFacts) this.working.pendingFacts = [...this.working.pendingFacts, ...updates.pendingFacts];
+    if (updates.mood) this.working.mood = updates.mood;
   }
 
   _detectMood(userMsg) {
@@ -154,8 +156,8 @@ class HexMemory {
     const frustrated = /ugh|argh|still not|doesn.t work|why (is|does|won.t)|i.ve been|hours?|nothing works/i.test(t);
     const exploratory = /what if|maybe|could we|alternatively|i wonder|what about/i.test(t);
     const focused = userMsg.length > 200 || /```|function|class |const |def |import /i.test(t);
-    if (frustrated)  return 'frustrated';
-    if (focused)     return 'focused';
+    if (frustrated) return 'frustrated';
+    if (focused) return 'focused';
     if (exploratory) return 'exploratory';
     return this.working.mood;
   }
@@ -173,27 +175,27 @@ class HexMemory {
 
     if (similar && similar.score > 0.75) {
       // Update existing — boost confidence and mention count
-      similar.node.content          = content;  // take newer phrasing
+      similar.node.content = content;  // take newer phrasing
       similar.node.last_confirmed_at = Date.now();
-      similar.node.mention_count     = (similar.node.mention_count || 1) + 1;
-      similar.node.confidence        = Math.min(1, similar.node.confidence + 0.05);
-      similar.node.tier              = this._classifyTier(similar.node);
+      similar.node.mention_count = (similar.node.mention_count || 1) + 1;
+      similar.node.confidence = Math.min(1, similar.node.confidence + 0.05);
+      similar.node.tier = this._classifyTier(similar.node);
       this._scheduleSave();
       return similar.node;
     }
 
     const node = {
-      id:                this._uid(),
+      id: this._uid(),
       type,
       content,
-      confidence:        Math.max(0, Math.min(1, confidence)),
-      created_at:        Date.now(),
+      confidence: Math.max(0, Math.min(1, confidence)),
+      created_at: Date.now(),
       last_confirmed_at: Date.now(),
-      mention_count:     1,
-      status:            'active',
-      temporal:          opts.temporal  || 'current',
-      implicit:          opts.implicit  || false,
-      tier:              null,
+      mention_count: 1,
+      status: 'active',
+      temporal: opts.temporal || 'current',
+      implicit: opts.implicit || false,
+      tier: null,
       source_session_id: this.working.sessionId || null,
     };
     node.tier = this._classifyTier(node);
@@ -239,9 +241,9 @@ class HexMemory {
 
     // Quick heuristic: if the candidate says one thing and new says opposite
     const OPPOSITION_PAIRS = [
-      ['prefer dark','prefer light'],['dark mode','light mode'],
-      ['love','hate'],['like','dislike'],['use windows','use mac'],
-      ['use mac','use linux'],['working on','finished'],
+      ['prefer dark', 'prefer light'], ['dark mode', 'light mode'],
+      ['love', 'hate'], ['like', 'dislike'], ['use windows', 'use mac'],
+      ['use mac', 'use linux'], ['working on', 'finished'],
     ];
     for (const candidate of candidates) {
       for (const [a, b] of OPPOSITION_PAIRS) {
@@ -257,7 +259,7 @@ class HexMemory {
 
     // If we have AI configured, do a smarter check for high-confidence conflicts
     if (window.hexAI && window.hexAI.config && candidates.length > 0 && candidates[0].confidence > 0.6) {
-      this._llmConflictCheck(newNode, candidates[0]).catch(() => {});
+      this._llmConflictCheck(newNode, candidates[0]).catch(() => { });
     }
   }
 
@@ -273,15 +275,15 @@ class HexMemory {
       if (verdict.includes('CONFLICT') || verdict.includes('SUPERSEDES')) {
         this._archiveNode(candidate, newNode.id, 'llm_conflict_check');
         this._createEdge(newNode.id, candidate.id, 'supersedes');
-        this._log(`LLM conflict: "${candidate.content.substring(0,60)}" archived`);
+        this._log(`LLM conflict: "${candidate.content.substring(0, 60)}" archived`);
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   _archiveNode(node, supersededById, reason) {
-    node.status        = 'archived';
-    node.archived_at   = Date.now();
-    node.archived_by   = supersededById;
+    node.status = 'archived';
+    node.archived_at = Date.now();
+    node.archived_by = supersededById;
     node.archive_reason = reason;
     this._scheduleSave();
   }
@@ -338,8 +340,8 @@ class HexMemory {
   // ══════════════════════════════════════════════════════════════════════════
 
   async extractFromExchange(userMsg, aiReply) {
-    userMsg  = (userMsg  || '').trim();
-    aiReply  = (aiReply  || '').trim();
+    userMsg = (userMsg || '').trim();
+    aiReply = (aiReply || '').trim();
 
     // Update working memory mood
     this.working.mood = this._detectMood(userMsg);
@@ -350,7 +352,7 @@ class HexMemory {
 
     // Async LLM extraction — runs after response sent, non-blocking
     if (this.EXTRACTION_ENABLED && window.hexAI?.config?.llm?.provider &&
-        window.hexAI.config.llm.provider !== 'none' && !this._extracting) {
+      window.hexAI.config.llm.provider !== 'none' && !this._extracting) {
       this._extractWithLLM(userMsg, aiReply).catch(e =>
         this._log('Extraction error: ' + (e?.message || ''))
       );
@@ -384,8 +386,8 @@ class HexMemory {
 
     // Time patterns
     const hour = new Date().getHours();
-    if (hour >= 22 || hour <= 4)  this.addNode('habit', 'Often active late at night', 0.4, { implicit: true });
-    if (hour >= 6  && hour <= 9)  this.addNode('habit', 'Often active in the morning', 0.4, { implicit: true });
+    if (hour >= 22 || hour <= 4) this.addNode('habit', 'Often active late at night', 0.4, { implicit: true });
+    if (hour >= 6 && hour <= 9) this.addNode('habit', 'Often active in the morning', 0.4, { implicit: true });
   }
 
   async _extractWithLLM(userMsg, aiReply) {
@@ -449,7 +451,7 @@ Rules:
 
       if (parsed.working) {
         if (parsed.working.currentTask) this.working.currentTask = parsed.working.currentTask;
-        if (parsed.working.mood)        this.working.mood        = parsed.working.mood;
+        if (parsed.working.mood) this.working.mood = parsed.working.mood;
       }
 
     } finally {
@@ -460,7 +462,7 @@ Rules:
   // Minimal single-turn LLM call — reuses existing AI config
   async _quickLLMCall(prompt) {
     if (!window.hexAI?.config) return null;
-    const cfg  = window.hexAI.config.llm;
+    const cfg = window.hexAI.config.llm;
     const prov = cfg?.provider;
     if (!prov || prov === 'none') return null;
 
@@ -478,7 +480,7 @@ Rules:
       }
       if (prov === 'openai' || prov === 'grok' || prov === 'groq' || prov === 'mistral' || prov === 'together' || prov === 'openrouter') {
         const urls = { openai: 'https://api.openai.com/v1', grok: 'https://api.x.ai/v1', groq: 'https://api.groq.com/openai/v1', mistral: 'https://api.mistral.ai/v1', together: 'https://api.together.xyz/v1', openrouter: 'https://openrouter.ai/api/v1' };
-        const url  = (urls[prov] || urls.openai) + '/chat/completions';
+        const url = (urls[prov] || urls.openai) + '/chat/completions';
         const hdrs = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cfg.apiKey };
         if (prov === 'openrouter') { hdrs['HTTP-Referer'] = 'https://softcurse-hex.local'; hdrs['X-Title'] = 'HEX-Memory'; }
         const model = prov === 'groq' ? (cfg.model || 'llama-3.1-8b-instant') : (cfg.model || 'gpt-4o-mini');
@@ -502,7 +504,7 @@ Rules:
         if (!res.ok) return null;
         return (await res.json())?.candidates?.[0]?.content?.parts?.[0]?.text || null;
       }
-    } catch (_) {}
+    } catch (_) { }
     return null;
   }
 
@@ -525,12 +527,12 @@ Rules:
     if (!summary) return;
 
     const episode = {
-      id:           this._uid(),
-      session_id:   'sess_' + Date.now(),
-      started_at:   this.working.sessionStarted,
-      ended_at:     Date.now(),
-      turn_count:   recentTurns.length,
-      topics:       this._extractTopics(transcript),
+      id: this._uid(),
+      session_id: 'sess_' + Date.now(),
+      started_at: this.working.sessionStarted,
+      ended_at: Date.now(),
+      turn_count: recentTurns.length,
+      topics: this._extractTopics(transcript),
       summary,
       new_node_ids: this.nodes.filter(n => n.created_at >= this.working.sessionStarted).map(n => n.id),
     };
@@ -572,21 +574,21 @@ Rules:
       byType[n.type].push(n);
     }
 
-    const known_well     = Object.entries(byType).filter(([,v]) => v.length >= 3).map(([k]) => k);
-    const known_partially = Object.entries(byType).filter(([,v]) => v.length >= 1 && v.length < 3).map(([k]) => k);
+    const known_well = Object.entries(byType).filter(([, v]) => v.length >= 3).map(([k]) => k);
+    const known_partially = Object.entries(byType).filter(([, v]) => v.length >= 1 && v.length < 3).map(([k]) => k);
     const recent_changes = this.nodes
       .filter(n => Date.now() - n.last_confirmed_at < 7 * 86400000 && n.status === 'active')
       .slice(-5)
       .map(n => n.content.substring(0, 60));
 
     this.selfKnowledge = {
-      total_nodes:       activeNodes.length,
+      total_nodes: activeNodes.length,
       known_well,
       known_partially,
       recent_changes,
-      oldest_fact_date:  activeNodes.reduce((min, n) => Math.min(min, n.created_at || Date.now()), Date.now()),
-      session_count:     this.episodes.length,
-      last_updated:      Date.now(),
+      oldest_fact_date: activeNodes.reduce((min, n) => Math.min(min, n.created_at || Date.now()), Date.now()),
+      session_count: this.episodes.length,
+      last_updated: Date.now(),
     };
   }
 
@@ -616,10 +618,10 @@ Rules:
     const wm = this.working;
     if (wm.currentTask || wm.currentEntities.length || wm.sessionPreferences.length) {
       const wmLines = [];
-      if (wm.currentTask)                        wmLines.push('Current task: ' + wm.currentTask);
-      if (wm.currentEntities.length)             wmLines.push('Active entities: ' + wm.currentEntities.join(', '));
-      if (wm.sessionPreferences.length)          wmLines.push('Session preferences: ' + wm.sessionPreferences.join(', '));
-      if (wm.mood && wm.mood !== 'neutral')      wmLines.push('User mood this session: ' + wm.mood);
+      if (wm.currentTask) wmLines.push('Current task: ' + wm.currentTask);
+      if (wm.currentEntities.length) wmLines.push('Active entities: ' + wm.currentEntities.join(', '));
+      if (wm.sessionPreferences.length) wmLines.push('Session preferences: ' + wm.sessionPreferences.join(', '));
+      if (wm.mood && wm.mood !== 'neutral') wmLines.push('User mood this session: ' + wm.mood);
       if (wm.hypotheses.length) {
         const hyp = wm.hypotheses.slice(0, 2).map(h => h.belief + ' (confidence: ' + Math.round(h.confidence * 100) + '%)');
         wmLines.push('Working hypotheses: ' + hyp.join('; '));
@@ -666,22 +668,22 @@ Rules:
   }
 
   _relevanceScore(node, message) {
-    const msg  = message.toLowerCase();
+    const msg = message.toLowerCase();
     const cont = node.content.toLowerCase();
 
     // Word overlap with current message
-    const msgWords  = new Set(msg.split(/\W+/).filter(w => w.length > 3));
+    const msgWords = new Set(msg.split(/\W+/).filter(w => w.length > 3));
     const contWords = new Set(cont.split(/\W+/).filter(w => w.length > 3));
     let overlap = 0;
     for (const w of contWords) if (msgWords.has(w)) overlap++;
     const textScore = msgWords.size ? overlap / msgWords.size : 0;
 
     // Recency score (0-1, recent = higher)
-    const ageDays   = (Date.now() - (node.last_confirmed_at || node.created_at || 0)) / 86400000;
-    const recency   = Math.max(0, 1 - ageDays / 180);
+    const ageDays = (Date.now() - (node.last_confirmed_at || node.created_at || 0)) / 86400000;
+    const recency = Math.max(0, 1 - ageDays / 180);
 
     // Mention weight
-    const mention   = Math.min(1, (node.mention_count || 0) / 10);
+    const mention = Math.min(1, (node.mention_count || 0) / 10);
 
     // Tier bonus — protected facts always surface
     const tierBonus = node.tier === 0 ? 0.3 : node.tier === 1 ? 0.1 : 0;
@@ -719,9 +721,9 @@ Rules:
     return this.history.slice(-n).map(t => ({ role: t.role || 'user', content: t.content || '' }));
   }
 
-  clearFacts()   { this.nodes = this.edges = this.clusters = []; this._scheduleSave(); }
+  clearFacts() { this.nodes = this.edges = this.clusters = []; this._scheduleSave(); }
   clearHistory() { this.history = []; this.summary = ''; this._scheduleSave(); }
-  clearAll()     { this.nodes = this.edges = this.clusters = this.episodes = []; this.history = []; this.summary = ''; this.selfKnowledge = null; this._scheduleSave(); }
+  clearAll() { this.nodes = this.edges = this.clusters = this.episodes = []; this.history = []; this.summary = ''; this.selfKnowledge = null; this._scheduleSave(); }
 
   // ══════════════════════════════════════════════════════════════════════════
   //  HELPERS
@@ -757,21 +759,21 @@ Rules:
   // ══════════════════════════════════════════════════════════════════════════
 
   getStats() {
-    const active    = this.nodes.filter(n => n.status === 'active');
-    const archived  = this.nodes.filter(n => n.status === 'archived');
-    const byTier    = [0,1,2,3].map(t => active.filter(n => n.tier === t).length);
+    const active = this.nodes.filter(n => n.status === 'active');
+    const archived = this.nodes.filter(n => n.status === 'archived');
+    const byTier = [0, 1, 2, 3].map(t => active.filter(n => n.tier === t).length);
     this._updateSelfKnowledge();
     return {
-      facts:          active.length,
-      archived:       archived.length,
-      turns:          this.history.length,
-      sessions:       this.episodes.length,
-      edges:          this.edges.length,
-      summary:        !!this.summary,
-      tierCounts:     { protected: byTier[0], high: byTier[1], active: byTier[2], weak: byTier[3] },
-      oldestTurn:     this.history[0] ? new Date(this.history[0].ts).toLocaleDateString() : null,
-      workingMemory:  this.working,
-      selfKnowledge:  this.selfKnowledge,
+      facts: active.length,
+      archived: archived.length,
+      turns: this.history.length,
+      sessions: this.episodes.length,
+      edges: this.edges.length,
+      summary: !!this.summary,
+      tierCounts: { protected: byTier[0], high: byTier[1], active: byTier[2], weak: byTier[3] },
+      oldestTurn: this.history[0] ? new Date(this.history[0].ts).toLocaleDateString() : null,
+      workingMemory: this.working,
+      selfKnowledge: this.selfKnowledge,
     };
   }
 

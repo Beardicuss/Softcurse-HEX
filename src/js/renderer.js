@@ -31,7 +31,7 @@ async function init() {
   window.hexAI.configure(config);
   // Push saved modelsDir to engine before init so it knows where models are
   if (config.voice?.modelsDir) {
-    await window.hexAPI.voice.setModelsDir(config.voice.modelsDir).catch(() => {});
+    await window.hexAPI.voice.setModelsDir(config.voice.modelsDir).catch(() => { });
   }
   // Await voice init so local engine status is ready before first use
   await window.hexVoice.init({ ...(config.voice || {}), llm: config.llm });
@@ -49,12 +49,12 @@ async function init() {
       window.hexVoice.setVoiceByName(config.voice.voiceName);
     }
     // Also restore engine settings (Piper/OS/GCloud) in case this fires late
-    window.hexVoice._ttsEngine      = config.voice?.ttsEngine      || 'os';
+    window.hexVoice._ttsEngine = config.voice?.ttsEngine || 'os';
     window.hexVoice._localVoiceLang = config.voice?.localVoiceLang || 'en';
-    window.hexVoice._localSpeed     = config.voice?.localSpeed     ?? 1.0;
-    window.hexVoice._gcloudKey      = config.voice?.gcloudTtsKey   || '';
-    window.hexVoice._useGCloud      = !!(config.voice?.gcloudTtsKey);
-    window.hexVoice._gcloudVoice    = config.voice?.gcloudVoice    || 'ka-GE-Standard-A';
+    window.hexVoice._localSpeed = config.voice?.localSpeed ?? 1.0;
+    window.hexVoice._gcloudKey = config.voice?.gcloudTtsKey || '';
+    window.hexVoice._useGCloud = !!(config.voice?.gcloudTtsKey);
+    window.hexVoice._gcloudVoice = config.voice?.gcloudVoice || 'ka-GE-Standard-A';
   };
   window.reminders.init();
 
@@ -84,7 +84,10 @@ async function init() {
   window.activityMonitor.onProactiveMessage = (msg) => handleProactiveMsg(msg);
 
   // System stats
-  window.hexAPI.onSystemUpdate((data) => updateStats(data));
+  window.hexAPI.onSystemUpdate((data) => {
+    window.hexTaskBus?.push('Updating system telemetry...');
+    updateStats(data);
+  });
 
   // Task progress
   window.hexAPI.onTaskProgress((data) => {
@@ -325,6 +328,7 @@ async function sendMessage() {
   };
 
   showTyping();
+  window.hexTaskBus?.push('Sending message to AI...');
 
   try {
     const result = await window.hexAI.chat(text, systemState, config.language || 'en');
@@ -339,6 +343,7 @@ async function sendMessage() {
     // Execute actions — collect results from info-gathering ones
     const infoResults = [];
     for (const action of (result.actions || [])) {
+      window.hexTaskBus?.push(`Executing: ${action.type} ${(action.args || []).join(' ')}`);
       const actionResult = await handleAIAction(action);
       if (actionResult && actionResult.data) {
         infoResults.push('[' + action.type.toUpperCase() + ' RESULT]: ' + actionResult.data);
@@ -349,6 +354,7 @@ async function sendMessage() {
     // about the ACTUAL data instead of having it appear as a raw system message
     if (infoResults.length > 0) {
       showTyping();
+      window.hexTaskBus?.push('Processing system data with AI...');
       try {
         const followUp = await window.hexAI.chat(
           'SYSTEM DATA (just retrieved from this PC — use this to answer the user):\n' + infoResults.join('\n'),
@@ -546,10 +552,10 @@ async function handleAIAction(action) {
     case 'list_dir': {
       const r = await window.hexAPI.butler.listDir(action.args[0] || 'desktop');
       if (r.success) {
-        const dirs  = r.items.filter(function(i){ return i.type === 'dir';  }).map(function(i){ return '[DIR] '  + i.name; });
-        const files = r.items.filter(function(i){ return i.type === 'file'; }).map(function(i){ return '[FILE] ' + i.name; });
-        const preview = dirs.slice(0,8).concat(files.slice(0,8));
-        const more = r.count > 16 ? ('..and ' + (r.count-16) + ' more') : '';
+        const dirs = r.items.filter(function (i) { return i.type === 'dir'; }).map(function (i) { return '[DIR] ' + i.name; });
+        const files = r.items.filter(function (i) { return i.type === 'file'; }).map(function (i) { return '[FILE] ' + i.name; });
+        const preview = dirs.slice(0, 8).concat(files.slice(0, 8));
+        const more = r.count > 16 ? ('..and ' + (r.count - 16) + ' more') : '';
         addHexMessage('**' + r.path + '** - ' + r.count + ' items\n' + preview.join('\n') + more);
         addLog('BUTLER', 'Listed ' + r.count + ' items in ' + r.path);
       } else {
@@ -572,9 +578,9 @@ Modified: ${r.modified}`);
     case 'list_processes': {
       const r = await window.hexAPI.butler.listProcesses();
       if (r.success) {
-        const top = r.processes.slice(0,10).map(function(p){ return p.name+' CPU:'+p.cpu+' RAM:'+p.mem; }).join(', ');
-        addLog('BUTLER', 'processes: '+top);
-        return { data: 'Running processes: '+top };
+        const top = r.processes.slice(0, 10).map(function (p) { return p.name + ' CPU:' + p.cpu + ' RAM:' + p.mem; }).join(', ');
+        addLog('BUTLER', 'processes: ' + top);
+        return { data: 'Running processes: ' + top };
       }
       break;
     }
@@ -592,8 +598,8 @@ Modified: ${r.modified}`);
     case 'sys_info': {
       const r = await window.hexAPI.butler.sysInfo();
       if (r.success) {
-        const info = 'OS: '+r.os+' | Host: '+r.hostname+' | Uptime: '+r.uptime+' | CPU: '+r.cpu+' | RAM: '+r.ramUsed+'/'+r.ramTotal+' ('+r.ramFree+' free)';
-        addLog('BUTLER', 'sys_info: '+info);
+        const info = 'OS: ' + r.os + ' | Host: ' + r.hostname + ' | Uptime: ' + r.uptime + ' | CPU: ' + r.cpu + ' | RAM: ' + r.ramUsed + '/' + r.ramTotal + ' (' + r.ramFree + ' free)';
+        addLog('BUTLER', 'sys_info: ' + info);
         return { data: info };
       }
       break;
@@ -602,7 +608,7 @@ Modified: ${r.modified}`);
       const r = await window.hexAPI.butler.battery();
       if (r.success) {
         const bInfo = r.hasBattery
-          ? 'Battery: '+r.percent+'% '+(r.isCharging?'(charging)':'(discharging)')+' time remaining: '+r.timeRemaining
+          ? 'Battery: ' + r.percent + '% ' + (r.isCharging ? '(charging)' : '(discharging)') + ' time remaining: ' + r.timeRemaining
           : 'No battery (desktop PC)';
         addLog('BUTLER', bInfo);
         return { data: bInfo };
@@ -612,9 +618,9 @@ Modified: ${r.modified}`);
     case 'disk_usage': {
       const r = await window.hexAPI.butler.diskUsage(action.args[0]);
       if (r.success) {
-        const lines = r.disks.map(function(d){ return d.mount+' ('+d.fs+'): '+d.used+'/'+d.total+' used, '+d.free+' free ('+d.pct+')'; }).join(', ');
-        addLog('BUTLER', 'disk_usage: '+lines);
-        return { data: 'Disk: '+lines };
+        const lines = r.disks.map(function (d) { return d.mount + ' (' + d.fs + '): ' + d.used + '/' + d.total + ' used, ' + d.free + ' free (' + d.pct + ')'; }).join(', ');
+        addLog('BUTLER', 'disk_usage: ' + lines);
+        return { data: 'Disk: ' + lines };
       }
       break;
     }
@@ -669,8 +675,8 @@ ${r.text.substring(0, 400)}${r.text.length > 400 ? '…' : ''}`);
     case 'get_ip': {
       const r = await window.hexAPI.butler.getIp();
       if (r.success) {
-        const local = r.local.map(function(n){ return n.name+': '+n.ip; }).join(', ');
-        const ipInfo = 'Local IPs: '+local+' | Public IP: '+(r.publicIp||'unavailable');
+        const local = r.local.map(function (n) { return n.name + ': ' + n.ip; }).join(', ');
+        const ipInfo = 'Local IPs: ' + local + ' | Public IP: ' + (r.publicIp || 'unavailable');
         addLog('BUTLER', ipInfo);
         return { data: ipInfo };
       }
@@ -734,7 +740,7 @@ ${r.output.substring(0, 600)}
     case 'run_ps': {
       const script = action.args.join(':');
       const r = await window.hexAPI.butler.runPs(script);
-      addLog('BUTLER', r.success ? 'PS: ' + r.output.substring(0,80) : 'PS error: ' + r.error);
+      addLog('BUTLER', r.success ? 'PS: ' + r.output.substring(0, 80) : 'PS error: ' + r.error);
       if (r.output) addHexMessage(`**PowerShell output:**
 \`\`\`
 ${r.output.substring(0, 500)}
@@ -744,7 +750,7 @@ ${r.output.substring(0, 500)}
     case 'run_cmd': {
       const command = action.args.join(':');
       const r = await window.hexAPI.butler.runCmd(command);
-      addLog('BUTLER', r.success ? 'CMD: ' + r.output.substring(0,80) : 'CMD error: ' + r.error);
+      addLog('BUTLER', r.success ? 'CMD: ' + r.output.substring(0, 80) : 'CMD error: ' + r.error);
       if (r.output) addHexMessage(`**CMD output:**
 \`\`\`
 ${r.output.substring(0, 500)}
@@ -783,7 +789,7 @@ ${r.output.substring(0, 500)}
       const r = await window.hexAPI.butler.zip(src, out);
       if (r.success) addHexMessage('**Zipped** to `' + r.output + '`');
       else addHexMessage('Zip failed: ' + r.error);
-      addLog('BUTLER', r.success ? 'Zipped: '+r.output : 'Zip error: '+r.error);
+      addLog('BUTLER', r.success ? 'Zipped: ' + r.output : 'Zip error: ' + r.error);
       break;
     }
     case 'unzip': {
@@ -793,7 +799,7 @@ ${r.output.substring(0, 500)}
       const r = await window.hexAPI.butler.unzip(zipPath, dest);
       if (r.success) addHexMessage('**Extracted** to `' + r.dest + '`');
       else addHexMessage('Unzip failed: ' + r.error);
-      addLog('BUTLER', r.success ? 'Unzipped to: '+r.dest : 'Unzip error: '+r.error);
+      addLog('BUTLER', r.success ? 'Unzipped to: ' + r.dest : 'Unzip error: ' + r.error);
       break;
     }
 
@@ -804,7 +810,7 @@ ${r.output.substring(0, 500)}
       addHexMessage('Running **' + cmd + (args ? ' ' + args : '') + '**…');
       const r = await window.hexAPI.butler.run(cmd, args);
       if (r.output) addHexMessage('```\n' + r.output.substring(0, 500) + '\n```');
-      addLog('BUTLER', r.success ? 'Ran: '+cmd : 'Run error: '+r.error);
+      addLog('BUTLER', r.success ? 'Ran: ' + cmd : 'Run error: ' + r.error);
       break;
     }
     case 'run_as_admin': {
@@ -818,7 +824,7 @@ ${r.output.substring(0, 500)}
     case 'list_windows': {
       const r = await window.hexAPI.butler.listWindows();
       if (r.success && r.windows.length) {
-        const lines = r.windows.slice(0,15).map(function(w){ return '['+w.pid+'] '+w.process+': '+w.title; }).join('\n');
+        const lines = r.windows.slice(0, 15).map(function (w) { return '[' + w.pid + '] ' + w.process + ': ' + w.title; }).join('\n');
         addHexMessage('**Open Windows (' + r.windows.length + '):**\n```\n' + lines + '\n```');
       } else {
         addHexMessage(r.error || 'No windows found.');
@@ -829,13 +835,13 @@ ${r.output.substring(0, 500)}
       // [ACTION:window:minimize:Notepad]
       const wAction = action.args[0]; const wTitle = action.args.slice(1).join(':');
       const r = await window.hexAPI.butler.windowAction(wAction, wTitle);
-      addLog('BUTLER', (r.success ? 'Window '+wAction+': ' : 'Window err: ') + wTitle);
+      addLog('BUTLER', (r.success ? 'Window ' + wAction + ': ' : 'Window err: ') + wTitle);
       addHexMessage(r.success ? '**Window ' + wAction + 'd:** ' + wTitle : 'Could not ' + wAction + ' "' + wTitle + '"');
       break;
     }
     case 'close_window': {
       const r = await window.hexAPI.butler.windowAction('close', action.args.join(':'));
-      addLog('BUTLER', r.success ? 'Closed window: '+action.args.join(':') : r.error);
+      addLog('BUTLER', r.success ? 'Closed window: ' + action.args.join(':') : r.error);
       break;
     }
     case 'send_keys': {
@@ -852,7 +858,7 @@ ${r.output.substring(0, 500)}
     }
     case 'mouse_click': {
       const r = await window.hexAPI.butler.mouseClick(action.args[0] || 'left');
-      addLog('BUTLER', r.success ? 'Mouse click: '+(action.args[0]||'left') : r.error);
+      addLog('BUTLER', r.success ? 'Mouse click: ' + (action.args[0] || 'left') : r.error);
       break;
     }
     case 'paste_clipboard': {
@@ -879,13 +885,13 @@ ${r.output.substring(0, 500)}
       addHexMessage('Connecting to **' + ssid + '**…');
       const r = await window.hexAPI.butler.connectWifi(ssid, pwd);
       addHexMessage(r.success ? '**Connected to ' + ssid + '.**' : 'WiFi connect failed: ' + (r.error || r.output));
-      addLog('BUTLER', r.success ? 'WiFi: '+ssid : 'WiFi error: '+ssid);
+      addLog('BUTLER', r.success ? 'WiFi: ' + ssid : 'WiFi error: ' + ssid);
       break;
     }
     case 'net_adapter': {
       const adapter = action.args[0]; const act = action.args[1] || 'enable';
       const r = await window.hexAPI.butler.netAdapter(adapter, act);
-      addLog('BUTLER', r.success ? 'Adapter '+act+': '+adapter : r.error);
+      addLog('BUTLER', r.success ? 'Adapter ' + act + ': ' + adapter : r.error);
       addHexMessage(r.success ? '**Adapter ' + act + 'd:** ' + adapter : 'Adapter error: ' + r.error);
       break;
     }
@@ -901,20 +907,20 @@ ${r.output.substring(0, 500)}
     case 'schedule_once': {
       const time = action.args[0]; const cmd = action.args.slice(1).join(':');
       const r = await window.hexAPI.butler.scheduleOnce(time, cmd);
-      addLog('BUTLER', r.success ? 'Scheduled: '+r.taskName : r.error);
+      addLog('BUTLER', r.success ? 'Scheduled: ' + r.taskName : r.error);
       addHexMessage(r.success ? '**Task scheduled** at ' + time + ' (task: ' + r.taskName + ')' : 'Schedule failed: ' + r.error);
       break;
     }
     case 'cancel_task': {
       const r = await window.hexAPI.butler.cancelTask(action.args[0]);
-      addLog('BUTLER', r.success ? 'Task cancelled: '+action.args[0] : r.error);
+      addLog('BUTLER', r.success ? 'Task cancelled: ' + action.args[0] : r.error);
       addHexMessage(r.success ? '**Task cancelled:** ' + action.args[0] : 'Cancel failed: ' + r.error);
       break;
     }
     case 'startup': {
       const act = action.args[0]; const cmd = action.args.slice(1).join(':');
       const r = await window.hexAPI.butler.startup(act, cmd, 'HEX_app');
-      addLog('BUTLER', r.success ? 'Startup '+act : r.error);
+      addLog('BUTLER', r.success ? 'Startup ' + act : r.error);
       addHexMessage(r.success ? '**Startup ' + act + ':** Done.' : 'Startup error: ' + r.error);
       break;
     }
@@ -926,7 +932,7 @@ ${r.output.substring(0, 500)}
       addHexMessage('Scanning installed software…');
       const r = await window.hexAPI.butler.listSoftware();
       if (r.success) {
-        const top = r.software.slice(0, 20).map(function(s){ return s.name + (s.version ? ' v'+s.version : ''); }).join('\n');
+        const top = r.software.slice(0, 20).map(function (s) { return s.name + (s.version ? ' v' + s.version : ''); }).join('\n');
         addHexMessage('**Installed Software (' + r.count + ' total):**\n```\n' + top + '\n```\n_(showing first 20)_');
       } else { addHexMessage('Could not list software: ' + r.error); }
       break;
@@ -934,7 +940,7 @@ ${r.output.substring(0, 500)}
     case 'check_updates': {
       addHexMessage('Checking for updates via winget…');
       const r = await window.hexAPI.butler.checkUpdates();
-      addHexMessage(r.success ? '**Updates:**\n```\n' + r.output.substring(0,600) + '\n```' : 'Updates check failed: ' + r.error);
+      addHexMessage(r.success ? '**Updates:**\n```\n' + r.output.substring(0, 600) + '\n```' : 'Updates check failed: ' + r.error);
       break;
     }
     case 'install_pkg': {
@@ -942,14 +948,14 @@ ${r.output.substring(0, 500)}
       addHexMessage('Installing **' + pkg + '** via winget…');
       const r = await window.hexAPI.butler.installPkg(pkg);
       addHexMessage(r.success ? '**Installed ' + pkg + '.**' : 'Install failed: ' + (r.error || r.output));
-      addLog('BUTLER', r.success ? 'Installed: '+pkg : 'Install error: '+pkg);
+      addLog('BUTLER', r.success ? 'Installed: ' + pkg : 'Install error: ' + pkg);
       break;
     }
     case 'uninstall': {
       const pkg = action.args.join(' ');
       const r = await window.hexAPI.butler.uninstall(pkg);
       addHexMessage(r.success ? '**Uninstalled ' + pkg + '.**' : 'Uninstall failed: ' + (r.error || r.output));
-      addLog('BUTLER', r.success ? 'Uninstalled: '+pkg : 'Uninstall error: '+pkg);
+      addLog('BUTLER', r.success ? 'Uninstalled: ' + pkg : 'Uninstall error: ' + pkg);
       break;
     }
 
@@ -957,7 +963,7 @@ ${r.output.substring(0, 500)}
     case 'eject_usb': {
       const letter = action.args[0] || 'E';
       const r = await window.hexAPI.butler.ejectUsb(letter);
-      addLog('BUTLER', r.success ? 'Ejected: '+r.drive : r.error);
+      addLog('BUTLER', r.success ? 'Ejected: ' + r.drive : r.error);
       addHexMessage(r.success ? '**USB drive ' + r.drive + ' ejected safely.**' : 'Eject failed: ' + r.error);
       break;
     }
@@ -966,8 +972,8 @@ ${r.output.substring(0, 500)}
     case 'run_js': {
       const code = action.args.join(':');
       const r = await window.hexAPI.butler.runJs(code);
-      addLog('BUTLER', r.success ? 'run_js OK' : 'run_js: '+r.error);
-      if (r.success && r.output) addHexMessage('**JS output:**\n```\n' + r.output.substring(0,400) + '\n```');
+      addLog('BUTLER', r.success ? 'run_js OK' : 'run_js: ' + r.error);
+      if (r.success && r.output) addHexMessage('**JS output:**\n```\n' + r.output.substring(0, 400) + '\n```');
       else if (!r.success) addHexMessage('JS error: ' + r.error);
       break;
     }
@@ -976,28 +982,28 @@ ${r.output.substring(0, 500)}
     case 'reg_write': {
       const rwR = await window.hexAPI.butler.regWrite(
         action.args[0], action.args[1], action.args[2], action.args[3], action.args[4]);
-      addLog('BUTLER', rwR.success ? 'Reg written' : 'Reg write: '+rwR.error);
+      addLog('BUTLER', rwR.success ? 'Reg written' : 'Reg write: ' + rwR.error);
       addHexMessage(rwR.success ? 'Registry key written.' : 'Registry write failed: ' + rwR.error);
       break;
     }
     case 'list_games': {
       const [stR, epR] = await Promise.all([
-        window.hexAPI.butler.getSteamGames().catch(function(){ return {success:false,games:[]}; }),
-        window.hexAPI.butler.getEpicGames().catch(function(){ return {success:false,games:[]}; }),
+        window.hexAPI.butler.getSteamGames().catch(function () { return { success: false, games: [] }; }),
+        window.hexAPI.butler.getEpicGames().catch(function () { return { success: false, games: [] }; }),
       ]);
       const gParts = [];
-      if (stR.success && stR.games.length) gParts.push('Steam ('+stR.games.length+'): '+stR.games.map(function(g){return g.name;}).join(', '));
-      if (epR.success && epR.games.length) gParts.push('Epic ('+epR.games.length+'): '+epR.games.map(function(g){return g.name;}).join(', '));
+      if (stR.success && stR.games.length) gParts.push('Steam (' + stR.games.length + '): ' + stR.games.map(function (g) { return g.name; }).join(', '));
+      if (epR.success && epR.games.length) gParts.push('Epic (' + epR.games.length + '): ' + epR.games.map(function (g) { return g.name; }).join(', '));
       const gData = gParts.length ? gParts.join(' | ') : 'No games found';
-      addLog('BUTLER', 'games: '+gData.substring(0,100));
-      return { data: 'Installed games: '+gData };
+      addLog('BUTLER', 'games: ' + gData.substring(0, 100));
+      return { data: 'Installed games: ' + gData };
     }
     case 'chkdsk': {
       const drive = action.args[0] || 'C';
       addHexMessage('Running CHKDSK on **' + drive + ':**… This may take a while.');
       const r = await window.hexAPI.butler.chkdsk(drive);
-      addHexMessage('**CHKDSK ' + drive + ':**\n```\n' + (r.output||'').substring(0,500) + '\n```' + (r.note ? '\n_' + r.note + '_' : ''));
-      addLog('BUTLER', 'chkdsk '+drive+': done');
+      addHexMessage('**CHKDSK ' + drive + ':**\n```\n' + (r.output || '').substring(0, 500) + '\n```' + (r.note ? '\n_' + r.note + '_' : ''));
+      addLog('BUTLER', 'chkdsk ' + drive + ': done');
       break;
     }
 
@@ -1009,7 +1015,7 @@ ${r.output.substring(0, 500)}
       addHexMessage('Compressing ' + zSrc + '...');
       const zr = await window.hexAPI.butler.zip(zSrc, zOut);
       addHexMessage(zr.success ? 'Zipped to: ' + zr.output : 'Zip failed: ' + zr.error);
-      addLog('BUTLER', zr.success ? 'Zipped: '+zr.output : 'Zip error: '+zr.error);
+      addLog('BUTLER', zr.success ? 'Zipped: ' + zr.output : 'Zip error: ' + zr.error);
       break;
     }
     case 'unzip': {
@@ -1018,7 +1024,7 @@ ${r.output.substring(0, 500)}
       addHexMessage('Extracting ' + uzPath + '...');
       const uzr = await window.hexAPI.butler.unzip(uzPath, uzDest);
       addHexMessage(uzr.success ? 'Extracted to: ' + uzr.dest : 'Unzip failed: ' + uzr.error);
-      addLog('BUTLER', uzr.success ? 'Unzipped: '+uzr.dest : 'Unzip err: '+uzr.error);
+      addLog('BUTLER', uzr.success ? 'Unzipped: ' + uzr.dest : 'Unzip err: ' + uzr.error);
       break;
     }
 
@@ -1029,13 +1035,13 @@ ${r.output.substring(0, 500)}
       addHexMessage('Running ' + runCmd + (runArgs ? ' ' + runArgs : '') + '...');
       const runR = await window.hexAPI.butler.run(runCmd, runArgs);
       if (runR.output) addHexMessage('Output:\n' + runR.output.substring(0, 500));
-      addLog('BUTLER', runR.success ? 'Ran: '+runCmd : 'Run err: '+runR.error);
+      addLog('BUTLER', runR.success ? 'Ran: ' + runCmd : 'Run err: ' + runR.error);
       break;
     }
     case 'run_as_admin': {
       const raaCmd = action.args.join(':');
       const raaR = await window.hexAPI.butler.runAsAdmin(raaCmd);
-      addLog('BUTLER', raaR.success ? 'Admin run OK' : 'Admin run: '+raaR.error);
+      addLog('BUTLER', raaR.success ? 'Admin run OK' : 'Admin run: ' + raaR.error);
       break;
     }
 
@@ -1043,27 +1049,27 @@ ${r.output.substring(0, 500)}
     case 'list_windows': {
       const lwR = await window.hexAPI.butler.listWindows();
       if (lwR.success && lwR.windows.length) {
-        const lwLines = lwR.windows.slice(0,15).map(function(w){ return w.process+': '+w.title; }).join(', ');
-        addLog('BUTLER', 'windows: '+lwR.windows.length+' open');
-        return { data: 'Open windows ('+lwR.windows.length+'): '+lwLines };
+        const lwLines = lwR.windows.slice(0, 15).map(function (w) { return w.process + ': ' + w.title; }).join(', ');
+        addLog('BUTLER', 'windows: ' + lwR.windows.length + ' open');
+        return { data: 'Open windows (' + lwR.windows.length + '): ' + lwLines };
       } else { addHexMessage(lwR.error || 'No windows found.'); }
       break;
     }
     case 'window': {
       const winAct = action.args[0], winTitle = action.args.slice(1).join(':');
       const winR = await window.hexAPI.butler.windowAction(winAct, winTitle);
-      addLog('BUTLER', (winR.success ? 'Window '+winAct+': ' : 'Window err: ') + winTitle);
+      addLog('BUTLER', (winR.success ? 'Window ' + winAct + ': ' : 'Window err: ') + winTitle);
       addHexMessage(winR.success ? 'Window ' + winAct + ': ' + winTitle : 'Could not ' + winAct + ' "' + winTitle + '"');
       break;
     }
     case 'close_window': {
       const cwR = await window.hexAPI.butler.windowAction('close', action.args.join(':'));
-      addLog('BUTLER', cwR.success ? 'Closed: '+action.args.join(':') : cwR.error);
+      addLog('BUTLER', cwR.success ? 'Closed: ' + action.args.join(':') : cwR.error);
       break;
     }
     case 'send_keys': {
       const skR = await window.hexAPI.butler.sendKeys(action.args.join(':'));
-      addLog('BUTLER', skR.success ? 'SendKeys OK' : 'SendKeys: '+skR.error);
+      addLog('BUTLER', skR.success ? 'SendKeys OK' : 'SendKeys: ' + skR.error);
       if (!skR.success) addHexMessage('SendKeys failed: ' + skR.error);
       break;
     }
@@ -1074,12 +1080,12 @@ ${r.output.substring(0, 500)}
     }
     case 'mouse_click': {
       const mcR = await window.hexAPI.butler.mouseClick(action.args[0] || 'left');
-      addLog('BUTLER', mcR.success ? 'Clicked: '+(action.args[0]||'left') : mcR.error);
+      addLog('BUTLER', mcR.success ? 'Clicked: ' + (action.args[0] || 'left') : mcR.error);
       break;
     }
     case 'paste_clipboard': {
       const pcR = await window.hexAPI.butler.pasteClipboard();
-      addLog('BUTLER', 'Paste: '+(pcR.success ? 'OK' : pcR.error));
+      addLog('BUTLER', 'Paste: ' + (pcR.success ? 'OK' : pcR.error));
       break;
     }
 
@@ -1088,7 +1094,7 @@ ${r.output.substring(0, 500)}
       const gciR = await window.hexAPI.butler.getClipboardImg();
       if (gciR.success) {
         addHexMessage('Clipboard image saved to: ' + gciR.path);
-        addLog('BUTLER', 'Clip img: '+gciR.path);
+        addLog('BUTLER', 'Clip img: ' + gciR.path);
       } else { addHexMessage('No image in clipboard. ' + (gciR.error || '')); }
       break;
     }
@@ -1099,13 +1105,13 @@ ${r.output.substring(0, 500)}
       addHexMessage('Connecting to ' + cwfSsid + '...');
       const cwfR = await window.hexAPI.butler.connectWifi(cwfSsid, cwfPwd);
       addHexMessage(cwfR.success ? 'Connected to ' + cwfSsid + '.' : 'WiFi failed: ' + (cwfR.error || cwfR.output));
-      addLog('BUTLER', cwfR.success ? 'WiFi: '+cwfSsid : 'WiFi err: '+cwfSsid);
+      addLog('BUTLER', cwfR.success ? 'WiFi: ' + cwfSsid : 'WiFi err: ' + cwfSsid);
       break;
     }
     case 'net_adapter': {
       const naAdapter = action.args[0], naAct = action.args[1] || 'enable';
       const naR = await window.hexAPI.butler.netAdapter(naAdapter, naAct);
-      addLog('BUTLER', naR.success ? 'Adapter '+naAct+': '+naAdapter : naR.error);
+      addLog('BUTLER', naR.success ? 'Adapter ' + naAct + ': ' + naAdapter : naR.error);
       addHexMessage(naR.success ? 'Adapter ' + naAct + 'd: ' + naAdapter : 'Adapter error: ' + naR.error);
       break;
     }
@@ -1115,13 +1121,13 @@ ${r.output.substring(0, 500)}
       const slSecs = parseFloat(action.args[0]) || 1;
       addHexMessage('Waiting ' + slSecs + 's...');
       await window.hexAPI.butler.sleep(slSecs);
-      addLog('BUTLER', 'Slept '+slSecs+'s');
+      addLog('BUTLER', 'Slept ' + slSecs + 's');
       break;
     }
     case 'schedule_once': {
       const soTime = action.args[0], soCmd = action.args.slice(1).join(':');
       const soR = await window.hexAPI.butler.scheduleOnce(soTime, soCmd);
-      addLog('BUTLER', soR.success ? 'Scheduled: '+soR.taskName : soR.error);
+      addLog('BUTLER', soR.success ? 'Scheduled: ' + soR.taskName : soR.error);
       addHexMessage(soR.success ? 'Task scheduled at ' + soTime + ' (name: ' + soR.taskName + ')' : 'Schedule failed: ' + soR.error);
       break;
     }
@@ -1142,7 +1148,7 @@ ${r.output.substring(0, 500)}
       const rrHive = action.args[0], rrKey = action.args[1], rrVal = action.args[2] || '';
       const rrR = await window.hexAPI.butler.regRead(rrHive, rrKey, rrVal);
       if (rrR.success) {
-        const rrLines = (rrR.values || []).map(function(v){ return v.name + ' = ' + v.data + ' (' + v.type + ')'; }).join('\n');
+        const rrLines = (rrR.values || []).map(function (v) { return v.name + ' = ' + v.data + ' (' + v.type + ')'; }).join('\n');
         addHexMessage('Registry ' + rrHive + '\\' + rrKey + ':\n' + (rrLines || rrR.raw || '(empty)'));
       } else { addHexMessage('Registry read failed: ' + rrR.error); }
       break;
@@ -1152,9 +1158,9 @@ ${r.output.substring(0, 500)}
     case 'list_software': {
       const lsR = await window.hexAPI.butler.listSoftware();
       if (lsR.success) {
-        const lsTop = lsR.software.slice(0, 30).map(function(s){ return s.name+(s.version?' v'+s.version:''); }).join(', ');
-        addLog('BUTLER', 'software: '+lsR.count+' installed');
-        return { data: 'Installed software ('+lsR.count+' total): '+lsTop };
+        const lsTop = lsR.software.slice(0, 30).map(function (s) { return s.name + (s.version ? ' v' + s.version : ''); }).join(', ');
+        addLog('BUTLER', 'software: ' + lsR.count + ' installed');
+        return { data: 'Installed software (' + lsR.count + ' total): ' + lsTop };
       } else { addHexMessage('Could not list software: ' + lsR.error); }
       break;
     }
@@ -1169,14 +1175,14 @@ ${r.output.substring(0, 500)}
       addHexMessage('Installing ' + ipPkg + ' via winget...');
       const ipR = await window.hexAPI.butler.installPkg(ipPkg);
       addHexMessage(ipR.success ? 'Installed ' + ipPkg + '.' : 'Install failed: ' + (ipR.error || ipR.output));
-      addLog('BUTLER', ipR.success ? 'Installed: '+ipPkg : 'Install err: '+ipPkg);
+      addLog('BUTLER', ipR.success ? 'Installed: ' + ipPkg : 'Install err: ' + ipPkg);
       break;
     }
     case 'uninstall': {
       const unPkg = action.args.join(' ');
       const unR = await window.hexAPI.butler.uninstall(unPkg);
       addHexMessage(unR.success ? 'Uninstalled ' + unPkg + '.' : 'Uninstall failed: ' + (unR.error || unR.output));
-      addLog('BUTLER', unR.success ? 'Uninstalled: '+unPkg : 'Uninstall err: '+unPkg);
+      addLog('BUTLER', unR.success ? 'Uninstalled: ' + unPkg : 'Uninstall err: ' + unPkg);
       break;
     }
 
@@ -1184,7 +1190,7 @@ ${r.output.substring(0, 500)}
     case 'eject_usb': {
       const euR = await window.hexAPI.butler.ejectUsb(action.args[0] || 'E');
       addHexMessage(euR.success ? 'USB drive ' + euR.drive + ' ejected safely.' : 'Eject failed: ' + euR.error);
-      addLog('BUTLER', euR.success ? 'Ejected: '+euR.drive : euR.error);
+      addLog('BUTLER', euR.success ? 'Ejected: ' + euR.drive : euR.error);
       break;
     }
 
@@ -1192,7 +1198,7 @@ ${r.output.substring(0, 500)}
     case 'run_js': {
       const rjCode = action.args.join(':');
       const rjR = await window.hexAPI.butler.runJs(rjCode);
-      addLog('BUTLER', rjR.success ? 'run_js OK' : 'run_js: '+rjR.error);
+      addLog('BUTLER', rjR.success ? 'run_js OK' : 'run_js: ' + rjR.error);
       if (rjR.success && rjR.output) addHexMessage('JS output:\n' + rjR.output.substring(0, 400));
       else if (!rjR.success) addHexMessage('JS error: ' + rjR.error);
       break;
@@ -1202,28 +1208,28 @@ ${r.output.substring(0, 500)}
     case 'reg_write': {
       const rwR = await window.hexAPI.butler.regWrite(
         action.args[0], action.args[1], action.args[2], action.args[3], action.args[4]);
-      addLog('BUTLER', rwR.success ? 'Reg written' : 'Reg write: '+rwR.error);
+      addLog('BUTLER', rwR.success ? 'Reg written' : 'Reg write: ' + rwR.error);
       addHexMessage(rwR.success ? 'Registry key written.' : 'Registry write failed: ' + rwR.error);
       break;
     }
     case 'list_games': {
       const [stR, epR] = await Promise.all([
-        window.hexAPI.butler.getSteamGames().catch(function(){ return {success:false,games:[]}; }),
-        window.hexAPI.butler.getEpicGames().catch(function(){ return {success:false,games:[]}; }),
+        window.hexAPI.butler.getSteamGames().catch(function () { return { success: false, games: [] }; }),
+        window.hexAPI.butler.getEpicGames().catch(function () { return { success: false, games: [] }; }),
       ]);
       const gParts = [];
-      if (stR.success && stR.games.length) gParts.push('Steam ('+stR.games.length+'): '+stR.games.map(function(g){return g.name;}).join(', '));
-      if (epR.success && epR.games.length) gParts.push('Epic ('+epR.games.length+'): '+epR.games.map(function(g){return g.name;}).join(', '));
+      if (stR.success && stR.games.length) gParts.push('Steam (' + stR.games.length + '): ' + stR.games.map(function (g) { return g.name; }).join(', '));
+      if (epR.success && epR.games.length) gParts.push('Epic (' + epR.games.length + '): ' + epR.games.map(function (g) { return g.name; }).join(', '));
       const gData = gParts.length ? gParts.join(' | ') : 'No games found';
-      addLog('BUTLER', 'games: '+gData.substring(0,100));
-      return { data: 'Installed games: '+gData };
+      addLog('BUTLER', 'games: ' + gData.substring(0, 100));
+      return { data: 'Installed games: ' + gData };
     }
     case 'chkdsk': {
       const cdDrive = action.args[0] || 'C';
       addHexMessage('Running CHKDSK on ' + cdDrive + ':... This may take a while.');
       const cdR = await window.hexAPI.butler.chkdsk(cdDrive);
       addHexMessage('CHKDSK ' + cdDrive + ':\n' + (cdR.output || '').substring(0, 500) + (cdR.note ? '\nNote: ' + cdR.note : ''));
-      addLog('BUTLER', 'chkdsk '+cdDrive+': done');
+      addLog('BUTLER', 'chkdsk ' + cdDrive + ': done');
       break;
     }
 
@@ -1235,10 +1241,10 @@ ${r.output.substring(0, 500)}
       ]);
       const lines = [];
       if (steamR.success && steamR.games.length) {
-        lines.push('**Steam (' + steamR.games.length + '):** ' + steamR.games.slice(0, 15).map(function(g){return g.name;}).join(', ') + (steamR.games.length > 15 ? ' …+' + (steamR.games.length - 15) + ' more' : ''));
+        lines.push('**Steam (' + steamR.games.length + '):** ' + steamR.games.slice(0, 15).map(function (g) { return g.name; }).join(', ') + (steamR.games.length > 15 ? ' …+' + (steamR.games.length - 15) + ' more' : ''));
       }
       if (epicR.success && epicR.games.length) {
-        lines.push('**Epic (' + epicR.games.length + '):** ' + epicR.games.slice(0, 10).map(function(g){return g.name;}).join(', ') + (epicR.games.length > 10 ? ' …+' + (epicR.games.length - 10) + ' more' : ''));
+        lines.push('**Epic (' + epicR.games.length + '):** ' + epicR.games.slice(0, 10).map(function (g) { return g.name; }).join(', ') + (epicR.games.length > 10 ? ' …+' + (epicR.games.length - 10) + ' more' : ''));
       }
       if (!lines.length) {
         addHexMessage('No Steam or Epic games found. Are the launchers installed?');
@@ -1390,7 +1396,7 @@ function handleProactiveMsg(msg) {
       addHexMessage(bText);
       showToast('◆ HEX ADVISORY', bText, 'warn', 10000, [
         { label: window.i18n.t('break_dismiss'), action: 'dismiss' },
-        { label: window.i18n.t('break_snooze'),  action: 'snooze15', cls: 'snooze' }
+        { label: window.i18n.t('break_snooze'), action: 'snooze15', cls: 'snooze' }
       ]);
       addLog('HEX', bText);
       if (config.voice?.enabled !== false) speakWithConfig(bText);
@@ -1488,12 +1494,12 @@ function clearTerminal() {
 
 function toggleTerminal() {
   const bottom = document.getElementById('panel-bottom');
-  const btn    = document.getElementById('terminal-toggle');
+  const btn = document.getElementById('terminal-toggle');
   const collapsed = bottom.classList.toggle('terminal-collapsed');
   if (btn) btn.textContent = collapsed ? '▲ SHOW' : '▼ HIDE';
 }
 
-// ── PORTAL CANVAS ANIMATION ──────────────────────────────────
+// ── 3D ORB "THINKING" ANIMATION ──────────────────────────────
 let hexCtx, hexW, hexH, hexRAF;
 
 function initHexCanvas() {
@@ -1505,121 +1511,166 @@ function initHexCanvas() {
 
 function resizeHexCanvas() {
   const canvas = document.getElementById('hex-canvas');
-  const area   = document.getElementById('hex-area');
-  canvas.width  = hexW = area.offsetWidth;
+  const area = document.getElementById('hex-area');
+  canvas.width = hexW = area.offsetWidth;
   canvas.height = hexH = area.offsetHeight;
 }
 
 function startHexAnimation() {
-  let t = 0;
-  const PARTICLE_COUNT = 55;
-  const particles = Array.from({ length: PARTICLE_COUNT }, (_, i) => ({
-    angle:    (i / PARTICLE_COUNT) * Math.PI * 2,
-    radius:   30 + Math.random() * 42,
-    speed:    0.006 + Math.random() * 0.014,
-    size:     0.8 + Math.random() * 2.0,
-    opacity:  0.3 + Math.random() * 0.7,
-    hue:      Math.random() < 0.15 ? 300 : (Math.random() < 0.3 ? 200 : 160),
-    drift:    (Math.random() - 0.5) * 0.003,
-    driftDir: Math.random() < 0.5 ? 1 : -1,
-  }));
+  // ── Fibonacci sphere points ──
+  const N = 400;
+  const PHI = Math.PI * (3 - Math.sqrt(5));
+  const pts = [];
+  for (let i = 0; i < N; i++) {
+    const y = 1 - (i / (N - 1)) * 2;
+    const r = Math.sqrt(1 - y * y);
+    const th = PHI * i;
+    pts.push([Math.cos(th) * r, y, Math.sin(th) * r]);
+  }
 
-  const ARCS = [
-    { rx: 54, ry: 14, angle: 0,    speed:  0.38, color: 'rgba(0,255,200,0.28)', width: 1.2 },
-    { rx: 44, ry: 10, angle: 1.05, speed: -0.52, color: 'rgba(0,180,255,0.20)', width: 0.8 },
-    { rx: 62, ry: 18, angle: 2.09, speed:  0.22, color: 'rgba(0,255,200,0.15)', width: 1.5 },
-    { rx: 36, ry:  8, angle: 0.52, speed:  0.72, color: 'rgba(180,0,255,0.18)', width: 0.7 },
-    { rx: 70, ry: 22, angle: 3.66, speed: -0.18, color: 'rgba(0,255,180,0.10)', width: 2.0 },
-  ];
+  // ── Pulse waves ──
+  const pulses = [];
+  let cooldown = 30;
+
+  // ── Live task status from hexTaskBus ──
+  let lastTaskText = '', currentTaskText = 'System idle';
+  let taskFrame = 0, taskPhase = 'in';
+  const FIN = 30, FHOLD = 90, FOUT = 30;
+
+  let rotY = 0, tick = 0;
+
+  // ── 3D rotation helper ──
+  function rot(px, py, pz, ry, rx) {
+    const cy = Math.cos(ry), sy = Math.sin(ry);
+    let x1 = px * cy + pz * sy;
+    let z1 = -px * sy + pz * cy;
+    const cxr = Math.cos(rx), sxr = Math.sin(rx);
+    let y2 = py * cxr - z1 * sxr;
+    let z2 = py * sxr + z1 * cxr;
+    return [x1, y2, z2];
+  }
 
   function frame() {
     hexRAF = requestAnimationFrame(frame);
     if (!hexCtx) return;
-    hexCtx.clearRect(0, 0, hexW, hexH);
-    const cx = hexW / 2, cy = hexH / 2;
-    t += 0.016;
+    tick++;
+    rotY += 0.005;
+    const rx = 0.2 + Math.sin(tick * 0.006) * 0.12;
 
-    // 1. Deep portal void gradient
-    const depth = hexCtx.createRadialGradient(cx, cy, 0, cx, cy, 78);
-    depth.addColorStop(0,    'rgba(0,0,0,0.0)');
-    depth.addColorStop(0.18, 'rgba(0,28,38,0.55)');
-    depth.addColorStop(0.55, 'rgba(0,8,16,0.75)');
-    depth.addColorStop(0.85, 'rgba(0,0,8,0.5)');
-    depth.addColorStop(1,    'rgba(0,0,0,0.0)');
-    hexCtx.fillStyle = depth;
-    hexCtx.beginPath();
-    hexCtx.arc(cx, cy, 78, 0, Math.PI * 2);
-    hexCtx.fill();
+    // Clear with HEX background
+    hexCtx.fillStyle = '#020202';
+    hexCtx.fillRect(0, 0, hexW, hexH);
 
-    // 2. Rotating energy arcs — ellipses create depth illusion
-    ARCS.forEach(function(arc) {
-      hexCtx.save();
-      hexCtx.translate(cx, cy);
-      hexCtx.rotate(arc.angle + t * arc.speed);
-      hexCtx.beginPath();
-      hexCtx.ellipse(0, 0, arc.rx, arc.ry, 0, 0, Math.PI * 2);
-      hexCtx.strokeStyle = arc.color;
-      hexCtx.lineWidth   = arc.width;
-      hexCtx.stroke();
-      hexCtx.restore();
+    // Spawn pulses
+    cooldown--;
+    if (cooldown <= 0) {
+      const s = pts[Math.floor(Math.random() * N)];
+      pulses.push({ ox: s[0], oy: s[1], oz: s[2], t: 0 });
+      cooldown = 50 + Math.floor(Math.random() * 70);
+    }
+    for (const p of pulses) p.t += 0.016;
+    while (pulses.length && pulses[0].t > 2.4) pulses.shift();
+
+    // Responsive sizing — orb fits in 140px height
+    const cx = hexW / 2;
+    const cy = hexH / 2 - 10;
+    const R = Math.min(hexH * 0.38, hexW * 0.08, 52);
+
+    // Project and depth-sort
+    const proj = pts.map(p => {
+      const [x, y, z] = rot(p[0], p[1], p[2], rotY, rx);
+      const persp = 600 / (600 + z * R);
+      return { sx: cx + x * R * persp, sy: cy + y * R * persp, z, ox: p[0], oy: p[1], oz: p[2] };
     });
+    proj.sort((a, b) => a.z - b.z);
 
-    // 3. Swirling particles
-    particles.forEach(function(p) {
-      p.angle  += p.speed;
-      p.radius += p.drift * p.driftDir;
-      if (p.radius > 72 || p.radius < 12) p.driftDir *= -1;
-      const px = cx + p.radius * Math.cos(p.angle);
-      const py = cy + p.radius * Math.sin(p.angle) * 0.38;
-      const alpha = p.opacity * (0.5 + 0.5 * Math.sin(p.angle * 3 + t));
+    // Draw dots
+    for (const pt of proj) {
+      const depth = (pt.z + 1) / 2;
+      if (depth < 0.03) continue;
+
+      let pulse = 0;
+      for (const p of pulses) {
+        const dx = pt.ox - p.ox, dy = pt.oy - p.oy, dz = pt.oz - p.oz;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const wave = p.t - dist;
+        if (wave > -0.13 && wave < 0.13) {
+          pulse = Math.max(pulse, (1 - Math.abs(wave) / 0.13) * (1 - p.t / 2.4));
+        }
+      }
+
+      const br = 0.15 + depth * 0.6 + pulse * 1.2;
+      const sz = Math.max(0.3, (0.5 + depth * 1.8) * (1 + pulse * 1.5));
+      const alpha = Math.min(1, 0.25 + depth * 0.55 + pulse * 0.8);
+
+      // HEX colors: base cyan (#00ffc8), pulse orange (#ff6b35)
+      const rr = Math.min(255, Math.floor((0 + pulse * 255) * br));
+      const gg = Math.min(255, Math.floor((200 + pulse * 55) * br));
+      const bb = Math.min(255, Math.floor((160 - pulse * 100) * br));
+
+      hexCtx.globalAlpha = alpha;
+      hexCtx.fillStyle = `rgb(${rr},${gg},${bb})`;
       hexCtx.beginPath();
-      hexCtx.arc(px, py, p.size, 0, Math.PI * 2);
-      hexCtx.fillStyle = 'hsla(' + p.hue + ',100%,75%,' + alpha.toFixed(2) + ')';
+      hexCtx.arc(pt.sx, pt.sy, sz, 0, 6.283);
       hexCtx.fill();
-    });
+    }
 
-    // 4. Inner vortex glow
-    const pulse  = 0.5 + 0.5 * Math.sin(t * 2.1);
-    const pulse2 = 0.5 + 0.5 * Math.sin(t * 1.3 + 1.2);
-    const inner = hexCtx.createRadialGradient(cx, cy, 0, cx, cy, 32);
-    inner.addColorStop(0,   'rgba(0,255,200,' + (0.35 + 0.25*pulse).toFixed(2) + ')');
-    inner.addColorStop(0.4, 'rgba(0,200,255,' + (0.15 + 0.1*pulse2).toFixed(2) + ')');
-    inner.addColorStop(1,   'rgba(0,0,0,0)');
-    hexCtx.fillStyle = inner;
-    hexCtx.beginPath();
-    hexCtx.arc(cx, cy, 32, 0, Math.PI * 2);
-    hexCtx.fill();
+    hexCtx.globalAlpha = 1;
 
-    // 5. Singularity core
-    const core = hexCtx.createRadialGradient(cx, cy, 0, cx, cy, 10);
-    core.addColorStop(0,   'rgba(220,255,255,' + (0.9 + 0.1*pulse).toFixed(2) + ')');
-    core.addColorStop(0.3, 'rgba(0,255,200,' + (0.6 + 0.2*pulse).toFixed(2) + ')');
-    core.addColorStop(1,   'rgba(0,0,0,0)');
-    hexCtx.fillStyle = core;
-    hexCtx.beginPath();
-    hexCtx.arc(cx, cy, 10, 0, Math.PI * 2);
-    hexCtx.fill();
+    // Subtle orbit rings
+    hexCtx.strokeStyle = 'rgba(0,255,200,0.05)';
+    hexCtx.lineWidth = 0.5;
+    for (let i = 0; i < 2; i++) {
+      hexCtx.beginPath();
+      hexCtx.arc(cx, cy, R + 8 + i * 8, 0, 6.283);
+      hexCtx.stroke();
+    }
 
-    // 6. Event horizon outer ring
-    hexCtx.beginPath();
-    hexCtx.arc(cx, cy, 74, 0, Math.PI * 2);
-    hexCtx.strokeStyle = 'rgba(0,255,200,' + (0.12 + 0.08*pulse).toFixed(2) + ')';
-    hexCtx.lineWidth = 1.5;
-    hexCtx.stroke();
+    // ── Task text below orb (live from hexTaskBus) ──
+    const busText = window.hexTaskBus?.current() || 'System idle';
+    if (busText !== lastTaskText) {
+      lastTaskText = busText;
+      currentTaskText = busText;
+      taskPhase = 'in'; taskFrame = 0;
+    }
+    taskFrame++;
+    let ta = 1;
+    if (taskPhase === 'in') {
+      ta = Math.min(1, taskFrame / FIN);
+      if (taskFrame >= FIN) { taskPhase = 'hold'; taskFrame = 0; }
+    } else if (taskPhase === 'hold') {
+      ta = 1;
+      if (taskFrame >= FHOLD) { taskPhase = 'out'; taskFrame = 0; }
+    } else {
+      ta = Math.max(0, 1 - taskFrame / FOUT);
+    }
 
-    // 7. Rotating scan sweep
-    const scanAngle = t * 1.4;
-    const scanX1 = cx + 74 * Math.cos(scanAngle);
-    const scanY1 = cy + 74 * Math.sin(scanAngle) * 0.4;
-    const scanGrd = hexCtx.createLinearGradient(cx, cy, scanX1, scanY1);
-    scanGrd.addColorStop(0, 'rgba(0,255,200,' + (0.2 + 0.15*pulse).toFixed(2) + ')');
-    scanGrd.addColorStop(1, 'rgba(0,255,200,0)');
-    hexCtx.beginPath();
-    hexCtx.moveTo(cx, cy);
-    hexCtx.lineTo(scanX1, scanY1);
-    hexCtx.strokeStyle = scanGrd;
-    hexCtx.lineWidth = 1.5;
-    hexCtx.stroke();
+    const ty = hexH - 12;
+
+    // Label
+    hexCtx.globalAlpha = 0.25;
+    hexCtx.font = '500 9px "Space Mono", monospace';
+    hexCtx.fillStyle = '#00ffc8';
+    hexCtx.textAlign = 'center';
+    hexCtx.fillText('◉  NEURAL PROCESSING', cx, ty - 18);
+
+    // Progress bar
+    const barW = Math.min(180, hexW * 0.25);
+    const barX = cx - barW / 2;
+    hexCtx.globalAlpha = 0.12;
+    hexCtx.fillStyle = '#00ffc8';
+    hexCtx.fillRect(barX, ty - 10, barW, 1.5);
+    const fill = (Math.sin(tick * 0.04) * 0.5 + 0.5);
+    hexCtx.globalAlpha = 0.5;
+    hexCtx.fillRect(barX, ty - 10, barW * fill, 1.5);
+
+    // Task text
+    hexCtx.globalAlpha = ta * 0.7;
+    hexCtx.font = '10px "Space Mono", monospace';
+    hexCtx.fillStyle = '#0ff';
+    hexCtx.fillText(currentTaskText, cx, ty);
+
+    hexCtx.globalAlpha = 1;
   }
   frame();
 }
@@ -1710,9 +1761,9 @@ async function refreshVoiceStatus() {
       return;
     }
     const stt = s.sttReady ? '✅ Whisper STT' : '❌ Whisper (not downloaded)';
-    const en  = s.ttsReady?.en ? '✅ TTS EN' : '❌ TTS EN';
-    const ru  = s.ttsReady?.ru ? '✅ TTS RU' : '❌ TTS RU';
-    const ka  = s.ttsReady?.ka ? '✅ TTS KA' : '❌ TTS KA';
+    const en = s.ttsReady?.en ? '✅ TTS EN' : '❌ TTS EN';
+    const ru = s.ttsReady?.ru ? '✅ TTS RU' : '❌ TTS RU';
+    const ka = s.ttsReady?.ka ? '✅ TTS KA' : '❌ TTS KA';
     el.innerHTML = sttLine + '<br>' + `${stt} &nbsp; ${en} &nbsp; ${ru} &nbsp; ${ka}`;
   } catch (e) {
     el.textContent = 'Status check failed: ' + (e?.message || String(e));
@@ -1788,10 +1839,10 @@ async function openSettings() {
   if (volEl) { volEl.value = volume; const vv = document.getElementById('volume-val'); if (vv) vv.textContent = volume; }
 
   // GCloud TTS fields
-  const gcKeyEl   = document.getElementById('cfg-gcloud-tts-key');
+  const gcKeyEl = document.getElementById('cfg-gcloud-tts-key');
   const gcVoiceEl = document.getElementById('cfg-gcloud-voice');
-  if (gcKeyEl)   gcKeyEl.value   = cfg.voice?.gcloudTtsKey || '';
-  if (gcVoiceEl) gcVoiceEl.value = cfg.voice?.gcloudVoice  || 'ka-GE-Standard-A';
+  if (gcKeyEl) gcKeyEl.value = cfg.voice?.gcloudTtsKey || '';
+  if (gcVoiceEl) gcVoiceEl.value = cfg.voice?.gcloudVoice || 'ka-GE-Standard-A';
 
   populateVoiceSelect(cfg.voice?.voiceName || '');
 
@@ -2078,17 +2129,17 @@ async function saveSettings() {
     voice: {
       ...config.voice,
       // modelsDir: always read from field so it persists even without clicking APPLY
-      modelsDir:      (document.getElementById('cfg-models-dir')?.value || '').trim() || config.voice?.modelsDir || '',
-      wakeWord:       document.getElementById('cfg-wakeword').value || 'hey hex',
-      voiceName:      document.getElementById('cfg-voice')?.value || '',
-      rate:           parseFloat(document.getElementById('cfg-rate').value) || 0.95,
-      pitch:          parseFloat(document.getElementById('cfg-pitch').value) || 0.85,
-      volume:         parseFloat(document.getElementById('cfg-volume')?.value || '0.9'),
-      ttsEngine:      document.querySelector('input[name="tts-engine"]:checked')?.value || 'os',
+      modelsDir: (document.getElementById('cfg-models-dir')?.value || '').trim() || config.voice?.modelsDir || '',
+      wakeWord: document.getElementById('cfg-wakeword').value || 'hey hex',
+      voiceName: document.getElementById('cfg-voice')?.value || '',
+      rate: parseFloat(document.getElementById('cfg-rate').value) || 0.95,
+      pitch: parseFloat(document.getElementById('cfg-pitch').value) || 0.85,
+      volume: parseFloat(document.getElementById('cfg-volume')?.value || '0.9'),
+      ttsEngine: document.querySelector('input[name="tts-engine"]:checked')?.value || 'os',
       localVoiceLang: document.getElementById('cfg-local-voice')?.value || 'en',
-      localSpeed:     parseFloat(document.getElementById('cfg-local-speed')?.value || '1.0'),
-      gcloudTtsKey:   (document.getElementById('cfg-gcloud-tts-key')?.value || '').trim() || config.voice?.gcloudTtsKey || '',
-      gcloudVoice:    document.getElementById('cfg-gcloud-voice')?.value || config.voice?.gcloudVoice || 'ka-GE-Standard-A',
+      localSpeed: parseFloat(document.getElementById('cfg-local-speed')?.value || '1.0'),
+      gcloudTtsKey: (document.getElementById('cfg-gcloud-tts-key')?.value || '').trim() || config.voice?.gcloudTtsKey || '',
+      gcloudVoice: document.getElementById('cfg-gcloud-voice')?.value || config.voice?.gcloudVoice || 'ka-GE-Standard-A',
     },
     monitoring: {
       ...config.monitoring,
@@ -2103,17 +2154,17 @@ async function saveSettings() {
   config = { ...config, ...newCfg, ...pcfg };
   await window.hexAPI.setConfig(config);
   window.hexAI.configure(config);
-  window.hexVoice.wakeWord        = config.voice.wakeWord;
+  window.hexVoice.wakeWord = config.voice.wakeWord;
   window.hexVoice.setVoiceByName(config.voice.voiceName);
-  window.hexVoice._ttsEngine      = config.voice.ttsEngine      || 'os';
+  window.hexVoice._ttsEngine = config.voice.ttsEngine || 'os';
   window.hexVoice._localVoiceLang = config.voice.localVoiceLang || 'en';
-  window.hexVoice._localSpeed     = config.voice.localSpeed     ?? 1.0;
-  window.hexVoice._gcloudKey      = config.voice.gcloudTtsKey   || '';
-  window.hexVoice._useGCloud      = !!(config.voice.gcloudTtsKey);
-  window.hexVoice._gcloudVoice    = config.voice.gcloudVoice    || 'ka-GE-Standard-A';
+  window.hexVoice._localSpeed = config.voice.localSpeed ?? 1.0;
+  window.hexVoice._gcloudKey = config.voice.gcloudTtsKey || '';
+  window.hexVoice._useGCloud = !!(config.voice.gcloudTtsKey);
+  window.hexVoice._gcloudVoice = config.voice.gcloudVoice || 'ka-GE-Standard-A';
   // Push modelsDir to engine and refresh engine status
   if (config.voice.modelsDir) {
-    window.hexAPI.voice.setModelsDir(config.voice.modelsDir).catch(() => {});
+    window.hexAPI.voice.setModelsDir(config.voice.modelsDir).catch(() => { });
   }
   // Re-check local engines so _localSTT/_localTTS are current after any path change
   window.hexVoice._checkLocalEngines();
@@ -2396,25 +2447,25 @@ function persistPersonalities() {
 
 function refreshMemoryTab() {
   const stats = window.hexMemory.getStats();
-  const $ = function(id){ return document.getElementById(id); };
-  if ($('mem-stat-facts'))    $('mem-stat-facts').textContent    = stats.facts;
-  if ($('mem-stat-turns'))    $('mem-stat-turns').textContent    = stats.turns;
+  const $ = function (id) { return document.getElementById(id); };
+  if ($('mem-stat-facts')) $('mem-stat-facts').textContent = stats.facts;
+  if ($('mem-stat-turns')) $('mem-stat-turns').textContent = stats.turns;
   if ($('mem-stat-sessions')) $('mem-stat-sessions').textContent = stats.sessions || 0;
-  if ($('mem-stat-oldest'))   $('mem-stat-oldest').textContent   = stats.oldestTurn || 'None';
+  if ($('mem-stat-oldest')) $('mem-stat-oldest').textContent = stats.oldestTurn || 'None';
 
   // Tier bar
   const t = stats.tierCounts || {};
-  if ($('mem-tier-0')) { $('mem-tier-0').textContent = t.protected||0; $('mem-tier-1').textContent = t.high||0; $('mem-tier-2').textContent = t.active||0; $('mem-tier-3').textContent = t.weak||0; }
+  if ($('mem-tier-0')) { $('mem-tier-0').textContent = t.protected || 0; $('mem-tier-1').textContent = t.high || 0; $('mem-tier-2').textContent = t.active || 0; $('mem-tier-3').textContent = t.weak || 0; }
 
   // Working memory
   const wm = stats.workingMemory;
   const wmEl = $('mem-working');
   if (wmEl && wm) {
     const lines = [];
-    if (wm.currentTask)                   lines.push('Task:  ' + wm.currentTask);
+    if (wm.currentTask) lines.push('Task:  ' + wm.currentTask);
     if (wm.mood && wm.mood !== 'neutral') lines.push('Mood:  ' + wm.mood);
     if (wm.currentEntities && wm.currentEntities.length) lines.push('Focus: ' + wm.currentEntities.join(', '));
-    if (wm.hypotheses && wm.hypotheses.length)           lines.push('Hyp:   ' + wm.hypotheses[0].belief);
+    if (wm.hypotheses && wm.hypotheses.length) lines.push('Hyp:   ' + wm.hypotheses[0].belief);
     wmEl.textContent = lines.length ? lines.join('\n') : 'No active session context.';
   }
 
@@ -2429,9 +2480,9 @@ function filterMemoryFacts(query) {
   const TIER_COLORS = ['#00ffc8', '#0088ff', '#ff6b35', 'rgba(255,255,255,0.25)'];
 
   const facts = window.hexMemory.facts || [];
-  const filtered = facts.filter(function(f) {
+  const filtered = facts.filter(function (f) {
     if (typeFilter && f.type !== typeFilter) return false;
-    if (q && !((f.content||'').toLowerCase().includes(q) || (f.type||'').includes(q))) return false;
+    if (q && !((f.content || '').toLowerCase().includes(q) || (f.type || '').includes(q))) return false;
     return true;
   });
 
@@ -2443,7 +2494,7 @@ function filterMemoryFacts(query) {
     return;
   }
   listEl.innerHTML = '';
-  filtered.forEach(function(f) {
+  filtered.forEach(function (f) {
     const tier = typeof f.tier === 'number' ? f.tier : 3;
     const conf = Math.round((f.confidence || 0) * 100);
     const ageDays = f.created_at ? Math.floor((Date.now() - f.created_at) / 86400000) : 0;
@@ -2455,7 +2506,7 @@ function filterMemoryFacts(query) {
     row.style.paddingLeft = '8px';
     row.innerHTML =
       '<span class="fact-cat">' + (f.type || f.category || 'general') + '</span>' +
-      '<span class="fact-text">' + escapeHtml((f.content||'').substring(0, 140)) + '</span>' +
+      '<span class="fact-text">' + escapeHtml((f.content || '').substring(0, 140)) + '</span>' +
       '<span style="font-size:9px;opacity:0.4;white-space:nowrap;margin:0 4px;">' + conf + '%' + implicitMark + ' ' + ageStr + '</span>' +
       '<button class="fact-del" onclick="deleteMemoryFact(' + f.id + ')">✕</button>';
     listEl.appendChild(row);
@@ -2464,7 +2515,7 @@ function filterMemoryFacts(query) {
 
 function deleteMemoryFact(id) {
   window.hexMemory.removeFact(id);
-  filterMemoryFacts((document.getElementById('mem-search')||{}).value || '');
+  filterMemoryFacts((document.getElementById('mem-search') || {}).value || '');
 }
 
 function deleteFact(id) { deleteMemoryFact(id); }  // legacy alias
@@ -2474,13 +2525,13 @@ async function compressSession() {
   try {
     const ep = await window.hexMemory.compressCurrentSession();
     if (ep) {
-      showToast('◆ MEMORY', 'Session compressed. Topics: ' + (ep.topics||[]).join(', '), '', 5000);
-      addLog('HEX', 'Session compressed: ' + (ep.topics||[]).join(', '));
+      showToast('◆ MEMORY', 'Session compressed. Topics: ' + (ep.topics || []).join(', '), '', 5000);
+      addLog('HEX', 'Session compressed: ' + (ep.topics || []).join(', '));
       refreshMemoryTab();
     } else {
       showToast('◆ MEMORY', 'Need more conversation or AI configured to compress.', 'warn', 4000);
     }
-  } catch(e) {
+  } catch (e) {
     showToast('◆ MEMORY', 'Compress error: ' + e.message, 'alert', 4000);
   }
 }
@@ -2597,7 +2648,7 @@ async function checkVoiceStatus() {
 // ═══════════════════════════════════════════════════════════════
 async function tryDirectCommand(text) {
   const raw = text.trim();
-  const t   = raw.toLowerCase();
+  const t = raw.toLowerCase();
 
   const do_ = async (type, args, msg) => {
     if (msg) addHexMessage(msg);
@@ -2607,25 +2658,25 @@ async function tryDirectCommand(text) {
 
   // ── Websites ──────────────────────────────────────────────────────────────
   const SITES = {
-    'facebook':'https://facebook.com',   'fb':'https://facebook.com',
-    'instagram':'https://instagram.com', 'insta':'https://instagram.com',
-    'youtube':'https://youtube.com',     'yt':'https://youtube.com',
-    'google':'https://google.com',
-    'twitter':'https://twitter.com',     'x':'https://x.com',
-    'reddit':'https://reddit.com',
-    'gmail':'https://mail.google.com',
-    'github':'https://github.com',
-    'netflix':'https://netflix.com',
-    'twitch':'https://twitch.tv',
-    'amazon':'https://amazon.com',
-    'wikipedia':'https://wikipedia.org',
-    'linkedin':'https://linkedin.com',
-    'tiktok':'https://tiktok.com',
-    'whatsapp':'https://web.whatsapp.com',
-    'chatgpt':'https://chat.openai.com',
-    'claude':'https://claude.ai',
-    'perplexity':'https://perplexity.ai',
-    'gemini':'https://gemini.google.com',
+    'facebook': 'https://facebook.com', 'fb': 'https://facebook.com',
+    'instagram': 'https://instagram.com', 'insta': 'https://instagram.com',
+    'youtube': 'https://youtube.com', 'yt': 'https://youtube.com',
+    'google': 'https://google.com',
+    'twitter': 'https://twitter.com', 'x': 'https://x.com',
+    'reddit': 'https://reddit.com',
+    'gmail': 'https://mail.google.com',
+    'github': 'https://github.com',
+    'netflix': 'https://netflix.com',
+    'twitch': 'https://twitch.tv',
+    'amazon': 'https://amazon.com',
+    'wikipedia': 'https://wikipedia.org',
+    'linkedin': 'https://linkedin.com',
+    'tiktok': 'https://tiktok.com',
+    'whatsapp': 'https://web.whatsapp.com',
+    'chatgpt': 'https://chat.openai.com',
+    'claude': 'https://claude.ai',
+    'perplexity': 'https://perplexity.ai',
+    'gemini': 'https://gemini.google.com',
   };
 
   const openM = t.match(/^(?:open|go\s+to|show\s+me|visit|browse\s+to)\s+(.+)$/);
@@ -2633,7 +2684,7 @@ async function tryDirectCommand(text) {
     const target = openM[1].trim();
     if (SITES[target]) return do_('open_url', [SITES[target]], 'Opening ' + target + '...');
     if (/^[a-z0-9-]+\.(com|org|net|io|dev|app|co|tv|gg|ai|me)/i.test(target) ||
-        /^https?:\/\//i.test(target) || /^www\./i.test(target)) {
+      /^https?:\/\//i.test(target) || /^www\./i.test(target)) {
       const url = /^https?:\/\//i.test(target) ? target : 'https://' + target.replace(/^www\./, '');
       return do_('open_url', [url], 'Opening ' + url + '...');
     }
@@ -2647,15 +2698,15 @@ async function tryDirectCommand(text) {
   const gameM = t.match(/^(?:launch|play|start|run)\s+(.+)$/);
   if (gameM) {
     const target = gameM[1].trim();
-    const GAME_NAMES = ['minecraft','roblox','gta','cs2','csgo','pubg','fortnite','valorant',
-      'overwatch','elden ring','hogwarts','cyberpunk','witcher','fallout','skyrim','sims',
-      'dota','tf2','halo','destiny','diablo','rocket league','among us','terraria','stardew',
-      'celeste','hollow knight','portal','half-life','bioshock','dark souls','sekiro',
-      'god of war','red dead','total war','civilization','cities skylines'];
-    const GAME_WORDS = ['ring','souls','craft','wars','legend','duty','strike','fort','apex',
-      'dota','rust','ark','war','saga','quest','blade','hero','dragon','knight','empire'];
-    const looksLikeGame = GAME_NAMES.some(function(g){ return target.includes(g); }) ||
-      GAME_WORDS.some(function(w){ return target.includes(w); });
+    const GAME_NAMES = ['minecraft', 'roblox', 'gta', 'cs2', 'csgo', 'pubg', 'fortnite', 'valorant',
+      'overwatch', 'elden ring', 'hogwarts', 'cyberpunk', 'witcher', 'fallout', 'skyrim', 'sims',
+      'dota', 'tf2', 'halo', 'destiny', 'diablo', 'rocket league', 'among us', 'terraria', 'stardew',
+      'celeste', 'hollow knight', 'portal', 'half-life', 'bioshock', 'dark souls', 'sekiro',
+      'god of war', 'red dead', 'total war', 'civilization', 'cities skylines'];
+    const GAME_WORDS = ['ring', 'souls', 'craft', 'wars', 'legend', 'duty', 'strike', 'fort', 'apex',
+      'dota', 'rust', 'ark', 'war', 'saga', 'quest', 'blade', 'hero', 'dragon', 'knight', 'empire'];
+    const looksLikeGame = GAME_NAMES.some(function (g) { return target.includes(g); }) ||
+      GAME_WORDS.some(function (w) { return target.includes(w); });
     if (looksLikeGame) {
       return do_('launch_game', [target], 'Searching for ' + target + ' in your game libraries...');
     }
@@ -2663,7 +2714,7 @@ async function tryDirectCommand(text) {
 
   // ── Screenshots ───────────────────────────────────────────────────────────
   if (/^(?:take\s+(?:a\s+)?)?screenshot$/.test(t) || t === 'screen shot' ||
-      /^capture\s+(?:the\s+)?(?:screen|desktop)$/.test(t)) {
+    /^capture\s+(?:the\s+)?(?:screen|desktop)$/.test(t)) {
     return do_('screenshot', [], 'Taking a screenshot...');
   }
 
@@ -2673,7 +2724,7 @@ async function tryDirectCommand(text) {
   }
 
   // ── Folders ───────────────────────────────────────────────────────────────
-  const FOLDERS = { desktop:1, documents:1, downloads:1, pictures:1, music:1, videos:1 };
+  const FOLDERS = { desktop: 1, documents: 1, downloads: 1, pictures: 1, music: 1, videos: 1 };
   const folderM = t.match(/^(?:open|show|go\s+to|show\s+me)\s+(?:my\s+)?(\w+)(?:\s+folder)?$/);
   if (folderM && FOLDERS[folderM[1]]) {
     return do_('open_folder', [folderM[1]], 'Opening ' + folderM[1] + ' folder...');
@@ -2682,7 +2733,7 @@ async function tryDirectCommand(text) {
   // ── Volume ────────────────────────────────────────────────────────────────
   const volM = t.match(/^(?:set\s+(?:the\s+)?volume\s+(?:to\s+)?|volume\s+)(\d+)%?$/);
   if (volM) return do_('set_volume', [volM[1]], 'Setting volume to ' + volM[1] + '%...');
-  if (t === 'mute')   return do_('mute',   [], 'Muting audio...');
+  if (t === 'mute') return do_('mute', [], 'Muting audio...');
   if (t === 'unmute') return do_('unmute', [], 'Unmuting audio...');
 
   // ── System info ───────────────────────────────────────────────────────────
@@ -2706,10 +2757,10 @@ async function tryDirectCommand(text) {
   if (appM) {
     const name = appM[1].trim();
     const words = name.split(/\s+/);
-    const BAD = new Set(['a','an','the','my','some','file','folder','browser',
-      'desktop','documents','downloads','pictures','music','videos','settings']);
+    const BAD = new Set(['a', 'an', 'the', 'my', 'some', 'file', 'folder', 'browser',
+      'desktop', 'documents', 'downloads', 'pictures', 'music', 'videos', 'settings']);
     if (!BAD.has(name) && words.length <= 3 && !/[?!]/.test(name) &&
-        !/\b(can|could|would|should|please|and|or)\b/.test(name)) {
+      !/\b(can|could|would|should|please|and|or)\b/.test(name)) {
       if (SITES[name]) return do_('open_url', [SITES[name]], 'Opening ' + name + '...');
       const cleanName = name.replace(/[.!?,;]+$/, '').trim();
       return do_('open_app', [cleanName], 'Opening ' + cleanName + '...');

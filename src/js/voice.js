@@ -8,50 +8,50 @@
 
 class HexVoice {
   constructor() {
-    this.isListening     = false;
-    this.continuous      = false;
-    this.langCode        = 'en-US';
-    this._sttLang        = 'en';
-    this.wakeWord        = 'hey hex';
-    this.wakeWordMode    = false;
+    this.isListening = false;
+    this.continuous = false;
+    this.langCode = 'en-US';
+    this._sttLang = 'en';
+    this.wakeWord = 'hey hex';
+    this.wakeWordMode = false;
 
-    this.onTranscript    = null;
-    this.onStateChange   = null;
-    this.onWakeWord      = null;
-    this.onVoicesLoaded  = null;
-    this._onError        = null;
+    this.onTranscript = null;
+    this.onStateChange = null;
+    this.onWakeWord = null;
+    this.onVoicesLoaded = null;
+    this._onError = null;
 
     // TTS
-    this.synthesis       = window.speechSynthesis;
-    this._selectedVoice  = null;
-    this._voiceName      = '';
-    this._voices         = [];
-    this._gcloudKey      = '';
-    this._gcloudVoice    = 'ka-GE-Standard-A';
-    this._useGCloud      = false;
-    this._ttsEngine      = 'os';
+    this.synthesis = window.speechSynthesis;
+    this._selectedVoice = null;
+    this._voiceName = '';
+    this._voices = [];
+    this._gcloudKey = '';
+    this._gcloudVoice = 'ka-GE-Standard-A';
+    this._useGCloud = false;
+    this._ttsEngine = 'os';
     this._localVoiceLang = 'en';
-    this._localSpeed     = 1.0;
-    this._ttsAudioCtx    = null;
-    this._currentSource  = null;
+    this._localSpeed = 1.0;
+    this._ttsAudioCtx = null;
+    this._currentSource = null;
 
     // STT — AudioWorklet pipeline
-    this._sttAudioCtx    = null;
-    this._micStream      = null;
-    this._sourceNode     = null;
-    this._workletNode    = null;
+    this._sttAudioCtx = null;
+    this._micStream = null;
+    this._sourceNode = null;
+    this._workletNode = null;
 
     // VAD state — prevents background noise from triggering transcription
-    this._vadSpeechBuf   = [];       // accumulates frames that contain speech
-    this._vadSilence     = 0;        // consecutive silent frames after speech
-    this._vadActive      = false;    // currently collecting a speech segment
+    this._vadSpeechBuf = [];       // accumulates frames that contain speech
+    this._vadSilence = 0;        // consecutive silent frames after speech
+    this._vadActive = false;    // currently collecting a speech segment
     this._lastTranscribe = 0;        // timestamp of last transcription call
 
     // Local engine
-    this._localSTT       = false;
-    this._localTTS       = {};
+    this._localSTT = false;
+    this._localTTS = {};
     this._ollamaProvider = false;
-    this._ollamaUrl      = 'http://localhost:11434';
+    this._ollamaUrl = 'http://localhost:11434';
 
     if (this.synthesis) {
       this.synthesis.onvoiceschanged = () => this._loadVoices();
@@ -62,18 +62,18 @@ class HexVoice {
 
   // ── Init ──────────────────────────────────────────────────────
   async init(config = {}) {
-    this.wakeWord        = (config.wakeWord || 'hey hex').toLowerCase();
-    this.wakeWordMode    = config.wakeWordMode === true;
-    this._voiceName      = config.voiceName      || '';
-    this._gcloudKey      = config.gcloudTtsKey   || '';
-    this._useGCloud      = !!this._gcloudKey;
-    this._gcloudVoice    = config.gcloudVoice    || 'ka-GE-Standard-A';
-    this._ttsEngine      = config.ttsEngine      || 'os';
+    this.wakeWord = (config.wakeWord || 'hey hex').toLowerCase();
+    this.wakeWordMode = config.wakeWordMode === true;
+    this._voiceName = config.voiceName || '';
+    this._gcloudKey = config.gcloudTtsKey || '';
+    this._useGCloud = !!this._gcloudKey;
+    this._gcloudVoice = config.gcloudVoice || 'ka-GE-Standard-A';
+    this._ttsEngine = config.ttsEngine || 'os';
     this._localVoiceLang = config.localVoiceLang || 'en';
-    this._localSpeed     = config.localSpeed     ?? 1.0;
+    this._localSpeed = config.localSpeed ?? 1.0;
     if (config.llm?.provider === 'ollama') {
       this._ollamaProvider = true;
-      this._ollamaUrl      = config.llm?.baseUrl || 'http://localhost:11434';
+      this._ollamaUrl = config.llm?.baseUrl || 'http://localhost:11434';
     }
     this._applyVoiceName(this._voiceName);
     // Await engine check so _localSTT/_localTTS are populated before anything calls speak()
@@ -85,10 +85,10 @@ class HexVoice {
     try {
       const s = await window.hexAPI.voice.status();
       if (s.available) {
-        this._localSTT = s.sttReady  || false;
-        this._localTTS = s.ttsReady  || {};
+        this._localSTT = s.sttReady || false;
+        this._localTTS = s.ttsReady || {};
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   // ── TTS: Google Cloud ─────────────────────────────────────────
@@ -97,9 +97,9 @@ class HexVoice {
   getGeorgianGCloudVoices() {
     return [
       { name: 'ka-GE-Standard-A', gender: 'Female', type: 'Standard' },
-      { name: 'ka-GE-Standard-B', gender: 'Male',   type: 'Standard' },
-      { name: 'ka-GE-Wavenet-A',  gender: 'Female', type: 'WaveNet' },
-      { name: 'ka-GE-Wavenet-B',  gender: 'Male',   type: 'WaveNet' },
+      { name: 'ka-GE-Standard-B', gender: 'Male', type: 'Standard' },
+      { name: 'ka-GE-Wavenet-A', gender: 'Female', type: 'WaveNet' },
+      { name: 'ka-GE-Wavenet-B', gender: 'Male', type: 'WaveNet' },
     ];
   }
 
@@ -108,7 +108,8 @@ class HexVoice {
     const voiceName = opts.gcVoice || this._gcloudVoice || 'ka-GE-Standard-A';
     const res = await fetch(
       'https://texttospeech.googleapis.com/v1/text:synthesize?key=' + this._gcloudKey,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           input: { text },
           voice: { languageCode: voiceName.substring(0, 5), name: voiceName },
@@ -117,7 +118,7 @@ class HexVoice {
       }
     );
     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error('GCloud TTS ' + res.status + ': ' + (e.error?.message || res.statusText)); }
-    const raw   = atob((await res.json()).audioContent);
+    const raw = atob((await res.json()).audioContent);
     const bytes = new Uint8Array(raw.length);
     for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
     await this._playArrayBuffer(bytes.buffer);
@@ -125,7 +126,8 @@ class HexVoice {
 
   // ── TTS: Local Piper ──────────────────────────────────────────
   async _speakLocal(text, lang) {
-    const result  = await window.hexAPI.voice.synthesize(text, lang, this._localSpeed ?? 1.0);
+    window.hexTaskBus?.push('Synthesizing speech via Piper TTS...');
+    const result = await window.hexAPI.voice.synthesize(text, lang, this._localSpeed ?? 1.0);
     const samples = result.samples;
     const float32 = new Float32Array(
       samples.buffer instanceof ArrayBuffer ? samples.buffer : new Uint8Array(Object.values(samples)).buffer
@@ -133,7 +135,7 @@ class HexVoice {
     const ctx = this._getTTSAudioCtx();
     const buf = ctx.createBuffer(1, float32.length, result.sampleRate);
     buf.getChannelData(0).set(float32);
-    if (this._currentSource) { try { this._currentSource.stop(); } catch (_) {} }
+    if (this._currentSource) { try { this._currentSource.stop(); } catch (_) { } }
     const src = ctx.createBufferSource();
     src.buffer = buf; src.connect(ctx.destination);
     this._currentSource = src; src.start(0);
@@ -142,7 +144,7 @@ class HexVoice {
   async _playArrayBuffer(arrayBuffer) {
     const ctx = this._getTTSAudioCtx();
     const buf = await ctx.decodeAudioData(arrayBuffer);
-    if (this._currentSource) { try { this._currentSource.stop(); } catch (_) {} }
+    if (this._currentSource) { try { this._currentSource.stop(); } catch (_) { } }
     const src = ctx.createBufferSource();
     src.buffer = buf; src.connect(ctx.destination);
     this._currentSource = src; src.start(0);
@@ -185,7 +187,7 @@ class HexVoice {
 
   stopSpeaking() {
     this.synthesis?.cancel();
-    if (this._currentSource) { try { this._currentSource.stop(); } catch (_) {} this._currentSource = null; }
+    if (this._currentSource) { try { this._currentSource.stop(); } catch (_) { } this._currentSource = null; }
   }
 
   // ── STT: AudioWorklet → raw 16kHz PCM → Whisper ───────────────
@@ -196,9 +198,10 @@ class HexVoice {
 
   async startListening(continuous = true) {
     if (this.isListening) return;
-    this.continuous  = continuous;
+    this.continuous = continuous;
     this.isListening = true;
     this.onStateChange?.(true);
+    window.hexTaskBus?.push('Activating microphone...');
 
     await this._checkLocalEngines();
 
@@ -264,11 +267,11 @@ class HexVoice {
   async _transcribePCM(pcm) {
     // ── VAD: RMS-based speech detection ──────────────────────────
     // Threshold tuned for typical mic levels — ignores keyboard, fans, AC
-    const SPEECH_RMS    = 0.04;    // raised — ignores more background noise
+    const SPEECH_RMS = 0.04;    // raised — ignores more background noise
     const MIN_SPEECH_MS = 500;     // ignore anything shorter (clicks, pops)
     const SILENCE_GRACE = 5;       // silent frames allowed before cutting segment
-    const COOLDOWN_MS   = 1500;    // don't send two transcriptions too close together
-    const SR            = 16000;
+    const COOLDOWN_MS = 1500;    // don't send two transcriptions too close together
+    const SR = 16000;
 
     const rms = this._rms(pcm);
     const isSpeech = rms >= SPEECH_RMS;
@@ -285,12 +288,12 @@ class HexVoice {
 
       // End of speech segment — check it's long enough to be real speech
       const totalSamples = this._vadSpeechBuf.reduce((s, c) => s + c.length, 0);
-      const durationMs   = (totalSamples / SR) * 1000;
+      const durationMs = (totalSamples / SR) * 1000;
 
       const seg = this._vadSpeechBuf;
       this._vadSpeechBuf = [];
-      this._vadActive    = false;
-      this._vadSilence   = 0;
+      this._vadActive = false;
+      this._vadSilence = 0;
 
       if (durationMs < MIN_SPEECH_MS) return; // too short — noise burst
 
@@ -384,8 +387,8 @@ class HexVoice {
     const variants = new Set();
     // Pre-built variants for "hey hex" specifically
     const builtIn = {
-      'hey hex':  ['hey hicks', 'hey hacks', 'hey hecks', 'hey hex.', 'hey, hex',
-                   'hay hex',   'hey next',  'hey x',     'a hex',    'hey heck'],
+      'hey hex': ['hey hicks', 'hey hacks', 'hey hecks', 'hey hex.', 'hey, hex',
+        'hay hex', 'hey next', 'hey x', 'a hex', 'hey heck'],
       'hey hex.': ['hey hex'],
     };
     if (builtIn[wakeWord]) {
@@ -408,19 +411,19 @@ class HexVoice {
 
   // ── PCM → WAV encoder (pure JS, no external libs) ────────────
   _pcmToWav(float32, sampleRate) {
-    const numCh      = 1;
+    const numCh = 1;
     const bitsPerSmp = 16;
     const bytesPerSmp = bitsPerSmp / 8;
-    const dataLen    = float32.length * bytesPerSmp;
-    const buf        = new ArrayBuffer(44 + dataLen);
-    const view       = new DataView(buf);
-    const write      = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
+    const dataLen = float32.length * bytesPerSmp;
+    const buf = new ArrayBuffer(44 + dataLen);
+    const view = new DataView(buf);
+    const write = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
     write(0, 'RIFF');
-    view.setUint32(4,  36 + dataLen, true);
+    view.setUint32(4, 36 + dataLen, true);
     write(8, 'WAVE');
     write(12, 'fmt ');
     view.setUint32(16, 16, true);
-    view.setUint16(20, 1,  true);   // PCM
+    view.setUint16(20, 1, true);   // PCM
     view.setUint16(22, numCh, true);
     view.setUint32(24, sampleRate, true);
     view.setUint32(28, sampleRate * numCh * bytesPerSmp, true);
@@ -455,9 +458,9 @@ class HexVoice {
       if (!this.isListening) return;
       if (chunks.length) {
         try {
-          const blob    = new Blob(chunks, { type: 'audio/webm' });
+          const blob = new Blob(chunks, { type: 'audio/webm' });
           // Send raw blob to main process for decoding — avoids renderer crash
-          const arrBuf  = await blob.arrayBuffer();
+          const arrBuf = await blob.arrayBuffer();
           const r = await window.hexAPI.voice.transcribeRaw(new Uint8Array(arrBuf), this._sttLang || 'en');
           const text = (r?.text || '').trim();
           if (text) this.onTranscript?.(text, true);
@@ -471,14 +474,14 @@ class HexVoice {
   }
 
   stopListening() {
-    this.continuous  = false;
+    this.continuous = false;
     this.isListening = false;
 
     // Tear down AudioWorklet pipeline
-    if (this._workletNode) { try { this._workletNode.disconnect(); } catch (_) {} this._workletNode = null; }
-    if (this._sourceNode)  { try { this._sourceNode.disconnect();  } catch (_) {} this._sourceNode  = null; }
+    if (this._workletNode) { try { this._workletNode.disconnect(); } catch (_) { } this._workletNode = null; }
+    if (this._sourceNode) { try { this._sourceNode.disconnect(); } catch (_) { } this._sourceNode = null; }
     if (this._sttAudioCtx) {
-      try { this._sttAudioCtx.close(); } catch (_) {}
+      try { this._sttAudioCtx.close(); } catch (_) { }
       this._sttAudioCtx = null;
     }
     if (this._micStream) {
@@ -537,10 +540,10 @@ class HexVoice {
     finally { this._gcloudKey = sk; this._gcloudVoice = sv; }
   }
 
-  get supported()        { return true; }
+  get supported() { return true; }
   get currentVoiceName() { return this._selectedVoice?.name || ''; }
-  get usingGCloud()      { return this._useGCloud && !!this._gcloudKey; }
-  get usingLocal()       { return this._localSTT; }
+  get usingGCloud() { return this._useGCloud && !!this._gcloudKey; }
+  get usingLocal() { return this._localSTT; }
 }
 
 window.hexVoice = new HexVoice();

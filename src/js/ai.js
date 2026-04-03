@@ -228,6 +228,7 @@ class HexAI {
   async chat(userMsg, systemState, lang = 'ka') {
     // Use persistent memory history if available
     if (window.hexMemory) {
+      window.hexTaskBus?.push('Saving user message to memory...');
       window.hexMemory.addTurn('user', userMsg);
       // Update working memory mood immediately (before LLM call)
       window.hexMemory.working.mood = window.hexMemory._detectMood(userMsg);
@@ -237,11 +238,13 @@ class HexAI {
       this._trim();
     }
 
+    window.hexTaskBus?.push('Building system prompt...');
     const sysPrompt = this._systemPrompt(systemState, lang);
     let text;
 
     try {
       const p = this.config && this.config.llm ? this.config.llm.provider : 'none';
+      window.hexTaskBus?.push(`Querying ${p} model...`);
       switch (p) {
         case 'ollama': text = await this._ollama(sysPrompt); break;
         case 'openai': text = await this._openai(sysPrompt); break;
@@ -264,6 +267,7 @@ class HexAI {
 
     // Save to persistent memory
     if (window.hexMemory) {
+      window.hexTaskBus?.push('Extracting facts from response...');
       window.hexMemory.addTurn('assistant', text || '');
       window.hexMemory.extractFromExchange(userMsg || '', text || '');
       this.history = window.hexMemory.getRecentHistory(20);
@@ -491,7 +495,7 @@ class HexAI {
         rawArgs = rest.split(':');
       }
       // Clean each arg: trim whitespace AND trailing punctuation that bleeds from AI sentences
-      const args = rawArgs.map(function(a){ return a.trim().replace(/[.!?,;]+$/, ''); });
+      const args = rawArgs.map(function (a) { return a.trim().replace(/[.!?,;]+$/, ''); });
       actions.push({ type, args });
     }
     return actions;
