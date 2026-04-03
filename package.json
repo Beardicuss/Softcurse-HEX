@@ -2,11 +2,13 @@
   "name": "softcurse-hex",
   "version": "1.0.0",
   "description": "Softcurse H.E.X. — Intelligent Cyberpunk Desktop Assistant",
+  "author": "Softcurse Lab",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
-    "rebuild": "node scripts/rebuild.js"
+    "rebuild": "node scripts/rebuild.js",
+    "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
     "node-schedule": "^2.1.1",
@@ -14,7 +16,7 @@
     "systeminformation": "^5.21.0"
   },
   "devDependencies": {
-    "@electron/rebuild": "^3.6.0",
+    "@electron/rebuild": "^4.0.3",
     "electron": "^41.1.1",
     "electron-builder": "^26.8.1"
   },

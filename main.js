@@ -260,7 +260,6 @@ ipcMain.handle('config:set', (_, newCfg) => {
   return config;
 });
 
-
 // Take a screenshot and save to Desktop
 ipcMain.handle('butler:screenshot', async () => {
   try {
@@ -754,7 +753,6 @@ ipcMain.handle('butler:set-volume', async (_, { level }) => {
   return { success: true, level: v };
 });
 
-
 ipcMain.handle('butler:mute', async (_, { mute }) => {
   const doMute = mute !== false;
   if (process.platform === 'win32') {
@@ -877,29 +875,6 @@ ipcMain.handle('butler:set-env', async (event, { variable, value }) => {
 
 // ── MAINTENANCE ───────────────────────────────────────────────────────────────
 
-ipcMain.handle('OLD-butler:clean-temp', async (event) => {
-  const confirmed = await butlerConfirm(mainWindow, 'Clean temporary files in %TEMP% folder?\nFiles in use will be skipped.');
-  if (!confirmed) return { success: false, error: 'Cancelled' };
-  const tmpDir = os.tmpdir();
-  let freed = 0, count = 0, skipped = 0;
-  try {
-    const entries = fs.readdirSync(tmpDir);
-    for (const entry of entries) {
-      const full = path.join(tmpDir, entry);
-      try {
-        const stat = fs.statSync(full);
-        freed += stat.size;
-        if (stat.isDirectory()) fs.rmdirSync(full, { recursive: true });
-        else fs.unlinkSync(full);
-        count++;
-      } catch (_) { skipped++; }
-    }
-    const msg = `Cleaned ${count} items (${formatBytes(freed)} freed), ${skipped} skipped`;
-    sendLog('BUTLER', msg);
-    return { success: true, freed: formatBytes(freed), count, skipped };
-  } catch (e) { return { success: false, error: e.message }; }
-});
-
 // ── WALLPAPER ─────────────────────────────────────────────────────────────────
 
 ipcMain.handle('butler:set-wallpaper', async (_, { imagePath }) => {
@@ -963,325 +938,28 @@ function formatUptime(secs) {
 //  PC BUTLER — MISSING ACTIONS (butler.md v2)
 // ════════════════════════════════════════════════════════════════════════════════
 // ── FILE: ZIP / UNZIP ─────────────────────────────────────────────────────────
-ipcMain.handle('OLD-butler:zip', async (_, { source, output }) => {
-  const src = (source || '').trim();
-  const out = (output || '').trim() || src + '.zip';
-  if (!fs.existsSync(src)) return { success: false, error: 'Source not found: ' + src };
-  // Use PowerShell Compress-Archive (built-in Win10+)
-  const ps = `Compress-Archive -Path '${src.replace(/'/g, "''")}' -DestinationPath '${out.replace(/'/g, "''")}' -Force`;
-  const tmpFile = path.join(os.tmpdir(), 'hex-zip-' + Date.now() + '.ps1');
-  fs.writeFileSync(tmpFile, ps, 'utf8');
-  const r = await butlerExec(`powershell -NoProfile -ExecutionPolicy Bypass -File "${tmpFile}"`, { timeout: 120000 });
-  try { fs.unlinkSync(tmpFile); } catch (_) { }
-  sendLog('BUTLER', r.ok ? 'Zipped: ' + out : 'Zip error: ' + r.err);
-  return { success: r.ok, output: out, error: r.err };
-});
-
-ipcMain.handle('OLD-butler:unzip', async (_, { zipPath, dest }) => {
-  const zip = (zipPath || '').trim();
-  const dst = (dest || path.dirname(zip)).trim();
-  if (!fs.existsSync(zip)) return { success: false, error: 'Archive not found: ' + zip };
-  fs.mkdirSync(dst, { recursive: true });
-  const ps = `Expand-Archive -Path '${zip.replace(/'/g, "''")}' -DestinationPath '${dst.replace(/'/g, "''")}' -Force`;
-  const tmpFile = path.join(os.tmpdir(), 'hex-unzip-' + Date.now() + '.ps1');
-  fs.writeFileSync(tmpFile, ps, 'utf8');
-  const r = await butlerExec(`powershell -NoProfile -ExecutionPolicy Bypass -File "${tmpFile}"`, { timeout: 120000 });
-  try { fs.unlinkSync(tmpFile); } catch (_) { }
-  sendLog('BUTLER', r.ok ? 'Unzipped to: ' + dst : 'Unzip error: ' + r.err);
-  return { success: r.ok, dest: dst, error: r.err };
-});
 
 // ── PROCESS: RUN WITH ARGS / RUN AS ADMIN ────────────────────────────────────
-ipcMain.handle('OLD-butler:run', async (_, { cmd, args }) => {
-  const c = (cmd || '').trim();
-  const a = (args || '').toString().trim();
-  const full = a ? `${c} ${a}` : c;
-  sendLog('BUTLER', 'Running: ' + full);
-  const tmpFile = path.join(os.tmpdir(), 'hex-run-' + Date.now() + '.bat');
-  fs.writeFileSync(tmpFile, '@echo off\r\n' + full, 'utf8');
-  const r = await butlerExec(`cmd /c "${tmpFile}"`, { timeout: 30000 });
-  try { fs.unlinkSync(tmpFile); } catch (_) { }
-  return { success: r.ok, output: r.out, error: r.err };
-});
-
-ipcMain.handle('OLD-butler:run-as-admin', async (event, { cmd }) => {
-  const confirmed = await butlerConfirm(mainWindow, `Run as Administrator?\n\n${cmd}`);
-  if (!confirmed) return { success: false, error: 'Cancelled' };
-  const ps = `Start-Process cmd -ArgumentList '/c ${cmd.replace(/'/g, "''")}' -Verb RunAs`;
-  const tmpFile = path.join(os.tmpdir(), 'hex-admin-' + Date.now() + '.ps1');
-  fs.writeFileSync(tmpFile, ps, 'utf8');
-  const r = await butlerExec(`powershell -NoProfile -ExecutionPolicy Bypass -File "${tmpFile}"`, { timeout: 30000 });
-  try { fs.unlinkSync(tmpFile); } catch (_) { }
-  sendLog('BUTLER', 'Run as admin: ' + (r.ok ? 'OK' : r.err));
-  return { success: r.ok, error: r.err };
-});
 
 // ── WINDOW MANAGEMENT ─────────────────────────────────────────────────────────
-ipcMain.handle('OLD-butler:list-windows', async () => {
-  const ps = `Get-Process | Where-Object {$_.MainWindowTitle -ne ''} | Select-Object Id,ProcessName,MainWindowTitle | ForEach-Object { "$($_.Id)|$($_.ProcessName)|$($_.MainWindowTitle)" }`;
-  const tmpFile = path.join(os.tmpdir(), 'hex-lw-' + Date.now() + '.ps1');
-  fs.writeFileSync(tmpFile, ps, 'utf8');
-  const r = await butlerExec(`powershell -NoProfile -ExecutionPolicy Bypass -File "${tmpFile}"`, { timeout: 10000 });
-  try { fs.unlinkSync(tmpFile); } catch (_) { }
-  if (!r.ok) return { success: false, error: r.err };
-  const windows = r.out.split('\n').filter(Boolean).map(line => {
-    const [pid, proc, ...titleParts] = line.split('|');
-    return { pid: parseInt(pid), process: proc, title: titleParts.join('|') };
-  });
-  return { success: true, windows };
-});
-
-ipcMain.handle('OLD-butler:window-action', async (_, { action, title }) => {
-  // action: focus | minimize | maximize | restore | close
-  const t = (title || '').replace(/'/g, "''");
-  const ACTIONS = {
-    focus: `$w.Activate()`,
-    minimize: `$w.WindowState = [System.Windows.Forms.FormWindowState]::Minimized`,
-    maximize: `[void][System.Runtime.InteropServices.Marshal]::ThrowExceptionForHR([System.Runtime.InteropServices.Marshal]::GetLastWin32Error())`,
-    restore: ``,
-    close: `$p.CloseMainWindow() | Out-Null`,
-  };
-  // Use nircmd for reliability (simpler than WinForms reflection)
-  let cmd;
-  const a = (action || '').toLowerCase();
-  if (a === 'close') cmd = `nircmd win close title "${t}"`;
-  else if (a === 'minimize') cmd = `nircmd win hide title "${t}"`;
-  else if (a === 'maximize') cmd = `nircmd win max title "${t}"`;
-  else if (a === 'restore') cmd = `nircmd win restore title "${t}"`;
-  else cmd = `nircmd win activate title "${t}"`;  // focus/activate
-
-  // Fallback to PowerShell if nircmd not available
-  const r = await butlerExec(cmd, { timeout: 8000 });
-  if (!r.ok) {
-    const psActions = {
-      minimize: `(Get-Process | Where-Object {$_.MainWindowTitle -like '*${t}*'} | Select-Object -First 1).MainWindowHandle | ForEach-Object { [void]([System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer([System.Runtime.InteropServices.Marshal]::GetProcAddress([System.Runtime.InteropServices.Marshal]::GetHINSTANCE([System.Reflection.Assembly]::GetExecutingAssembly().GetModules()[0]), 'ShowWindow'), (Get-Type))) }`,
-      close: `Get-Process | Where-Object {$_.MainWindowTitle -like '*${t}*'} | Select-Object -First 1 | ForEach-Object { $_.CloseMainWindow() }`,
-      focus: `$p = (Get-Process | Where-Object {$_.MainWindowTitle -like '*${t}*'} | Select-Object -First 1); if ($p) { $id = $p.Id; (New-Object -TypeName System.Windows.Forms.Form).Activate() }`,
-    };
-    const psCmd = psActions[a] || psActions.focus;
-    const tmpFile = path.join(os.tmpdir(), 'hex-win-' + Date.now() + '.ps1');
-    fs.writeFileSync(tmpFile, `Add-Type -AssemblyName System.Windows.Forms\n${psCmd}`, 'utf8');
-    const r2 = await butlerExec(`powershell -NoProfile -ExecutionPolicy Bypass -File "${tmpFile}"`, { timeout: 10000 });
-    try { fs.unlinkSync(tmpFile); } catch (_) { }
-    return { success: r2.ok || true, note: 'Used PowerShell fallback' };
-  }
-  sendLog('BUTLER', `Window ${action}: "${title}"`);
-  return { success: true };
-});
 
 // ── SEND KEYSTROKES ───────────────────────────────────────────────────────────
-ipcMain.handle('OLD-butler:send-keys', async (event, { keys }) => {
-  const confirmed = await butlerConfirm(mainWindow, `Send keystrokes to active window?\n\n"${keys}"`);
-  if (!confirmed) return { success: false, error: 'Cancelled' };
-  // WScript.Shell SendKeys — most reliable without robotjs
-  const safe = keys.replace(/'/g, "''");
-  const ps = `(New-Object -ComObject WScript.Shell).SendKeys('${safe}')`;
-  const r = await butlerExec(`powershell -NoProfile -Command "${ps.replace(/"/g, '\\"')}"`, { timeout: 10000 });
-  sendLog('BUTLER', 'SendKeys: ' + (r.ok ? 'OK' : r.err));
-  return { success: r.ok, error: r.err };
-});
 
 // ── MOUSE CONTROL ─────────────────────────────────────────────────────────────
-ipcMain.handle('OLD-butler:mouse-move', async (event, { x, y }) => {
-  const confirmed = await butlerConfirm(mainWindow, `Move mouse to (${x}, ${y})?`);
-  if (!confirmed) return { success: false, error: 'Cancelled' };
-  const ps = `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${parseInt(x)}, ${parseInt(y)})`;
-  const r = await butlerExec(`powershell -NoProfile -Command "${ps.replace(/"/g, '\\"')}"`, { timeout: 5000 });
-  return { success: r.ok, error: r.err };
-});
-
-ipcMain.handle('OLD-butler:mouse-click', async (event, { button }) => {
-  const btn = (button || 'left').toLowerCase();
-  const confirmed = await butlerConfirm(mainWindow, `Simulate ${btn} mouse click?`);
-  if (!confirmed) return { success: false, error: 'Cancelled' };
-  const KEY_MAP = { left: '{LBUTTON}', right: '{RBUTTON}', double: '{LBUTTON}{LBUTTON}' };
-  const r = await butlerExec(
-    `nircmd sendmouse ${btn === 'double' ? 'dblclick' : btn} 0 0 0`,
-    { timeout: 5000 }
-  );
-  if (!r.ok) {
-    // PowerShell fallback via mouse_event API
-    const flags = btn === 'right' ? '8,16' : btn === 'double' ? '2,4,2,4' : '2,4';
-    const ps = `Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public class M{[DllImport("user32.dll")]public static extern void mouse_event(int f,int x,int y,int d,int e);}'; ` +
-      flags.split(',').map(f => `[M]::mouse_event(${f},0,0,0,0)`).join(';');
-    const r2 = await butlerExec(`powershell -NoProfile -Command "${ps.replace(/"/g, '\\"')}"`, { timeout: 5000 });
-    return { success: r2.ok, error: r2.err };
-  }
-  return { success: true };
-});
-
-ipcMain.handle('OLD-butler:paste-clipboard', async (event) => {
-  const ps = `(New-Object -ComObject WScript.Shell).SendKeys('^v')`;
-  const r = await butlerExec(`powershell -NoProfile -Command "${ps.replace(/"/g, '\\"')}"`, { timeout: 5000 });
-  sendLog('BUTLER', 'Paste simulated');
-  return { success: r.ok };
-});
 
 // ── CLIPBOARD IMAGE ───────────────────────────────────────────────────────────
-ipcMain.handle('OLD-butler:get-clipboard-img', async () => {
-  const outPath = path.join(os.tmpdir(), 'hex-clip-' + Date.now() + '.png');
-  const ps = `Add-Type -AssemblyName System.Windows.Forms; $img=[System.Windows.Forms.Clipboard]::GetImage(); if($img){$img.Save('${outPath.replace(/\\/g, '\\\\')}')}else{Write-Error 'No image'}`;
-  const r = await butlerExec(`powershell -NoProfile -Command "${ps.replace(/"/g, '\\"')}"`, { timeout: 8000 });
-  if (r.ok && fs.existsSync(outPath)) {
-    return { success: true, path: outPath };
-  }
-  return { success: false, error: 'No image in clipboard or save failed' };
-});
 
 // ── NETWORK: WIFI / ADAPTER ───────────────────────────────────────────────────
-ipcMain.handle('OLD-butler:connect-wifi', async (event, { ssid, password }) => {
-  const s = (ssid || '').replace(/"/g, '');
-  const p = (password || '').replace(/"/g, '');
-  const confirmed = await butlerConfirm(mainWindow, `Connect to Wi-Fi network "${s}"?`);
-  if (!confirmed) return { success: false, error: 'Cancelled' };
-  // Create a temp profile XML and connect
-  const profileXml = `<?xml version="1.0"?><WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1"><name>${s}</name><SSIDConfig><SSID><name>${s}</name></SSID></SSIDConfig><connectionType>ESS</connectionType><connectionMode>auto</connectionMode><MSM><security><authEncryption><authentication>${p ? 'WPA2PSK' : 'open'}</authentication><encryption>${p ? 'AES' : 'none'}</encryption><useOneX>false</useOneX></authEncryption>${p ? `<sharedKey><keyType>passPhrase</keyType><protected>false</protected><keyMaterial>${p}</keyMaterial></sharedKey>` : ''}</security></MSM></WLANProfile>`;
-  const xmlFile = path.join(os.tmpdir(), 'hex-wifi-' + Date.now() + '.xml');
-  fs.writeFileSync(xmlFile, profileXml, 'utf8');
-  const r1 = await butlerExec(`netsh wlan add profile filename="${xmlFile}"`, { timeout: 10000 });
-  const r2 = await butlerExec(`netsh wlan connect name="${s}"`, { timeout: 15000 });
-  try { fs.unlinkSync(xmlFile); } catch (_) { }
-  sendLog('BUTLER', 'WiFi connect: ' + (r2.ok ? 'OK' : r2.err));
-  return { success: r2.ok, output: r2.out || r2.err };
-});
-
-ipcMain.handle('OLD-butler:net-adapter', async (event, { adapter, action }) => {
-  const a = (adapter || '').replace(/'/g, "''");
-  const act = (action || '').toLowerCase();
-  const confirmed = await butlerConfirm(mainWindow, `${act === 'disable' ? 'Disable' : 'Enable'} network adapter "${a}"?\nThis may disconnect you from the internet.`);
-  if (!confirmed) return { success: false, error: 'Cancelled' };
-  const ps = act === 'disable'
-    ? `Disable-NetAdapter -Name '${a}' -Confirm:$false`
-    : `Enable-NetAdapter -Name '${a}' -Confirm:$false`;
-  const tmpFile = path.join(os.tmpdir(), 'hex-net-' + Date.now() + '.ps1');
-  fs.writeFileSync(tmpFile, ps, 'utf8');
-  const r = await butlerExec(`powershell -NoProfile -ExecutionPolicy Bypass -File "${tmpFile}"`, { timeout: 20000 });
-  try { fs.unlinkSync(tmpFile); } catch (_) { }
-  sendLog('BUTLER', `Adapter ${act}: ${a} — ${r.ok ? 'OK' : r.err}`);
-  return { success: r.ok, error: r.err };
-});
 
 // ── AUTOMATION: SLEEP / SCHEDULE / STARTUP ────────────────────────────────────
-ipcMain.handle('OLD-butler:sleep', async (_, { seconds }) => {
-  const s = Math.max(0.1, Math.min(300, parseFloat(seconds) || 1));
-  await new Promise(resolve => setTimeout(resolve, s * 1000));
-  return { success: true, slept: s };
-});
-
-ipcMain.handle('OLD-butler:schedule-once', async (event, { time, command }) => {
-  const confirmed = await butlerConfirm(mainWindow, `Schedule task at ${time}?\nCommand: ${command}`);
-  if (!confirmed) return { success: false, error: 'Cancelled' };
-  const taskName = 'HEX_' + Date.now();
-  const r = await butlerExec(`schtasks /create /tn "${taskName}" /sc once /st "${time}" /tr "${command.replace(/"/g, '\\"')}" /f`, { timeout: 10000 });
-  sendLog('BUTLER', 'Scheduled task: ' + taskName);
-  return { success: r.ok, taskName, output: r.out || r.err };
-});
-
-ipcMain.handle('OLD-butler:cancel-task', async (_, { taskName }) => {
-  const r = await butlerExec(`schtasks /delete /tn "${taskName}" /f`, { timeout: 8000 });
-  sendLog('BUTLER', 'Cancelled task: ' + taskName);
-  return { success: r.ok, output: r.out || r.err };
-});
-
-ipcMain.handle('OLD-butler:startup', async (event, { action, cmd, name }) => {
-  const act = (action || 'add').toLowerCase();
-  const regKey = 'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run';
-  const entryName = (name || 'HEX_' + Date.now()).replace(/"/g, '');
-  let r;
-  if (act === 'add') {
-    const confirmed = await butlerConfirm(mainWindow, `Add "${entryName}" to startup?\nCommand: ${cmd}`);
-    if (!confirmed) return { success: false, error: 'Cancelled' };
-    r = await butlerExec(`reg add "${regKey}" /v "${entryName}" /t REG_SZ /d "${cmd.replace(/"/g, '\\"')}" /f`, { timeout: 8000 });
-  } else {
-    r = await butlerExec(`reg delete "${regKey}" /v "${entryName}" /f`, { timeout: 8000 });
-  }
-  sendLog('BUTLER', `Startup ${act}: ${entryName}`);
-  return { success: r.ok, output: r.out || r.err };
-});
 
 // ── REGISTRY ──────────────────────────────────────────────────────────────────
-ipcMain.handle('OLD-butler:reg-read', async (_, { hive, key, value }) => {
-  const fullKey = `${hive}\\${key}`;
-  const r = await butlerExec(`reg query "${fullKey}" /v "${value || ''}"`, { timeout: 8000 });
-  if (!r.ok) return { success: false, error: r.err };
-  // Parse output: "    ValueName    REG_SZ    Data"
-  const lines = r.out.split('\n').filter(l => l.trim() && !l.includes('HKEY'));
-  const parsed = lines.map(l => {
-    const parts = l.trim().split(/\s{2,}/);
-    return { name: parts[0], type: parts[1], data: parts.slice(2).join('  ') };
-  }).filter(p => p.type);
-  return { success: true, values: parsed, raw: r.out };
-});
-
-ipcMain.handle('OLD-butler:reg-write', async (event, { hive, key, value, data, type }) => {
-  const fullKey = `${hive}\\${key}`;
-  const confirmed = await butlerConfirm(mainWindow, `Write to registry?\n${fullKey}\n${value} = ${data}`);
-  if (!confirmed) return { success: false, error: 'Cancelled' };
-  const t = (type || 'REG_SZ').toUpperCase();
-  const r = await butlerExec(`reg add "${fullKey}" /v "${value}" /t ${t} /d "${data.replace(/"/g, '\\"')}" /f`, { timeout: 8000 });
-  sendLog('BUTLER', `Reg write: ${fullKey}\\${value} = ${data}`);
-  return { success: r.ok, error: r.err };
-});
 
 // ── SOFTWARE: LIST / INSTALL / UNINSTALL / UPDATES ───────────────────────────
-ipcMain.handle('OLD-butler:list-software', async () => {
-  const ps = `Get-ItemProperty HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*, HKLM:\\Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\* | Select-Object DisplayName,DisplayVersion,Publisher | Where-Object {$_.DisplayName} | Sort-Object DisplayName | ForEach-Object {"$($_.DisplayName)|$($_.DisplayVersion)|$($_.Publisher)"}`;
-  const tmpFile = path.join(os.tmpdir(), 'hex-sw-' + Date.now() + '.ps1');
-  fs.writeFileSync(tmpFile, ps, 'utf8');
-  const r = await butlerExec(`powershell -NoProfile -ExecutionPolicy Bypass -File "${tmpFile}"`, { timeout: 30000 });
-  try { fs.unlinkSync(tmpFile); } catch (_) { }
-  if (!r.ok) return { success: false, error: r.err };
-  const software = r.out.split('\n').filter(Boolean).map(line => {
-    const [name, version, publisher] = line.split('|');
-    return { name: (name || '').trim(), version: (version || '').trim(), publisher: (publisher || '').trim() };
-  }).filter(s => s.name);
-  return { success: true, software, count: software.length };
-});
-
-ipcMain.handle('OLD-butler:check-updates', async () => {
-  const r = await butlerExec('winget upgrade --include-unknown 2>nul', { timeout: 30000 });
-  if (!r.ok && r.err.includes('not recognized')) {
-    return { success: false, error: 'winget not available. Install Windows Package Manager from the Microsoft Store.' };
-  }
-  return { success: true, output: r.out || r.err };
-});
-
-ipcMain.handle('OLD-butler:install-pkg', async (event, { name }) => {
-  const confirmed = await butlerConfirm(mainWindow, `Install "${name}" via winget?`);
-  if (!confirmed) return { success: false, error: 'Cancelled' };
-  const r = await butlerExec(`winget install --exact "${name.replace(/"/g, '\\"')}" --accept-source-agreements --accept-package-agreements`, { timeout: 300000 });
-  sendLog('BUTLER', `Install ${name}: ${r.ok ? 'OK' : r.err}`);
-  return { success: r.ok, output: r.out, error: r.err };
-});
-
-ipcMain.handle('OLD-butler:uninstall', async (event, { name }) => {
-  const confirmed = await butlerConfirm(mainWindow, `Uninstall "${name}"?\nThis cannot be undone.`);
-  if (!confirmed) return { success: false, error: 'Cancelled' };
-  const r = await butlerExec(`winget uninstall --exact "${name.replace(/"/g, '\\"')}" --accept-source-agreements`, { timeout: 120000 });
-  sendLog('BUTLER', `Uninstall ${name}: ${r.ok ? 'OK' : r.err}`);
-  return { success: r.ok, output: r.out, error: r.err };
-});
 
 // ── PERIPHERAL: EJECT USB ─────────────────────────────────────────────────────
-ipcMain.handle('OLD-butler:eject-usb', async (_, { letter }) => {
-  const drive = (letter || '').replace(/[^A-Za-z]/g, '').toUpperCase().charAt(0);
-  if (!drive) return { success: false, error: 'Invalid drive letter' };
-  const ps = `$vol = Get-WmiObject Win32_Volume | Where-Object {$_.DriveLetter -eq '${drive}:'}; if($vol){$vol.Dismount($false,$true)}else{Write-Error 'Drive not found'}`;
-  const r = await butlerExec(`powershell -NoProfile -Command "${ps.replace(/"/g, '\\"')}"`, { timeout: 10000 });
-  sendLog('BUTLER', `Eject USB ${drive}: ${r.ok ? 'OK' : r.err}`);
-  return { success: r.ok, drive: drive + ':', error: r.err };
-});
 
 // ── MAINTENANCE: CHKDSK ───────────────────────────────────────────────────────
-ipcMain.handle('OLD-butler:chkdsk', async (event, { drive }) => {
-  const d = (drive || 'C').replace(/[^A-Za-z]/g, '').toUpperCase().charAt(0) + ':';
-  const confirmed = await butlerConfirm(mainWindow, `Run CHKDSK on ${d}?\nThis may require a reboot and takes time.`);
-  if (!confirmed) return { success: false, error: 'Cancelled' };
-  // Schedule for next boot on system drive, run immediately on non-system
-  const r = await butlerExec(`chkdsk ${d} /f /r`, { timeout: 300000 });
-  sendLog('BUTLER', `CHKDSK ${d}: ${r.ok ? 'OK' : r.out || r.err}`);
-  return { success: true, output: r.out || r.err, note: 'May require restart to complete on system drive.' };
-});
 
 // ── SCRIPTING: RUN_JS (sandboxed) ────────────────────────────────────────────
 ipcMain.handle('butler:run-js', async (event, { code }) => {

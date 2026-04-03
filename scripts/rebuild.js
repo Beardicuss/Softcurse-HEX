@@ -4,34 +4,64 @@
  *
  * Why this exists:
  *   @electron/rebuild requires an explicit electronVersion string.
- *   We read it from the electron package itself so it always matches.
+ *   We read it from the electron package itself so it always matches,
+ *   and target only sherpa-onnx to keep rebuilds fast.
+ *
+ * Usage:
+ *   npm run rebuild
+ *   node scripts/rebuild.js
  */
 
 const path = require('path');
 const { rebuild } = require('@electron/rebuild');
 
-// Read exact Electron version from its own package.json (always accurate)
-const electronPkg = require(path.join(
-  path.dirname(require.resolve('electron')),
-  'package.json'
-));
-const electronVersion = electronPkg.version;
+// ─── Resolve Electron version ────────────────────────────────────────────────
 
-console.log(`Rebuilding sherpa-onnx for Electron ${electronVersion} ...`);
+let electronVersion;
+
+try {
+  const electronPkg = require(path.join(
+    path.dirname(require.resolve('electron')),
+    'package.json'
+  ));
+  electronVersion = electronPkg.version;
+} catch (err) {
+  console.error('✗ Could not resolve Electron version.');
+  console.error('  Make sure electron is installed: npm install electron');
+  process.exit(1);
+}
+
+// ─── Run rebuild ─────────────────────────────────────────────────────────────
+
+const projectRoot = path.resolve(__dirname, '..');
+
+console.log('');
+console.log('  Softcurse H.E.X. — Native Module Rebuild');
+console.log('  ─────────────────────────────────────────');
+console.log(`  Electron : ${electronVersion}`);
+console.log(`  Module   : sherpa-onnx`);
+console.log(`  Root     : ${projectRoot}`);
+console.log('');
 
 rebuild({
-  buildPath:       path.resolve(__dirname, '..'),
+  buildPath: projectRoot,
   electronVersion: electronVersion,
-  onlyModules:     ['sherpa-onnx'],
-  force:           true,
+  modulesToRebuild: ['sherpa-onnx'],
+  force: true,
 })
   .then(() => {
-    console.log('\n✓ sherpa-onnx rebuilt successfully.');
-    console.log('  You can now run: npm start');
+    console.log('  ✓ sherpa-onnx rebuilt successfully.');
+    console.log('');
+    console.log('  Run: npm start');
+    console.log('');
   })
   .catch((err) => {
-    console.error('\n✗ Rebuild failed:', err.message || err);
-    console.error('\nTry manually:');
-    console.error(`  npx @electron/rebuild -v ${electronVersion} -m sherpa-onnx`);
+    console.error('  ✗ Rebuild failed.');
+    console.error('');
+    console.error('  Error:', err.message || err);
+    console.error('');
+    console.error('  Try manually:');
+    console.error(`    npx @electron/rebuild -v ${electronVersion} -m sherpa-onnx`);
+    console.error('');
     process.exit(1);
   });

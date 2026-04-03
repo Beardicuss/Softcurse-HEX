@@ -1,210 +1,114 @@
-# ◆ Softcurse H.E.X.
+<div align="center">
+  <img src="src/assets/hex.gif" alt="Softcurse H.E.X. Header" width="600" />
 
-> **H**euristic **E**xperience **X**ecutive — Intelligent Cyberpunk Desktop Assistant
+  # Softcurse H.E.X.
 
-A J.A.R.V.I.S.-inspired desktop assistant with a cyberpunk UI, multi-language support, system automation, voice I/O, and LLM-powered conversation.
+  [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](#)
+  [![Electron](https://img.shields.io/badge/Electron-41.1.1-47848f?status=active&logo=electron)](#)
+  [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](#)
+  [![License](https://img.shields.io/badge/License-MIT-green.svg)](#)
 
----
+  > 🚀 A high-performance, J.A.R.V.I.S.-inspired desktop intelligence that pairs deep native OS control with multimodal LLM cognition.
+</div>
 
-## 🚀 Quick Start
+## Table of Contents
+- [Overview](#overview)
+- [✨ Features](#-features)
+- [📦 Installation](#-installation)
+- [🚀 Quick Start](#-quick-start)
+- [📖 Documentation](#-documentation)
+- [🔧 Configuration](#-configuration)
+- [💡 Advanced Usage](#-advanced-usage)
+- [🏗️ Architecture](#️-architecture)
+- [🧪 Testing](#-testing)
+- [🤝 Contributing](#-contributing)
+- [�️ Roadmap](#️-roadmap)
+- [�📄 License](#-license)
+- [👥 Acknowledgements](#-acknowledgements)
+- [💬 Support](#-support)
 
+## Overview
+**Softcurse H.E.X. (Heuristic Experience eXecutive)** is a fully autonomous desktop agent engineered in Electron. Capable of viewing your screen, executing direct PowerShell hardware interrupts, scheduling background jobs, mapping local registry edits, and engaging in multi-lingual conversation via offline STT models. 
+
+It exists to bridge the gap between AI chat wrappers and true operating system agency, designed primarily for power users and developers seeking an interactive cybernetic terminal assistant.
+
+## ✨ Features
+- 🖥️ **Total OS Master Suite:** Executes native PowerShell commands seamlessly. Read/write to the Registry, install software via `winget`, terminate PIDs, empty caches, schedule native Windows tasks, and deploy sweeps using natural language.
+- 👁️ **Computer Vision Optics:** Features asynchronous hardware frame-grabbing via Electron's `desktopCapturer`. H.E.X. can "look" at your screen and natively feed visual payloads into the Gemini Vision API.
+- 🎙️ **Hardware-Level Voice (STT):** Integrates isolated Native C++ Speech-to-Text inference models locally via `sherpa-onnx` for offline phonetic parsing, with zero-latency.
+- 📂 **Global Omni-Launcher:** Dynamically indexes `/Start Menu` and `/Desktop` `.lnk` paths for fuzzy matching application launches.
+- 🧠 **Multi-Provider Nexus:** Plugs natively into Ollama (Local), Google Gemini, OpenAI, Anthropic, Grok, Mistral, and OpenRouter architectures.
+- ⚙️ **Anti-Quota Resiliency:** Employs dynamic self-healing network routers holding steady during API rate constraints (e.g., auto-downgrading throttled endpoints smoothly).
+
+## 📦 Installation
 ### Prerequisites
-- **Node.js** v18+ ([nodejs.org](https://nodejs.org))
-- **npm** v9+
-- *(Optional)* **Ollama** for local AI ([ollama.ai](https://ollama.ai))
+- **Node.js** v18+ (v24 recommended)
+- **C++ Build Tools** (For compiling `sherpa-onnx` native dependencies)
 
-### Install & Run
-
+### Setup
 ```bash
+git clone https://github.com/Softcurse-Lab/softcurse-hex.git
 cd softcurse-hex
 npm install
+```
+*Note: The `postinstall` script inside `package.json` automatically triggers `electron-builder install-app-deps` to recompile the native dependencies against your specific Electron headers.*
+
+## 🚀 Quick Start
+To launch the application into your development environment immediately:
+```bash
 npm start
 ```
 
----
+## 📖 Documentation
+Because Softcurse H.E.X. operates intuitively through conversation, this README serves as the primary technical documentation. For full internal module specifications, review the source files located inside `src/js/`. 
 
-## 🧠 AI Configuration
+## 🔧 Configuration
+Configuration is securely retained locally in your OS `%APPDATA%` directory within a serialized `settings.json` file. 
+You can interact with the configuration natively by using the UI settings panel (`Ctrl + ,`). 
+- **LLM Settings:** Base URL overrides, API Keys, and Custom System Prompts.
+- **Microphone Parameters:** Silence timeouts, volume thresholds.
+- **Personality Overrides:** Agent naming or voice tone parameters.
 
-Open **Settings** (⚙ top-right or `Ctrl+,`) and choose your LLM provider:
+## 💡 Advanced Usage
+### The Optics Subsystem (`[ACTION:capture_screen]`)
+If you ask the agent *"What is on my screen right now?"* or click the **EYE** icon, Chromium scrapes the monitor framebuffer, executes base64 binary encoding, and injects it synchronously into the multimodal message stack in order to solve coding bugs visible on your desktop.
 
-### Option 1 — Ollama (Local, Free, Private)
-1. Install Ollama: https://ollama.ai
-2. Pull a model:
-   ```bash
-   ollama pull llama3
-   # or: ollama pull mistral
-   ```
-3. In Settings: Provider → **Ollama**, Base URL → `http://localhost:11434`, Model → `llama3`
+### Native SendKeys Actions
+H.E.X employs a dynamic C# compilation bridge (`Add-Type`) escaping over PowerShell to simulate pure hardware keyboard inputs. Ask it to *"Type 'hello world' on my keyboard"* and the pipeline dynamically scrubs parameters for hallucinated curly braces before invoking `[System.Windows.Forms.SendKeys]::SendWait()`.
 
-### Option 2 — OpenAI
-1. Get an API key at https://platform.openai.com
-2. In Settings: Provider → **OpenAI**, API Key → `sk-...`, Model → `gpt-4o-mini`
-
-### Option 3 — Anthropic
-1. Get an API key at https://console.anthropic.com
-2. In Settings: Provider → **Anthropic**, API Key → `sk-ant-...`, Model → `claude-haiku-4-5-20251001`
-
----
-
-## 🎙 Voice Features
-
-- **Web Speech API** (built into Electron's Chromium) — no external packages needed
-- Click the **MIC** button (top-right) or press `Ctrl+M` to toggle listening
-- Speak your message — it will be transcribed and sent automatically
-- HEX will respond with synthesized voice
-- Supports **English, Russian, Georgian** (select with EN/RU/KA buttons)
-
----
-
-## 🖥 System Tasks
-
-| Task | Description |
-|------|-------------|
-| **Defragmentation** | Optimizes disk on Windows; verifies volume on macOS/Linux |
-| **Component Store** | DISM health restore (Win) / package updates (Linux/macOS) |
-| **Defender Scan** | Quick security scan (Windows Defender / ClamAV on Linux) |
-| **Process Monitor** | View and terminate running processes |
-| **Browser Cache** | Clears Chrome, Edge, Firefox cache folders |
-| **Driver Health** | Enumerates drivers (Windows) / hardware info (macOS/Linux) |
-| **Disk Cleanup** | Runs cleanmgr (Win) / periodic scripts (macOS) / apt clean (Linux) |
-| **Network Diagnostics** | Pings gateway + DNS, checks connectivity and latency |
-| **Startup Programs** | Lists auto-start entries and scheduled tasks |
-| **Update Check** | Checks for pending OS updates |
-| **Firewall Status** | Queries firewall profiles and active block rules |
-| **Memory Diagnostics** | RAM overview + top 15 memory consumers |
-
----
-
-## 🤵 Butler Actions
-
-HEX can interact with your PC directly via natural language:
-
-| Command | Example |
-|---------|---------|
-| Open applications | *"Open notepad"*, *"Launch Chrome"*, *"Open VS Code"* |
-| Create notes | *"Create a note called shopping list with milk, bread, eggs"* |
-| Create documents | *"Create a Word document called meeting notes"* |
-| Open folders | *"Open my Documents folder"*, *"Open Downloads"* |
-| Empty recycle bin | *"Empty the recycle bin"* (with confirmation) |
-| Lock screen | *"Lock my computer"* |
-| Shutdown/Restart | *"Shut down"*, *"Restart"* (with confirmation) |
-
----
-
-## 💬 Chat Commands
-
-You can type or speak natural language. Examples:
-
-- `"What's my CPU usage?"` — HEX will report system stats
-- `"Remind me to drink water in 30 minutes"` — sets a reminder
-- `"Run a defrag"` — triggers defragmentation
-- `"Open youtube.com"` — opens URL in default browser
-- `"Show running processes"` — opens process monitor
-- `"Tell me a joke"` — just chat!
-
----
-
-## ⌨ Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Enter` | Send chat message |
-| `Shift+Enter` | Newline in chat |
-| `Ctrl+M` | Toggle microphone |
-| `Ctrl+,` | Open settings |
-| `Ctrl+L` | Focus browser URL bar |
-| `Escape` | Close modals |
-
-## 🌐 Browser Bar
-
-The URL bar in the center panel (blue, below the HEX ring) supports:
-
-- **Direct URLs:** `https://github.com` or `github.com`
-- **Web search:** `how to defrag windows` → searches with your default engine
-- **Engine prefix:** `search youtube for lo-fi music`
-- **Click 🔍** to cycle through Google → DuckDuckGo → Bing → YouTube → GitHub
-- You can also say things like *"open youtube.com"* or *"search for Electron docs"* in the chat
-
-All URLs open in your **system default browser** (Chrome, Firefox, Edge, Safari etc.).
-
----
-
-## 📦 Building for Distribution
-
-```bash
-npm run build
+## 🏗️ Architecture
+```mermaid
+graph TD;
+    Renderer[GUI / AI Logic / Chat] -->|Context Bridge IPC| Preload[Secure Node Boundary]
+    Preload -->|Event Emitters| Main[Electron Main Runtime]
+    Main --> Butler(ipc-butler.js / PowerShell C# Wrappers)
+    Main --> Hardware(desktopCapturer / Web Speech APIs)
 ```
 
-Output will be in the `dist/` folder.
+## 🧪 Testing
+Because H.E.X. relies on highly privileged, platform-specific OS logic (such as Registry manipulation and UAC bypass), we rely primarily on manual sandbox staging rather than automated headless DOM testing. 
 
-- **Windows** → NSIS installer (`.exe`)
-- **macOS** → DMG (`.dmg`)
-- **Linux** → AppImage (`.AppImage`)
+To safely sandbox the LLM logic, you can toggle `SAFE_EXECUTION` bounds inside `main.js` to prompt UI dialogs before destructive sweeps.
 
----
+## 🤝 Contributing
+We welcome OS action hook extensions or localization scripts!
+1. Fork the Project.
+2. Branch your Feature (`git checkout -b feature/NewIPCAction`).
+3. Commit your Changes (`git commit -m 'Added registry sweeping'`).
+4. Push to the Branch (`git push origin feature/NewIPCAction`).
+5. Open a Pull Request.
 
-## 📁 Project Structure
+## 🛣️ Roadmap
+- macOS & Linux parity for all PC Butler automation actions (currently Windows-centric).
+- Deeper Docker telemetry insights.
+- Fully migrating to Local LLM bindings via node-llama-cpp for absolute standalone offline memory handling.
 
-```
-softcurse-hex/
-├── main.js           Electron main: window, IPC, system commands
-├── preload.js        Secure renderer bridge
-├── src/
-│   ├── index.html    App layout
-│   ├── css/style.css Cyberpunk stylesheet
-│   └── js/
-│       ├── renderer.js  UI logic, chat, animations
-│       ├── ai.js        LLM conversation engine
-│       ├── voice.js     Web Speech API (STT/TTS)
-│       ├── i18n.js      Translation engine
-│       ├── activity.js  Activity monitoring
-│       └── reminders.js Reminder system
-├── locales/          en/ru/ka translations
-└── package.json
-```
+## 📄 License
+Distributed under the **MIT License**. See `LICENSE` for more information.
 
----
+## 👥 Acknowledgements
+- Built by **Softcurse Lab**.
+- Uses [Sherpa-ONNX](https://github.com/k2-fsa/sherpa-onnx) for robust local Speech-to-Text pipelines.
 
-## 🌐 Supported Languages
-
-| Code | Language |
-|------|----------|
-| `en` | English |
-| `ru` | Русский (Russian) |
-| `ka` | ქართული (Georgian) |
-
-Switch anytime using the **EN / RU / KA** buttons in the top bar. The AI will respond in the selected language.
-
----
-
-## 🔒 Privacy
-
-- All conversation history is **in-memory only** — nothing persisted to disk by default
-- Config (LLM settings, preferences) saved to your OS user data directory
-- No telemetry, no analytics, no external connections unless you configure an API provider
-- Activity monitoring stays local
-
----
-
-## 🐛 Troubleshooting
-
-**App won't start:**
-```bash
-npm install --legacy-peer-deps
-npm start
-```
-
-**Voice not working:**  
-Chromium-based speech recognition requires a microphone. Grant permission when prompted.  
-Georgian (`ka`) may fall back to English if your OS doesn't have the language pack.
-
-**Ollama not responding:**  
-Make sure `ollama serve` is running. Test: `curl http://localhost:11434/api/tags`
-
-**High CPU from systeminformation:**  
-Normal on first launch. Polling interval is 2s; modify in `main.js` if needed.
-
----
-
-*Built with passion, precision, and a cyberpunk soul.*  
-*HEX is not just a tool — it's a companion.*
+## 💬 Support
+For issues or feature requests, please open a GitHub Issue ticket, taking care to attach any Electron console trace dumps if the issue relates to Native Module compilation (`@electron/rebuild`).
