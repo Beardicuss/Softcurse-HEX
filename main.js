@@ -426,7 +426,9 @@ ipcMain.handle('system:run-task', async (_, taskId) => {
       const fullOut = (output + errOutput).trim();
       const accessDenied = /access.?denied|privilege|administrator|elevation/i.test(fullOut);
       const hasOutput = output.trim().length > 10;
-      const success = code === 0 || (taskId === 'defrag' && hasOutput) || (taskId === 'component_store' && hasOutput);
+      // PowerShell tasks often exit non-zero but produce full valid output.
+      // Treat any task with real output as success unless it's a hard spawn error.
+      const success = code === 0 || hasOutput;
       sendLog('SYSTEM', `Task ${taskId} finished (exit ${code})${accessDenied ? ' — admin required for full run' : ''}`, success ? 'info' : 'warn');
       resolve({
         success,

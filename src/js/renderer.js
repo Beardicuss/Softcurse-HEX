@@ -1384,25 +1384,18 @@ function animateCount(id, target, suffix = '') {
 function handleProactiveMsg(msg) {
   const lang = config.language || 'en';
   switch (msg.type) {
-    case 'break':
-      // Pick a random phrase from the varied pool
-      const breakPhrases = window.i18n.t('break_suggestions');
-      let bText;
-      if (Array.isArray(breakPhrases) && breakPhrases.length > 0) {
-        const template = breakPhrases[Math.floor(Math.random() * breakPhrases.length)];
-        bText = template.replace(/\{min\}/g, msg.activeMin).replace(/\{name\}/g, config.userName || 'Operator');
-      } else {
-        // Fallback to single phrase
-        bText = window.i18n.t('break_suggestion', { min: msg.activeMin });
-      }
+    case 'break': {
+      // Use smart picker: time-aware, anti-repeat, {name}/{min} substitution
+      const bText = window.i18n.getRandomBreakSuggestion(config.userName, msg.activeMin);
       addHexMessage(bText);
       showToast('◆ HEX ADVISORY', bText, 'warn', 10000, [
         { label: window.i18n.t('break_dismiss'), action: 'dismiss' },
-        { label: window.i18n.t('break_snooze'), action: 'snooze15', cls: 'snooze' }
+        { label: window.i18n.t('break_snooze'),  action: 'snooze15', cls: 'snooze' }
       ]);
       addLog('HEX', bText);
       if (config.voice?.enabled !== false) speakWithConfig(bText);
       break;
+    }
 
     case 'return':
       const rText = window.i18n.t('return_from_idle', { min: msg.idleMin });
@@ -1493,14 +1486,15 @@ function clearTerminal() {
   addLog('SYSTEM', 'Terminal cleared.');
 }
 
-// ── HEX CANVAS ANIMATION ──────────────────────────────────────
-let hexCtx, hexW, hexH, hexAngle = 0, hexRAF;
-const HEX_RINGS = [
-  { r: 55, sides: 6, speed: 0.4, color: 'rgba(0,255,200,0.35)', width: 1.5 },
-  { r: 42, sides: 6, speed: -0.6, color: 'rgba(0,200,255,0.20)', width: 1 },
-  { r: 68, sides: 6, speed: 0.25, color: 'rgba(0,255,200,0.12)', width: 2 },
-  { r: 28, sides: 6, speed: 0.9, color: 'rgba(255,0,255,0.15)', width: 1 },
-];
+function toggleTerminal() {
+  const bottom = document.getElementById('panel-bottom');
+  const btn    = document.getElementById('terminal-toggle');
+  const collapsed = bottom.classList.toggle('terminal-collapsed');
+  if (btn) btn.textContent = collapsed ? '▲ SHOW' : '▼ HIDE';
+}
+
+// ── PORTAL CANVAS ANIMATION ──────────────────────────────────
+let hexCtx, hexW, hexH, hexRAF;
 
 function initHexCanvas() {
   const canvas = document.getElementById('hex-canvas');
@@ -1511,67 +1505,120 @@ function initHexCanvas() {
 
 function resizeHexCanvas() {
   const canvas = document.getElementById('hex-canvas');
-  const area = document.getElementById('hex-area');
-  canvas.width = hexW = area.offsetWidth;
+  const area   = document.getElementById('hex-area');
+  canvas.width  = hexW = area.offsetWidth;
   canvas.height = hexH = area.offsetHeight;
-}
-
-function drawHexagon(cx, cy, r, rotation, sides = 6) {
-  hexCtx.beginPath();
-  for (let i = 0; i < sides; i++) {
-    const angle = rotation + (Math.PI * 2 * i) / sides;
-    const x = cx + r * Math.cos(angle);
-    const y = cy + r * Math.sin(angle);
-    if (i === 0) hexCtx.moveTo(x, y); else hexCtx.lineTo(x, y);
-  }
-  hexCtx.closePath();
 }
 
 function startHexAnimation() {
   let t = 0;
+  const PARTICLE_COUNT = 55;
+  const particles = Array.from({ length: PARTICLE_COUNT }, (_, i) => ({
+    angle:    (i / PARTICLE_COUNT) * Math.PI * 2,
+    radius:   30 + Math.random() * 42,
+    speed:    0.006 + Math.random() * 0.014,
+    size:     0.8 + Math.random() * 2.0,
+    opacity:  0.3 + Math.random() * 0.7,
+    hue:      Math.random() < 0.15 ? 300 : (Math.random() < 0.3 ? 200 : 160),
+    drift:    (Math.random() - 0.5) * 0.003,
+    driftDir: Math.random() < 0.5 ? 1 : -1,
+  }));
+
+  const ARCS = [
+    { rx: 54, ry: 14, angle: 0,    speed:  0.38, color: 'rgba(0,255,200,0.28)', width: 1.2 },
+    { rx: 44, ry: 10, angle: 1.05, speed: -0.52, color: 'rgba(0,180,255,0.20)', width: 0.8 },
+    { rx: 62, ry: 18, angle: 2.09, speed:  0.22, color: 'rgba(0,255,200,0.15)', width: 1.5 },
+    { rx: 36, ry:  8, angle: 0.52, speed:  0.72, color: 'rgba(180,0,255,0.18)', width: 0.7 },
+    { rx: 70, ry: 22, angle: 3.66, speed: -0.18, color: 'rgba(0,255,180,0.10)', width: 2.0 },
+  ];
+
   function frame() {
     hexRAF = requestAnimationFrame(frame);
     if (!hexCtx) return;
     hexCtx.clearRect(0, 0, hexW, hexH);
     const cx = hexW / 2, cy = hexH / 2;
-    t += 0.01;
+    t += 0.016;
 
-    // Rotating hex rings
-    HEX_RINGS.forEach((ring, i) => {
+    // 1. Deep portal void gradient
+    const depth = hexCtx.createRadialGradient(cx, cy, 0, cx, cy, 78);
+    depth.addColorStop(0,    'rgba(0,0,0,0.0)');
+    depth.addColorStop(0.18, 'rgba(0,28,38,0.55)');
+    depth.addColorStop(0.55, 'rgba(0,8,16,0.75)');
+    depth.addColorStop(0.85, 'rgba(0,0,8,0.5)');
+    depth.addColorStop(1,    'rgba(0,0,0,0.0)');
+    hexCtx.fillStyle = depth;
+    hexCtx.beginPath();
+    hexCtx.arc(cx, cy, 78, 0, Math.PI * 2);
+    hexCtx.fill();
+
+    // 2. Rotating energy arcs — ellipses create depth illusion
+    ARCS.forEach(function(arc) {
       hexCtx.save();
-      hexCtx.strokeStyle = ring.color;
-      hexCtx.lineWidth = ring.width;
-      drawHexagon(cx, cy, ring.r, t * ring.speed);
+      hexCtx.translate(cx, cy);
+      hexCtx.rotate(arc.angle + t * arc.speed);
+      hexCtx.beginPath();
+      hexCtx.ellipse(0, 0, arc.rx, arc.ry, 0, 0, Math.PI * 2);
+      hexCtx.strokeStyle = arc.color;
+      hexCtx.lineWidth   = arc.width;
       hexCtx.stroke();
-
-      // Small dots at vertices
-      for (let v = 0; v < ring.sides; v++) {
-        const angle = t * ring.speed + (Math.PI * 2 * v) / ring.sides;
-        const vx = cx + ring.r * Math.cos(angle);
-        const vy = cy + ring.r * Math.sin(angle);
-        hexCtx.beginPath();
-        hexCtx.arc(vx, vy, 2, 0, Math.PI * 2);
-        hexCtx.fillStyle = ring.color;
-        hexCtx.fill();
-      }
       hexCtx.restore();
     });
 
-    // Central glow pulse
-    const pulse = 0.5 + 0.5 * Math.sin(t * 2);
-    const grd = hexCtx.createRadialGradient(cx, cy, 0, cx, cy, 25);
-    grd.addColorStop(0, `rgba(0,255,200,${0.15 * pulse})`);
-    grd.addColorStop(1, 'transparent');
-    hexCtx.fillStyle = grd;
-    hexCtx.fillRect(0, 0, hexW, hexH);
+    // 3. Swirling particles
+    particles.forEach(function(p) {
+      p.angle  += p.speed;
+      p.radius += p.drift * p.driftDir;
+      if (p.radius > 72 || p.radius < 12) p.driftDir *= -1;
+      const px = cx + p.radius * Math.cos(p.angle);
+      const py = cy + p.radius * Math.sin(p.angle) * 0.38;
+      const alpha = p.opacity * (0.5 + 0.5 * Math.sin(p.angle * 3 + t));
+      hexCtx.beginPath();
+      hexCtx.arc(px, py, p.size, 0, Math.PI * 2);
+      hexCtx.fillStyle = 'hsla(' + p.hue + ',100%,75%,' + alpha.toFixed(2) + ')';
+      hexCtx.fill();
+    });
 
-    // Scanning lines
-    const lineY = cy - 25 + (Math.sin(t * 1.5) * 20);
-    hexCtx.strokeStyle = `rgba(0,255,200,${0.25 * pulse})`;
-    hexCtx.lineWidth = 1;
+    // 4. Inner vortex glow
+    const pulse  = 0.5 + 0.5 * Math.sin(t * 2.1);
+    const pulse2 = 0.5 + 0.5 * Math.sin(t * 1.3 + 1.2);
+    const inner = hexCtx.createRadialGradient(cx, cy, 0, cx, cy, 32);
+    inner.addColorStop(0,   'rgba(0,255,200,' + (0.35 + 0.25*pulse).toFixed(2) + ')');
+    inner.addColorStop(0.4, 'rgba(0,200,255,' + (0.15 + 0.1*pulse2).toFixed(2) + ')');
+    inner.addColorStop(1,   'rgba(0,0,0,0)');
+    hexCtx.fillStyle = inner;
     hexCtx.beginPath();
-    hexCtx.moveTo(cx - 60, lineY);
-    hexCtx.lineTo(cx + 60, lineY);
+    hexCtx.arc(cx, cy, 32, 0, Math.PI * 2);
+    hexCtx.fill();
+
+    // 5. Singularity core
+    const core = hexCtx.createRadialGradient(cx, cy, 0, cx, cy, 10);
+    core.addColorStop(0,   'rgba(220,255,255,' + (0.9 + 0.1*pulse).toFixed(2) + ')');
+    core.addColorStop(0.3, 'rgba(0,255,200,' + (0.6 + 0.2*pulse).toFixed(2) + ')');
+    core.addColorStop(1,   'rgba(0,0,0,0)');
+    hexCtx.fillStyle = core;
+    hexCtx.beginPath();
+    hexCtx.arc(cx, cy, 10, 0, Math.PI * 2);
+    hexCtx.fill();
+
+    // 6. Event horizon outer ring
+    hexCtx.beginPath();
+    hexCtx.arc(cx, cy, 74, 0, Math.PI * 2);
+    hexCtx.strokeStyle = 'rgba(0,255,200,' + (0.12 + 0.08*pulse).toFixed(2) + ')';
+    hexCtx.lineWidth = 1.5;
+    hexCtx.stroke();
+
+    // 7. Rotating scan sweep
+    const scanAngle = t * 1.4;
+    const scanX1 = cx + 74 * Math.cos(scanAngle);
+    const scanY1 = cy + 74 * Math.sin(scanAngle) * 0.4;
+    const scanGrd = hexCtx.createLinearGradient(cx, cy, scanX1, scanY1);
+    scanGrd.addColorStop(0, 'rgba(0,255,200,' + (0.2 + 0.15*pulse).toFixed(2) + ')');
+    scanGrd.addColorStop(1, 'rgba(0,255,200,0)');
+    hexCtx.beginPath();
+    hexCtx.moveTo(cx, cy);
+    hexCtx.lineTo(scanX1, scanY1);
+    hexCtx.strokeStyle = scanGrd;
+    hexCtx.lineWidth = 1.5;
     hexCtx.stroke();
   }
   frame();
@@ -2349,36 +2396,102 @@ function persistPersonalities() {
 
 function refreshMemoryTab() {
   const stats = window.hexMemory.getStats();
-  const el = (id) => document.getElementById(id);
-  if (el('mem-stat-facts')) el('mem-stat-facts').textContent = stats.facts;
-  if (el('mem-stat-turns')) el('mem-stat-turns').textContent = stats.turns;
-  if (el('mem-stat-oldest')) el('mem-stat-oldest').textContent = stats.oldestTurn || '—';
-  if (el('mem-stat-summary')) el('mem-stat-summary').textContent = stats.summary ? 'YES' : 'NO';
+  const $ = function(id){ return document.getElementById(id); };
+  if ($('mem-stat-facts'))    $('mem-stat-facts').textContent    = stats.facts;
+  if ($('mem-stat-turns'))    $('mem-stat-turns').textContent    = stats.turns;
+  if ($('mem-stat-sessions')) $('mem-stat-sessions').textContent = stats.sessions || 0;
+  if ($('mem-stat-oldest'))   $('mem-stat-oldest').textContent   = stats.oldestTurn || 'None';
 
-  // Render facts list
-  const factsList = document.getElementById('facts-list');
-  if (!factsList) return;
-  factsList.innerHTML = '';
+  // Tier bar
+  const t = stats.tierCounts || {};
+  if ($('mem-tier-0')) { $('mem-tier-0').textContent = t.protected||0; $('mem-tier-1').textContent = t.high||0; $('mem-tier-2').textContent = t.active||0; $('mem-tier-3').textContent = t.weak||0; }
 
-  if (!window.hexMemory.facts.length) {
-    factsList.innerHTML = '<div class="form-hint" style="padding:8px;">No facts stored yet. HEX will learn as you chat.</div>';
-    return;
+  // Working memory
+  const wm = stats.workingMemory;
+  const wmEl = $('mem-working');
+  if (wmEl && wm) {
+    const lines = [];
+    if (wm.currentTask)                   lines.push('Task:  ' + wm.currentTask);
+    if (wm.mood && wm.mood !== 'neutral') lines.push('Mood:  ' + wm.mood);
+    if (wm.currentEntities && wm.currentEntities.length) lines.push('Focus: ' + wm.currentEntities.join(', '));
+    if (wm.hypotheses && wm.hypotheses.length)           lines.push('Hyp:   ' + wm.hypotheses[0].belief);
+    wmEl.textContent = lines.length ? lines.join('\n') : 'No active session context.';
   }
 
-  window.hexMemory.facts.forEach(f => {
+  filterMemoryFacts('');
+}
+
+function filterMemoryFacts(query) {
+  const listEl = document.getElementById('facts-list');
+  if (!listEl) return;
+  const typeFilter = (document.getElementById('mem-type-filter') || {}).value || '';
+  const q = (query || '').toLowerCase().trim();
+  const TIER_COLORS = ['#00ffc8', '#0088ff', '#ff6b35', 'rgba(255,255,255,0.25)'];
+
+  const facts = window.hexMemory.facts || [];
+  const filtered = facts.filter(function(f) {
+    if (typeFilter && f.type !== typeFilter) return false;
+    if (q && !((f.content||'').toLowerCase().includes(q) || (f.type||'').includes(q))) return false;
+    return true;
+  });
+
+  const hint = document.getElementById('mem-filter-hint');
+  if (hint) hint.textContent = filtered.length + '/' + facts.length;
+
+  if (!filtered.length) {
+    listEl.innerHTML = '<div class="form-hint" style="padding:8px;">' + (facts.length ? 'No facts match filter.' : 'No facts yet. Chat with HEX — learning happens automatically.') + '</div>';
+    return;
+  }
+  listEl.innerHTML = '';
+  filtered.forEach(function(f) {
+    const tier = typeof f.tier === 'number' ? f.tier : 3;
+    const conf = Math.round((f.confidence || 0) * 100);
+    const ageDays = f.created_at ? Math.floor((Date.now() - f.created_at) / 86400000) : 0;
+    const ageStr = ageDays < 1 ? 'today' : ageDays + 'd';
+    const implicitMark = f.implicit ? ' ~' : '';
     const row = document.createElement('div');
     row.className = 'fact-row';
+    row.style.borderLeft = '3px solid ' + TIER_COLORS[tier];
+    row.style.paddingLeft = '8px';
     row.innerHTML =
-      '<span class="fact-cat ' + (f.category || 'general') + '">' + (f.category || 'general').toUpperCase() + '</span>' +
-      '<span class="fact-text">' + escapeHtml((f.content || '').substring(0, 160)) + '</span>' +
-      '<button class="fact-del" onclick="deleteFact(\'' + f.id + '\')" title="Delete fact">✕</button>';
-    factsList.appendChild(row);
+      '<span class="fact-cat">' + (f.type || f.category || 'general') + '</span>' +
+      '<span class="fact-text">' + escapeHtml((f.content||'').substring(0, 140)) + '</span>' +
+      '<span style="font-size:9px;opacity:0.4;white-space:nowrap;margin:0 4px;">' + conf + '%' + implicitMark + ' ' + ageStr + '</span>' +
+      '<button class="fact-del" onclick="deleteMemoryFact(' + f.id + ')">✕</button>';
+    listEl.appendChild(row);
   });
 }
 
-function deleteFact(id) {
+function deleteMemoryFact(id) {
   window.hexMemory.removeFact(id);
-  refreshMemoryTab();
+  filterMemoryFacts((document.getElementById('mem-search')||{}).value || '');
+}
+
+function deleteFact(id) { deleteMemoryFact(id); }  // legacy alias
+
+async function compressSession() {
+  showToast('◆ MEMORY', 'Compressing session...', '', 3000);
+  try {
+    const ep = await window.hexMemory.compressCurrentSession();
+    if (ep) {
+      showToast('◆ MEMORY', 'Session compressed. Topics: ' + (ep.topics||[]).join(', '), '', 5000);
+      addLog('HEX', 'Session compressed: ' + (ep.topics||[]).join(', '));
+      refreshMemoryTab();
+    } else {
+      showToast('◆ MEMORY', 'Need more conversation or AI configured to compress.', 'warn', 4000);
+    }
+  } catch(e) {
+    showToast('◆ MEMORY', 'Compress error: ' + e.message, 'alert', 4000);
+  }
+}
+
+function showMemoryReport() {
+  const report = window.hexMemory.getHealthReport();
+  const el = document.getElementById('mem-report');
+  if (el) {
+    el.textContent = report;
+    el.style.display = (el.style.display === 'none' || !el.style.display) ? '' : 'none';
+  }
 }
 
 async function clearMemoryFacts() {

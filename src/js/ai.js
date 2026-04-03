@@ -27,7 +27,7 @@ class HexAI {
       : 'HEX — Default';
 
     // Long-term memory context
-    const memoryCtx = (window.hexMemory) ? window.hexMemory.getContext() : '';
+    const memoryCtx = (window.hexMemory) ? window.hexMemory.getContext(userMsg) : '';
     const memoryBlock = memoryCtx
       ? '\n--- LONG-TERM MEMORY ---\n' + memoryCtx + '\n--- END MEMORY ---'
       : '';
@@ -229,6 +229,8 @@ class HexAI {
     // Use persistent memory history if available
     if (window.hexMemory) {
       window.hexMemory.addTurn('user', userMsg);
+      // Update working memory mood immediately (before LLM call)
+      window.hexMemory.working.mood = window.hexMemory._detectMood(userMsg);
       this.history = window.hexMemory.getRecentHistory(20);
     } else {
       this.history.push({ role: 'user', content: userMsg });

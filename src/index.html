@@ -309,41 +309,78 @@
 
       <div class="memory-stats-grid" id="memory-stats-grid">
         <div class="mem-stat-card">
-          <span class="label-tag">FACTS STORED</span>
+          <span class="label-tag">ACTIVE FACTS</span>
           <span class="mem-stat-val" id="mem-stat-facts">—</span>
         </div>
         <div class="mem-stat-card">
-          <span class="label-tag">CONVERSATION TURNS</span>
+          <span class="label-tag">CONVERSATIONS</span>
           <span class="mem-stat-val" id="mem-stat-turns">—</span>
         </div>
         <div class="mem-stat-card">
-          <span class="label-tag">OLDEST MEMORY</span>
-          <span class="mem-stat-val" id="mem-stat-oldest" style="font-size:13px;">—</span>
+          <span class="label-tag">SESSIONS</span>
+          <span class="mem-stat-val" id="mem-stat-sessions">—</span>
         </div>
         <div class="mem-stat-card">
-          <span class="label-tag">SUMMARY</span>
-          <span class="mem-stat-val" id="mem-stat-summary">—</span>
+          <span class="label-tag">OLDEST MEMORY</span>
+          <span class="mem-stat-val" id="mem-stat-oldest" style="font-size:11px;">—</span>
         </div>
       </div>
 
-      <div class="settings-section-label" style="margin-top:16px;">◆ KNOWN FACTS</div>
-      <div class="form-hint" style="margin-bottom:8px;">Facts HEX has learned about you and your system. Click ✕ to delete individual facts.</div>
+      <!-- Tier breakdown -->
+      <div id="mem-tier-bar" style="display:flex;gap:4px;margin:10px 0;font-family:var(--font-m);font-size:9px;">
+        <div style="display:flex;align-items:center;gap:3px;"><span style="width:8px;height:8px;background:#00ffc8;display:inline-block;border-radius:2px;"></span><span id="mem-tier-0">0</span> PROTECTED</div>
+        <div style="display:flex;align-items:center;gap:3px;margin-left:8px;"><span style="width:8px;height:8px;background:#0088ff;display:inline-block;border-radius:2px;"></span><span id="mem-tier-1">0</span> HIGH</div>
+        <div style="display:flex;align-items:center;gap:3px;margin-left:8px;"><span style="width:8px;height:8px;background:#ff6b35;display:inline-block;border-radius:2px;"></span><span id="mem-tier-2">0</span> ACTIVE</div>
+        <div style="display:flex;align-items:center;gap:3px;margin-left:8px;"><span style="width:8px;height:8px;background:rgba(255,255,255,0.2);display:inline-block;border-radius:2px;"></span><span id="mem-tier-3">0</span> WEAK</div>
+      </div>
+
+      <!-- Working memory -->
+      <div class="settings-section-label">◆ CURRENT SESSION</div>
+      <div id="mem-working" class="form-hint" style="margin-bottom:8px;font-family:monospace;white-space:pre-wrap;line-height:1.6;">—</div>
+
+      <!-- Known facts -->
+      <div class="settings-section-label" style="margin-top:12px;">◆ KNOWN FACTS <span id="mem-filter-hint" class="form-hint" style="display:inline;margin-left:8px;"></span></div>
+      <div style="display:flex;gap:6px;margin-bottom:6px;">
+        <input type="text" id="mem-search" class="form-control" placeholder="filter facts..." style="flex:1;font-size:11px;" oninput="filterMemoryFacts(this.value)">
+        <select id="mem-type-filter" class="form-control" style="width:120px;font-size:11px;" onchange="filterMemoryFacts(document.getElementById('mem-search').value)">
+          <option value="">All types</option>
+          <option value="user">User</option>
+          <option value="preference">Preference</option>
+          <option value="skill">Skill</option>
+          <option value="habit">Habit</option>
+          <option value="system">System</option>
+          <option value="task">Task</option>
+          <option value="belief">Belief</option>
+        </select>
+      </div>
       <div id="facts-list" class="facts-list"></div>
 
-      <div class="settings-section-label" style="margin-top:16px;">◆ DANGER ZONE</div>
+      <!-- Actions -->
+      <div class="settings-section-label" style="margin-top:12px;">◆ ACTIONS</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+        <button class="btn btn-secondary" onclick="compressSession()" style="font-size:9px;">
+          💾 COMPRESS SESSION
+        </button>
+        <button class="btn btn-secondary" onclick="showMemoryReport()" style="font-size:9px;">
+          📊 HEALTH REPORT
+        </button>
+      </div>
+      <div id="mem-report" class="form-hint" style="white-space:pre-wrap;line-height:1.6;display:none;margin-bottom:8px;"></div>
+
+      <div class="settings-section-label">◆ DANGER ZONE</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn btn-secondary" onclick="clearMemoryFacts()" style="border-color:var(--orange);color:var(--orange);">
-          🗑 CLEAR FACTS ONLY
+          🗑 CLEAR FACTS
         </button>
         <button class="btn btn-secondary" onclick="clearMemoryHistory()" style="border-color:var(--orange);color:var(--orange);">
-          🗑 CLEAR HISTORY ONLY
+          🗑 CLEAR HISTORY
         </button>
         <button class="btn btn-secondary" onclick="clearAllMemory()" style="border-color:var(--magenta);color:var(--magenta);">
-          ☢ WIPE ALL MEMORY
+          ☢ WIPE ALL
         </button>
       </div>
       <div class="form-hint" style="margin-top:8px;color:rgba(255,107,53,0.5);">
-        Warning: cleared memory cannot be recovered. HEX will forget everything.
+        Cleared memory cannot be recovered.
       </div>
     </div>
 
@@ -573,7 +610,6 @@
   <main id="panel-center" class="panel">
     <div id="hex-area">
       <canvas id="hex-canvas"></canvas>
-      <div id="hex-label">H.E.X.</div>
     </div>
 
     <!-- Browser URL / Search Bar -->
@@ -694,7 +730,10 @@
   <footer id="panel-bottom" class="panel">
     <div id="terminal-header">
       <span id="terminal-title" class="mono" data-i18n="terminal_title">TERMINAL FEED</span>
-      <button id="terminal-clear" onclick="clearTerminal()" data-i18n="clear_terminal">CLEAR</button>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button id="terminal-clear" onclick="clearTerminal()" data-i18n="clear_terminal">CLEAR</button>
+        <button id="terminal-toggle" onclick="toggleTerminal()" title="Hide/Show terminal" style="font-family:var(--font-m);font-size:9px;letter-spacing:2px;color:rgba(0,255,200,0.35);cursor:pointer;background:none;border:none;transition:color 0.15s;" onmouseenter="this.style.color='var(--cyan)'" onmouseleave="this.style.color='rgba(0,255,200,0.35)'">▼ HIDE</button>
+      </div>
     </div>
     <div id="terminal-log" ondblclick="clearTerminal()"></div>
   </footer>
