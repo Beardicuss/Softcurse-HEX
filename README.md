@@ -6,9 +6,10 @@
   [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](#)
   [![Electron](https://img.shields.io/badge/Electron-41.1.1-47848f?status=active&logo=electron)](#)
   [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](#)
+  [![Website](https://img.shields.io/badge/Website-Softcurse%20Studios-blueviolet)](https://softcurse-website.pages.dev/)
   [![License](https://img.shields.io/badge/License-MIT-green.svg)](#)
 
-  > 🚀 A high-performance, J.A.R.V.I.S.-inspired desktop intelligence that pairs deep native OS control with multimodal LLM cognition.
+  > 🚀 A high-performance desktop intelligence that pairs deep native OS control with multimodal LLM cognition.
 </div>
 
 ## Table of Contents
@@ -91,7 +92,8 @@ Because H.E.X. relies on highly privileged, platform-specific OS logic (such as 
 To safely sandbox the LLM logic, you can toggle `SAFE_EXECUTION` bounds inside `main.js` to prompt UI dialogs before destructive sweeps.
 
 ## 🤝 Contributing
-We welcome OS action hook extensions or localization scripts!
+We welcome OS action hook extensions or localization scripts! Before submitting, please review our [Contributing Guidelines](CONTRIBUTING.md) and our [Code of Conduct](CODE_OF_CONDUCT.md).
+
 1. Fork the Project.
 2. Branch your Feature (`git checkout -b feature/NewIPCAction`).
 3. Commit your Changes (`git commit -m 'Added registry sweeping'`).
@@ -107,8 +109,9 @@ We welcome OS action hook extensions or localization scripts!
 Distributed under the **MIT License**. See `LICENSE` for more information.
 
 ## 👥 Acknowledgements
-- Built by **Softcurse Lab**.
+- Built by [**Softcurse Studios**](https://softcurse-website.pages.dev/).
 - Uses [Sherpa-ONNX](https://github.com/k2-fsa/sherpa-onnx) for robust local Speech-to-Text pipelines.
 
 ## 💬 Support
-For issues or feature requests, please open a GitHub Issue ticket, taking care to attach any Electron console trace dumps if the issue relates to Native Module compilation (`@electron/rebuild`).
+- **Bugs & Features**: For general issues or feature requests, please use our strictly-formatted [GitHub Issue Templates](.github/ISSUE_TEMPLATE/). Ensure you attach Electron console trace dumps if the issue relates to Native Module compilation (`@electron/rebuild`).
+- **Security Vulnerabilities**: Given H.E.X.'s extensive OS privilege hooks, do not report exploitable bugs publicly. Please refer to our [Security Policy](SECURITY.md) for private disclosure instructions.
