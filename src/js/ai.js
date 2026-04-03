@@ -338,12 +338,11 @@ class HexAI {
       const type = inner.slice(0, colonIdx).trim();
       const rest = inner.slice(colonIdx + 1);
       // Args split on | for paths, otherwise on :
-      // Split args: use | for paths, but preserve https:// URLs intact
       let rawArgs;
       if (rest.includes('|')) {
         rawArgs = rest.split('|');
-      } else if (/^https?:\/\//i.test(rest) || rest.split(':').length <= 2) {
-        // Single arg (URL or simple value) — don't split
+      } else if (/^https?:\/\//i.test(rest)) {
+        // Single arg (URL) — don't split
         rawArgs = [rest];
       } else {
         rawArgs = rest.split(':');

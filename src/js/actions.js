@@ -88,7 +88,7 @@ async function handleAIAction(action) {
 
     case 'open_folder':
       if (action.args[0]) {
-        const folderResult = await window.hexAPI.butler.openFolder(action.args[0]);
+        const folderResult = await window.hexAPI.butler.openFolder(action.args.join(':'));
         if (folderResult.success) addLog('BUTLER', `Opened folder: ${folderResult.path}`);
         else addLog('BUTLER', `Folder error: ${folderResult.error}`, 'error');
       }
@@ -171,13 +171,13 @@ async function handleAIAction(action) {
       break;
     }
     case 'delete': {
-      const r = await window.hexAPI.butler.delete(action.args[0], false);
-      addLog('BUTLER', r.success ? `Deleted: ${action.args[0]}` : `Delete: ${r.error}`);
+      const r = await window.hexAPI.butler.delete(action.args.join(':'), false);
+      addLog('BUTLER', r.success ? `Deleted: ${action.args.join(':')}` : `Delete: ${r.error}`);
       break;
     }
     case 'delete_perm': {
-      const r = await window.hexAPI.butler.delete(action.args[0], true);
-      addLog('BUTLER', r.success ? `Permanently deleted: ${action.args[0]}` : `Delete: ${r.error}`);
+      const r = await window.hexAPI.butler.delete(action.args.join(':'), true);
+      addLog('BUTLER', r.success ? `Permanently deleted: ${action.args.join(':')}` : `Delete: ${r.error}`);
       break;
     }
     case 'rename': {
@@ -187,13 +187,14 @@ async function handleAIAction(action) {
       break;
     }
     case 'create_folder': {
-      const r = await window.hexAPI.butler.createFolder(action.args[0]);
+      const folderPath = action.args.join(':');
+      const r = await window.hexAPI.butler.createFolder(folderPath);
       addLog('BUTLER', r.success ? `Folder created: ${r.path}` : `Folder: ${r.error}`);
       if (r.success) addHexMessage(`**Folder created:** \`${r.path}\``);
       break;
     }
     case 'list_dir': {
-      const r = await window.hexAPI.butler.listDir(action.args[0] || 'desktop');
+      const r = await window.hexAPI.butler.listDir(action.args.join(':') || 'desktop');
       if (r.success) {
         const dirs = r.items.filter(function (i) { return i.type === 'dir'; }).map(function (i) { return '[DIR] ' + i.name; });
         const files = r.items.filter(function (i) { return i.type === 'file'; }).map(function (i) { return '[FILE] ' + i.name; });
@@ -207,9 +208,10 @@ async function handleAIAction(action) {
       break;
     }
     case 'file_info': {
-      const r = await window.hexAPI.butler.fileInfo(action.args[0]);
+      const filePath = action.args.join(':');
+      const r = await window.hexAPI.butler.fileInfo(filePath);
       if (r.success) {
-        addHexMessage(`**${action.args[0]}**
+        addHexMessage(`**${filePath}**
 Size: ${r.sizeHuman}
 Type: ${r.isDir ? 'Folder' : 'File'}
 Modified: ${r.modified}`);
