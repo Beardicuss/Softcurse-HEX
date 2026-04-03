@@ -79,6 +79,13 @@
   "return_from_idle": "Welcome back. You were away for {min} minutes.",
   "reminder_set": "Reminder set for {label} in {min} min.",
   "reminder_fire": "⏰ Reminder: {label}",
+  "welcome_phrases": [
+    "System online. All subsystems nominal. How can I assist you today, {name}?",
+    "Welcome back, {name}. The neural link is established and stable.",
+    "Initialization complete. Awaiting your commands, {name}.",
+    "Greetings, {name}. H.E.X. core is online.",
+    "Hello {name}. My logic circuits are primed. Ready when you are."
+  ],
   "hex_greeting": "System online. All subsystems nominal. How can I assist you today, {name}?",
   "hex_error": "Neural link disrupted. Attempting reconnection...",
   "processes_title": "ACTIVE PROCESSES",

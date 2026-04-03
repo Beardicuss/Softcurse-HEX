@@ -131,9 +131,15 @@ async function init() {
 
   // Greeting
   const name = config.userName || 'Operator';
-  const greet = window.i18n.t('hex_greeting', { name });
+  const greet = window.i18n.getRandomWelcomePhrase ? window.i18n.getRandomWelcomePhrase(name) : window.i18n.t('hex_greeting', { name });
   addHexMessage(greet);
   addLog('HEX', 'System initialized. All subsystems nominal.');
+  // Speak the greeting
+  setTimeout(() => {
+    if (window.hexVoice && (!config.voice || config.voice.enabled !== false)) {
+      window.hexVoice.speak(greet);
+    }
+  }, 1000);
 
   // Background Omni-Launcher Scan
   setTimeout(() => {

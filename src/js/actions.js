@@ -15,7 +15,7 @@ async function handleAIAction(action) {
     case 'run_cleanup': await runTask('disk_cleanup'); break;
     case 'run_network_diag': await runTask('network_diag'); break;
     case 'list_startup': await runTask('startup_apps'); break;
-    case 'check_updates': await runTask('update_check'); break;
+    case 'run_update_check': await runTask('update_check'); break;
     case 'check_firewall': await runTask('firewall_status'); break;
     case 'run_memory_diag': await runTask('memory_diag'); break;
     case 'open_settings': openSettings(); break;

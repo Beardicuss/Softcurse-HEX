@@ -86,6 +86,19 @@ class I18n {
       .replace(/\{min\}/g, String(min));
   }
 
+  getRandomWelcomePhrase(name) {
+    const userName = (name || 'Operator').trim();
+    let pool = this.t('welcome_phrases');
+    if (!Array.isArray(pool) || pool.length === 0) {
+      pool = (this.loaded['en'] && this.loaded['en']['welcome_phrases']) || [];
+    }
+    if (!Array.isArray(pool) || pool.length === 0) {
+      return this.t('hex_greeting', { name: userName });
+    }
+    const chosenIdx = Math.floor(Math.random() * pool.length);
+    return pool[chosenIdx].replace(/\{name\}/g, userName);
+  }
+
   apply() {
     document.querySelectorAll('[data-i18n]').forEach(el => {
       const key = el.getAttribute('data-i18n');
