@@ -132,10 +132,12 @@ function applySystemSettings() {
   if (!config.system) return;
 
   try {
-    app.setLoginItemSettings({
-      openAtLogin: !!config.system.autostart,
-      path: app.getPath('exe')
-    });
+    if (app.isPackaged) {
+      app.setLoginItemSettings({
+        openAtLogin: !!config.system.autostart,
+        path: app.getPath('exe')
+      });
+    }
   } catch (e) { console.warn('setLoginItemSettings failed:', e); }
 
   if (config.system.minimizeToTray) {
@@ -1027,5 +1029,24 @@ ipcMain.handle('butler:run-js', async (event, { code }) => {
     return { success: true, output: output.join('\n'), result: String(result ?? '') };
   } catch (e) {
     return { success: false, error: e.message };
+  }
+});
+
+// ─── USER-SPECIFIC LOCAL OLLAMA AUTOMATION ────────────────────────────────────
+// Explicitly checks for D: drive paths to prevent breaks on generic environments
+app.whenReady().then(() => {
+  const ollamaRunVbs = "D:\\Dev\\Artificial intelligence\\run-ollama.vbs";
+  if (fs.existsSync(ollamaRunVbs)) {
+    exec(`cscript.exe //nologo "${ollamaRunVbs}"`, (err) => {
+      if (err) console.error("Auto-start Ollama failed:", err);
+      else console.log("Ollama local process started via VBS.");
+    });
+  }
+});
+
+app.on('will-quit', () => {
+  const ollamaStopVbs = "D:\\Dev\\Artificial intelligence\\stop-ollama.vbs";
+  if (fs.existsSync(ollamaStopVbs)) {
+    exec(`cscript.exe //nologo "${ollamaStopVbs}"`);
   }
 });
