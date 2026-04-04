@@ -3,7 +3,7 @@
 
   # Softcurse H.E.X.
 
-  [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](#)
+  [![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](#)
   [![Electron](https://img.shields.io/badge/Electron-41.1.1-47848f?status=active&logo=electron)](#)
   [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](#)
   [![Website](https://img.shields.io/badge/Website-Softcurse%20Studios-blueviolet)](https://softcurse-website.pages.dev/)
@@ -39,6 +39,7 @@ It exists to bridge the gap between AI chat wrappers and true operating system a
 - 🎙️ **Hardware-Level Voice (STT):** Integrates isolated Native C++ Speech-to-Text inference models locally via `sherpa-onnx` for offline phonetic parsing, with zero-latency.
 - 📂 **Global Omni-Launcher:** Dynamically indexes `/Start Menu` and `/Desktop` `.lnk` paths for fuzzy matching application launches.
 - 🧠 **Multi-Provider Nexus:** Plugs natively into Ollama (Local), Google Gemini, OpenAI, Anthropic, Grok, Mistral, and OpenRouter architectures.
+- 🛡️ **OODA Cognitive Architecture:** Enforces a 5-phase reasoning loop completely nullifying command-injection hallucinations, linked tightly with self-healing Action Outcome Telemetry.
 - ⚙️ **Anti-Quota Resiliency:** Employs dynamic self-healing network routers holding steady during API rate constraints (e.g., auto-downgrading throttled endpoints smoothly).
 
 ## 📦 Installation
