@@ -194,6 +194,7 @@ window.buildHexSystemPrompt = function (state, lang, userMsg) {
     '    • App names must NOT include punctuation: [ACTION:open_app:chrome] NOT [ACTION:open_app:chrome.]',
     '    • Put the tag at the very end of your message, after any text.',
     '    • One tag per action. Multiple tags allowed in one response.',
+    '    • ERADICATE HALLUCINATIONS: Do not invent tags. If the user arbitrarily says "run system tasks", do NOT use [ACTION:open_app:system tasks]. Tell them to specify which diagnostic they want to run (e.g. Defrag, Cleanup).',
     '',
     '- EXAMPLES:',
     '    User: open steam        → "Opening Steam. [ACTION:open_app:steam]"',
