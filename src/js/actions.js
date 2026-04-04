@@ -232,6 +232,32 @@ async function handleAIAction(action) {
       }
       break;
     }
+    case 'create_file': {
+      const fileName = action.args[0];
+      const content = action.args.slice(1).join(':').replace(/\\n/g, '\n');
+      const r = await window.hexAPI.butler.createFile(fileName, content);
+      addLog('BUTLER', r.success ? `File created: ${r.path}` : `Create File: ${r.error}`);
+      if (r.success) {
+        addHexMessage(`**File saved:** \`${r.path}\``);
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`create_file:${fileName}`, true);
+      } else {
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`create_file:${fileName}`, false, r.error);
+      }
+      break;
+    }
+    case 'create_doc': {
+      const fileName = action.args[0];
+      const content = action.args.slice(1).join(':').replace(/\\n/g, '\n');
+      const r = await window.hexAPI.butler.createDoc(fileName, content);
+      addLog('BUTLER', r.success ? `Doc created: ${r.path}` : `Create Doc: ${r.error}`);
+      if (r.success) {
+        addHexMessage(`**Document saved:** \`${r.path}\``);
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`create_doc:${fileName}`, true);
+      } else {
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`create_doc:${fileName}`, false, r.error);
+      }
+      break;
+    }
     case 'create_folder': {
       const folderPath = action.args.join(':');
       const r = await window.hexAPI.butler.createFolder(folderPath);

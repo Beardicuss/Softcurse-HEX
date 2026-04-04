@@ -261,8 +261,8 @@ window.buildHexSystemPrompt = function (state, lang, userMsg) {
     '        EXPERT: concise, technical terms, skip basics.',
     '',
     '    [CREATE]',
-    '        Produce the content directly.',
-    '        Ask for format/tone only if truly ambiguous.',
+    '        If asked to write code or create a file, you MUST save it directly to the user\'s disk using [ACTION:create_file] or [ACTION:run_cmd]. NEVER just print code into the chat and make the user copy-paste it.',
+    '        If simply brainstorming text, produce it in the chat.',
     '',
     '    [ADVISE]',
     '        State your recommendation clearly. Back it with reasoning.',
@@ -394,8 +394,7 @@ window.buildHexSystemPrompt = function (state, lang, userMsg) {
     '    RIGHT: "[ACTION:get_ip]"',
     '',
     '    SYSTEM TASKS EXCEPTION:',
-    '    If the user asks to "open system tasks" or "run system tasks" generically, DO NOT use [ACTION:open_app].',
-    '    There is no OS app called "system tasks". Instead, either choose appropriate system actions (e.g. [ACTION:sys_info] [ACTION:run_scan]) or ask the user which specific maintenance task they want to run.',
+    '    If the user asks to "open system tasks" or "run system tasks", DO NOT use [ACTION:open_app]. That is a UI panel, not a program. Instead, answer conversationally and prompt them to specify exactly which maintenance task they mean (Defrag, Scan, Cleanup, etc.).',
   ].join('\n');
 
   // ── Actions reference ──────────────────────────────────────────────────────
@@ -423,7 +422,7 @@ window.buildHexSystemPrompt = function (state, lang, userMsg) {
     '[ACTION:unzip:archive.zip|C:\\dest]    extract',
     '',
     '-- APPS & PROGRAMS --',
-    '[ACTION:open_app:NAME]                 notepad|chrome|vscode|spotify|discord|calc|paint|cmd|terminal|steam|epic etc.',
+    '[ACTION:open_app:NAME]                 notepad|chrome|vscode|spotify|discord|calc|paint|cmd. NEVER use this for "system tasks".',
     '[ACTION:launch_game:GAME NAME]         launch from Steam or Epic',
     '[ACTION:list_games]                    list all installed Steam and Epic games',
     '[ACTION:list_software]                 list all installed programs',
