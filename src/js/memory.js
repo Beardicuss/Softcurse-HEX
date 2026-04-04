@@ -47,7 +47,7 @@ class HexMemory {
     this.onLog = null;
 
     // ── Tier definitions ──────────────────────────────────────────────────
-    this.PROTECTED_TYPES = new Set(['user', 'health', 'system']);
+    this.PROTECTED_TYPES = new Set(['user', 'health', 'system', 'action_outcome']);
     this.TIER_LABELS = { 0: 'protected', 1: 'high', 2: 'active', 3: 'weak' };
   }
 
@@ -352,71 +352,182 @@ class HexMemory {
       );
     }
 
+    // Auto-compress session every N turns (non-blocking)
+    this.maybeAutoCompress().catch(() => { });
+
     this._scheduleSave();
   }
 
   _extractKeywords(userMsg) {
-    // Name
-    const nameM = userMsg.match(/(?:my name is|i'm|call me|i am)\s+([A-ZА-Я][a-zа-я]{2,20})/i);
+    const msg = userMsg || '';
+
+    // ── Identity ───────────────────────────────────────────────────────────
+    const nameM = msg.match(/(?:my name is|i'm|call me|i am)\s+([A-ZА-Я][a-zа-я]{2,20})/i);
     if (nameM) this.addNode('user', "User's name is " + nameM[1], 0.95);
 
-    // OS
-    const osM = userMsg.match(/\b(windows\s*11?0?|windows|macos|mac\s*os|linux|ubuntu|debian|arch)\b/i);
+    // ── OS & platform ──────────────────────────────────────────────────────
+    const osM = msg.match(/\b(windows\s*1[01]|windows|macos|mac\s*os|linux|ubuntu|debian|arch)\b/i);
     if (osM) this.addNode('system', 'Uses ' + osM[0] + ' OS', 0.9);
 
-    // Project mentions
-    const projM = userMsg.match(/(?:working on|my project|my app|building|developing)\s+(.{5,60})/i);
-    if (projM) this.addNode('task', 'Working on: ' + projM[1].trim(), 0.8);
+    // ── Preferred apps ─────────────────────────────────────────────────────
+    const appPrefM = msg.match(/(?:i (?:use|prefer|always use|love|open))\s+([\w\s]{3,30}?)(?:\s+(?:for|as|to|instead)|\.|,|$)/i);
+    if (appPrefM) this.addNode('app_preference', 'Prefers ' + appPrefM[1].trim(), 0.7);
 
-    // Preferences
-    if (/i (love|like|prefer|enjoy|hate|dislike|don.t like)\s+(.{3,60})/i.test(userMsg)) {
-      const m = userMsg.match(/i (love|like|prefer|enjoy|hate|dislike|don.t like)\s+(.{3,60})/i);
-      if (m) this.addNode('preference', userMsg.substring(0, 120).trim(), 0.6);
+    const browserM = msg.match(/\b(chrome|firefox|brave|edge|safari|opera)\b/i);
+    if (browserM) this.addNode('app_preference', 'Uses ' + browserM[1] + ' browser', 0.75, { implicit: true });
+
+    const editorM = msg.match(/\b(vscode|vs code|visual studio code|neovim|vim|nvim|sublime|cursor|jetbrains|rider|pycharm|webstorm|intellij)\b/i);
+    if (editorM) this.addNode('app_preference', 'Uses ' + editorM[1] + ' as code editor', 0.8, { implicit: true });
+
+    // ── File paths & folders ───────────────────────────────────────────────
+    const pathM = msg.match(/([A-Z]:\\[\w\\. -]{5,60})/gi);
+    if (pathM) {
+      for (const p of pathM.slice(0, 3)) {
+        this.addNode('folder', 'Uses path: ' + p.trim(), 0.65, { implicit: true });
+      }
     }
 
-    // Skills
-    const langM = userMsg.match(/\b(python|javascript|typescript|rust|go|golang|java|c\+\+|c#|ruby|swift|kotlin|php)\b/i);
+    // ── Project context ────────────────────────────────────────────────────
+    const projM = msg.match(/(?:working on|my project|my app|building|developing)\s+(.{5,60})/i);
+    if (projM) this.addNode('task', 'Working on: ' + projM[1].trim(), 0.8);
+
+    // ── Language preferences (explicit) ────────────────────────────────────
+    if (/i (love|like|prefer|enjoy|hate|dislike|don.t like)\s+(.{3,60})/i.test(msg)) {
+      const m = msg.match(/i (love|like|prefer|enjoy|hate|dislike|don.t like)\s+(.{3,60})/i);
+      if (m) this.addNode('preference', msg.substring(0, 120).trim(), 0.65);
+    }
+
+    // ── Programming languages (implicit from mention) ──────────────────────
+    const langM = msg.match(/\b(python|javascript|typescript|rust|go|golang|java|c\+\+|c#|ruby|swift|kotlin|php)\b/i);
     if (langM) this.addNode('skill', 'Works with ' + langM[1], 0.7, { implicit: true });
 
-    // Time patterns
+    // ── Workflow signals ───────────────────────────────────────────────────
+    if (/\bgit\b/i.test(msg)) this.addNode('workflow', 'Uses Git for version control', 0.7, { implicit: true });
+    if (/\bdocker\b/i.test(msg)) this.addNode('workflow', 'Uses Docker containers', 0.7, { implicit: true });
+    if (/\bnpm\b|\byarn\b|\bpnpm\b/i.test(msg)) this.addNode('workflow', 'Works with Node.js/npm', 0.7, { implicit: true });
+    if (/\bwsl\b/i.test(msg)) this.addNode('workflow', 'Uses WSL (Windows Subsystem for Linux)', 0.8, { implicit: true });
+    if (/\bvpn\b/i.test(msg)) this.addNode('workflow', 'Uses a VPN', 0.6, { implicit: true });
+
+    // ── Gaming signals ─────────────────────────────────────────────────────
+    if (/\bsteam\b/i.test(msg)) this.addNode('app_preference', 'Has Steam installed', 0.9, { implicit: true });
+    if (/\bepic\b|\bepic games\b/i.test(msg)) this.addNode('app_preference', 'Has Epic Games installed', 0.85, { implicit: true });
+
+    // ── Active time patterns ───────────────────────────────────────────────
     const hour = new Date().getHours();
     if (hour >= 22 || hour <= 4) this.addNode('habit', 'Often active late at night', 0.4, { implicit: true });
     if (hour >= 6 && hour <= 9) this.addNode('habit', 'Often active in the morning', 0.4, { implicit: true });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  ACTION OUTCOME RECORDING — HEX learns from success and failure
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Call this after an action is executed to record its outcome.
+   * @param {string} actionTag  e.g. 'open_app:spotify'
+   * @param {boolean} success   true if the action worked
+   * @param {string} [detail]   optional detail (error message, result summary)
+   */
+  recordActionOutcome(actionTag, success, detail = '') {
+    const type = 'action_outcome';
+    if (success) {
+      // Reinforce: this action works on this PC
+      this.addNode(type, 'Action succeeds: ' + actionTag, 0.85, { implicit: true });
+    } else {
+      // Record failure so HEX can warn next time
+      const msg = 'Action failed: ' + actionTag + (detail ? ' (' + detail.substring(0, 80) + ')' : '');
+      this.addNode(type, msg, 0.8, { implicit: false });
+      this._log('Recorded action failure: ' + actionTag);
+    }
+  }
+
+  /**
+   * Call this when a user explicitly corrects HEX.
+   * @param {string} wrongAssumption  what HEX got wrong
+   * @param {string} correction       what the user said is correct
+   */
+  learnFromCorrection(wrongAssumption, correction) {
+    if (!wrongAssumption || !correction) return;
+    // Archive the wrong assumption if it exists as a node
+    const badNode = this.nodes.find(n =>
+      n.status === 'active' &&
+      this._wordOverlap(n.content, wrongAssumption) > 0.5
+    );
+    if (badNode) {
+      this._archiveNode(badNode, 'correction', 'user_correction');
+      this._log('Archived wrong node after correction: ' + badNode.content.substring(0, 60));
+    }
+    // Store the correct fact at high confidence
+    this.addNode('preference', correction.substring(0, 200), 0.9);
+    this._log('Learned from correction: ' + correction.substring(0, 60));
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  AUTO-COMPRESSION — triggers automatically after N turns
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Call this after each exchange. Auto-compresses every AUTO_COMPRESS_EVERY turns.
+   */
+  async maybeAutoCompress() {
+    const AUTO_COMPRESS_EVERY = 30; // turns
+    if (this.history.length > 0 && this.history.length % AUTO_COMPRESS_EVERY === 0) {
+      this._log('Auto-compressing session at ' + this.history.length + ' turns...');
+      try {
+        await this.compressCurrentSession();
+      } catch (e) {
+        this._log('Auto-compress error: ' + (e?.message || ''));
+      }
+    }
   }
 
   async _extractWithLLM(userMsg, aiReply) {
     if (this._extracting) return;
     this._extracting = true;
     try {
-      const extractPrompt = `You are a memory extraction system for a personal AI assistant.
-Analyze ONLY the user's message below and extract facts about THIS SPECIFIC USER.
+      const extractPrompt = `You are a memory extraction engine for HEX, a personal PC assistant AI.
+Analyze ONLY the user message below and extract durable facts about THIS SPECIFIC USER and their PC setup.
 
 USER MESSAGE: "${userMsg.substring(0, 400)}"
 
-Return ONLY a JSON object, no other text:
+Return ONLY valid JSON, no other text:
 {
   "facts": [
     {
-      "type": "user|preference|habit|task|system|skill|relationship|belief",
-      "content": "clear statement of the fact in third person (e.g. User prefers...)",
+      "type": "user|preference|habit|task|system|skill|app_preference|folder|workflow|action_outcome|belief",
+      "content": "clear fact in third person starting with 'User' (e.g. 'User prefers Brave browser')",
       "confidence": 0.0-1.0,
       "implicit": true or false,
       "temporal": "current|past|future|unknown"
     }
   ],
   "working": {
-    "currentTask": "brief description or null",
+    "currentTask": "brief description of what user is doing right now, or null",
     "mood": "neutral|focused|frustrated|exploratory"
   },
   "nothing": true or false
 }
 
+Type guide:
+- user           : name, identity, personal info
+- preference     : likes/dislikes, opinions
+- habit          : recurring behavior or time pattern
+- task           : current project or ongoing work
+- system         : OS, hardware, PC configuration
+- skill          : programming languages, tools, expertise areas
+- app_preference : preferred apps, browsers, editors, games
+- folder         : file paths, working directories, project locations
+- workflow       : dev tools, processes, methodologies they follow
+- action_outcome : whether a specific action or app worked or failed
+- belief         : strongly held opinions or values
+
 Rules:
-- Only extract facts about the USER, not general knowledge
-- Set implicit=true if inferred (not explicitly stated)
-- Be conservative with confidence — prefer 0.5-0.7 for implicit facts
-- Return nothing=true if no user-relevant facts exist
-- Maximum 5 facts per message`;
+- Extract ONLY facts about this user and their specific PC setup
+- Set implicit=true when inferred, not explicitly stated
+- Be conservative: prefer confidence 0.5-0.7 for implicit facts, 0.8-0.95 for explicit
+- Return nothing=true if the message contains no extractable user facts
+- Maximum 5 facts per message
+- Prefer specific facts over vague ones`;
 
       const raw = await this._quickLLMCall(extractPrompt);
       if (!raw) return;
@@ -605,54 +716,67 @@ Rules:
     const parts = [];
     const activeNodes = this.nodes.filter(n => n.status === 'active');
 
-    // 1. Working memory — always injected, highest priority
+    // 1. Working memory — highest priority, always injected
     const wm = this.working;
-    if (wm.currentTask || wm.currentEntities.length || wm.sessionPreferences.length) {
-      const wmLines = [];
-      if (wm.currentTask) wmLines.push('Current task: ' + wm.currentTask);
-      if (wm.currentEntities.length) wmLines.push('Active entities: ' + wm.currentEntities.join(', '));
-      if (wm.sessionPreferences.length) wmLines.push('Session preferences: ' + wm.sessionPreferences.join(', '));
-      if (wm.mood && wm.mood !== 'neutral') wmLines.push('User mood this session: ' + wm.mood);
-      if (wm.hypotheses.length) {
-        const hyp = wm.hypotheses.slice(0, 2).map(h => h.belief + ' (confidence: ' + Math.round(h.confidence * 100) + '%)');
-        wmLines.push('Working hypotheses: ' + hyp.join('; '));
-      }
-      if (wmLines.length) parts.push('SESSION CONTEXT:\n' + wmLines.join('\n'));
+    const wmLines = [];
+    if (wm.currentTask) wmLines.push('Current task: ' + wm.currentTask);
+    if (wm.currentEntities.length) wmLines.push('Active entities: ' + wm.currentEntities.join(', '));
+    if (wm.sessionPreferences.length) wmLines.push('Session preferences: ' + wm.sessionPreferences.join(', '));
+    if (wm.mood && wm.mood !== 'neutral') wmLines.push('Mood this session: ' + wm.mood);
+    if (wm.hypotheses.length) {
+      const hyp = wm.hypotheses.slice(0, 2).map(h => h.belief + ' (' + Math.round(h.confidence * 100) + '%)');
+      wmLines.push('Working hypotheses: ' + hyp.join('; '));
     }
+    if (wmLines.length) parts.push('[SESSION CONTEXT]\n' + wmLines.join('\n'));
 
-    // 2. Relevant facts — scored by relevance to current message
+    // 2. Relevant facts — grouped by type for cleaner prompt structure
     if (activeNodes.length > 0) {
       const scored = activeNodes.map(n => ({
         node: n,
         score: this._relevanceScore(n, currentMessage || '')
-      })).sort((a, b) => b.score - a.score);
+      })).sort((a, b) => b.score - a.score).slice(0, 24);
 
-      // Take top 20 most relevant
-      const topFacts = scored.slice(0, 20);
-
-      // Format with confidence signal
-      const factLines = topFacts.map(({ node }) => {
+      // Group by type
+      const groups = {};
+      for (const { node } of scored) {
+        const t = node.type || 'general';
+        if (!groups[t]) groups[t] = [];
         const conf = node.confidence;
-        const qualifier = conf > 0.8 ? '' : conf > 0.5 ? ' (likely)' : ' (uncertain)';
-        return node.content + qualifier;
-      });
-
-      if (factLines.length) {
-        parts.push('KNOWN FACTS ABOUT USER:\n' + factLines.join('\n'));
+        const qual = conf > 0.8 ? '' : conf > 0.5 ? ' (likely)' : ' (uncertain)';
+        groups[t].push(node.content + qual);
       }
+
+      // Emit in priority order
+      const typeOrder = ['user', 'system', 'app_preference', 'folder', 'workflow', 'skill', 'preference', 'habit', 'task', 'action_outcome', 'belief', 'general'];
+      const factLines = [];
+      for (const t of typeOrder) {
+        if (groups[t]) factLines.push(...groups[t].map(c => '[' + t + '] ' + c));
+      }
+      // Any remaining types not in the order list
+      for (const t of Object.keys(groups)) {
+        if (!typeOrder.includes(t)) factLines.push(...groups[t].map(c => '[' + t + '] ' + c));
+      }
+
+      if (factLines.length) parts.push('[KNOWN FACTS ABOUT USER]\n' + factLines.join('\n'));
     }
 
-    // 3. Relevant episodic recall
+    // 3. Failed actions — surface these prominently so HEX doesn't repeat mistakes
+    const failures = activeNodes.filter(n => n.type === 'action_outcome' && n.content.startsWith('Action failed:'));
+    if (failures.length) {
+      parts.push('[KNOWN FAILURES — avoid repeating]\n' + failures.map(n => n.content).join('\n'));
+    }
+
+    // 4. Relevant episodic recall
     if (currentMessage && this.episodes.length > 0) {
       const relevantEpisode = this._findRelevantEpisode(currentMessage);
       if (relevantEpisode) {
-        parts.push('RELEVANT PAST SESSION:\n' + relevantEpisode.summary);
+        parts.push('[RELEVANT PAST SESSION]\n' + relevantEpisode.summary);
       }
     }
 
-    // 4. Legacy summary
+    // 5. Legacy summary fallback
     if (this.summary) {
-      parts.push('CONVERSATION SUMMARY:\n' + this.summary);
+      parts.push('[CONVERSATION SUMMARY]\n' + this.summary);
     }
 
     return parts.join('\n\n');

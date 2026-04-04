@@ -411,10 +411,15 @@ $apps | ConvertTo-Json -Compress
     });
     if (res.response !== 1) return { success: false, error: 'Cancelled' };
     try {
-      const t = type ? `/t ${type}` : '';
-      const v = value ? `/v "${value}"` : '/ve';
-      const cmd = `reg add "${hive}\\${key}" ${v} ${t} /d "${data}" /f`;
-      const ps = `Start-Process cmd.exe -ArgumentList '/c ${cmd}' -Verb RunAs -Wait -WindowStyle Hidden`;
+      // Escape for PowerShell script block encoding
+      const safeData = (data || '').replace(/'/g, "''");
+      const safeValue = (value || '').replace(/'/g, "''");
+      const safeHiveKey = `${hive}\\${key}`.replace(/'/g, "''");
+
+      const psBlock = `New-Item -Path 'Registry::${safeHiveKey}' -Force -ErrorAction SilentlyContinue; Set-ItemProperty -Path 'Registry::${safeHiveKey}' -Name '${safeValue}' -Value '${safeData}' -Force`;
+      const encodedPs = Buffer.from(psBlock, 'utf16le').toString('base64');
+
+      const ps = `Start-Process powershell -ArgumentList '-NoProfile -EncodedCommand ${encodedPs}' -Verb RunAs -Wait -WindowStyle Hidden`;
       await runCmd(`powershell -NoProfile -Command "${ps}"`);
       sendLog('BUTLER', `Wrote registry: ${hive}\\${key}`, 'warn');
       return { success: true };
@@ -489,7 +494,8 @@ $apps | ConvertTo-Json -Compress
     if (res.response !== 1) return { success: false, error: 'Cancelled' };
     try {
       sendLog('BUTLER', `UAC Elevation: ${cmd}`, 'warn');
-      const ps = `Start-Process cmd.exe -ArgumentList '/c ${cmd}' -Verb RunAs`;
+      const b64Cmd = Buffer.from(cmd, 'utf16le').toString('base64');
+      const ps = `Start-Process powershell -ArgumentList '-NoProfile -EncodedCommand ${b64Cmd}' -Verb RunAs`;
       await runCmd(`powershell -NoProfile -Command "${ps}"`);
       return { success: true };
     } catch (e) { return { success: false, error: e.message }; }
@@ -595,6 +601,7 @@ $apps | ConvertTo-Json -Compress
 
   ipcMain.handle('butler:mouse-click', async (_, { button }) => {
     try {
+      const safeButton = (button || 'left').toString().toLowerCase().replace(/[^a-z]/g, '');
       const ps = `
         Add-Type @"
           using System.Runtime.InteropServices;
@@ -602,7 +609,7 @@ $apps | ConvertTo-Json -Compress
             [DllImport("user32.dll")] public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint cButtons, uint dwExtraInfo);
           }
 "@
-        if ('${button}' -eq 'right') { [Mouse]::mouse_event(0x0008 -bor 0x0010, 0, 0, 0, 0) }
+        if ('${safeButton}' -eq 'right') { [Mouse]::mouse_event(0x0008 -bor 0x0010, 0, 0, 0, 0) }
         else { [Mouse]::mouse_event(0x0002 -bor 0x0004, 0, 0, 0, 0) }
       `;
       await runCmd(`powershell -NoProfile -Command "${ps.replace(/\n|"/g, ';')}"`);
@@ -707,6 +714,78 @@ $apps | ConvertTo-Json -Compress
       sendLog('BUTLER', `Checking disk: ${d}`, 'warn');
       const ps = `Start-Process cmd.exe -ArgumentList '/c chkdsk ${d} /f /v' -Verb RunAs`;
       await runCmd(`powershell -NoProfile -Command "${ps}"`);
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
+  });
+
+  // ── PHASE 10: GHOST TAG / ADVANCED DEV CAPABILITIES ───────────
+
+  ipcMain.handle('butler:find-file', async (_, { name, root }) => {
+    try {
+      const ps = `Get-ChildItem -Path '${root}' -Filter '*${name}*' -Recurse -ErrorAction SilentlyContinue | Select-Object FullName -First 10 | Format-Table -HideTableHeaders`;
+      const r = await butlerExec(`powershell -NoProfile -Command "${ps}"`, { timeout: 30000 });
+      return { success: true, output: r.out || 'No results found.' };
+    } catch (e) { return { success: false, error: e.message }; }
+  });
+
+  ipcMain.handle('butler:grep-file', async (_, { pattern, file }) => {
+    try {
+      const ps = `Select-String -Path '${file}' -Pattern '${pattern}' | Select-Object Line -First 15 | Format-Table -HideTableHeaders`;
+      const r = await butlerExec(`powershell -NoProfile -Command "${ps}"`, { timeout: 10000 });
+      return { success: true, output: r.out || 'No matches found.' };
+    } catch (e) { return { success: false, error: e.message }; }
+  });
+
+  ipcMain.handle('butler:run-python', async (_, { script }) => {
+    try {
+      const r = await butlerExec(`python "${script}"`, { timeout: 30000 });
+      return { success: true, output: r.out };
+    } catch (e) { return { success: false, error: e.message }; }
+  });
+
+  ipcMain.handle('butler:git', async (_, { cmd, repo }) => {
+    try {
+      const r = await butlerExec(`git -C "${repo}" ${cmd}`, { timeout: 15000 });
+      return { success: true, output: r.out || 'Success.' };
+    } catch (e) { return { success: false, error: e.message }; }
+  });
+
+  ipcMain.handle('butler:docker-status', async () => {
+    try {
+      const r = await butlerExec(`docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Image}}"`, { timeout: 10000 });
+      return { success: true, output: r.out || 'Docker is running but no containers are active.' };
+    } catch (e) { return { success: false, error: e.message }; }
+  });
+
+  ipcMain.handle('butler:notify', async (_, { title, message }) => {
+    try {
+      const ps = `
+        Add-Type -AssemblyName System.Windows.Forms
+        $notify = New-Object System.Windows.Forms.NotifyIcon
+        $notify.Icon = [System.Drawing.SystemIcons]::Information
+        $notify.BalloonTipTitle = '${title.replace(/'/g, "''")}'
+        $notify.BalloonTipText = '${message.replace(/'/g, "''")}'
+        $notify.Visible = $true
+        $notify.ShowBalloonTip(5000)
+      `;
+      runCmd(`powershell -NoProfile -Command "${ps}"`);
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
+  });
+
+  ipcMain.handle('butler:record-screen', async (_, { action }) => {
+    try {
+      if (action === 'START') {
+        const desktop = path.join(os.homedir(), 'Desktop', 'hex_capture_' + Date.now() + '.mp4');
+        const ps = `Start-Process ffmpeg -ArgumentList "-f gdigrab -framerate 30 -i desktop -c:v libx264 \`"${desktop}\`"" -WindowStyle Hidden -PassThru | Select-Object -ExpandProperty Id`;
+        const r = await butlerExec(`powershell -NoProfile -Command "${ps}"`);
+        global.hexRecordPid = parseInt((r.out || '').trim());
+      } else {
+        if (global.hexRecordPid) {
+          await runCmd(`taskkill /PID ${global.hexRecordPid} /T /F`);
+          global.hexRecordPid = null;
+        }
+      }
       return { success: true };
     } catch (e) { return { success: false, error: e.message }; }
   });

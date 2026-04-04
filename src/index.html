@@ -477,7 +477,7 @@
     <header id="topbar">
       <div class="topbar-left">
         <span id="app-title" class="display">◆ Softcurse H.E.X.</span>
-        <span class="topbar-badge">v1.0.0</span>
+        <span class="topbar-badge">v1.1.0</span>
       </div>
 
       <div class="topbar-center">
@@ -738,9 +738,22 @@
       </div>
 
       <div id="chat-input-area">
-        <button id="vision-btn" onclick="toggleVision()" title="Toggle Vision (Look at screen)"
-          style="filter: grayscale(1); margin-right: 4px;">👁</button>
-        <button id="mic-btn" onclick="toggleMic()" title="Toggle Voice Input">🎙</button>
+        <button id="vision-btn" onclick="toggleVision()" title="Toggle Vision (Look at screen)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+            stroke-linecap="square">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        </button>
+        <button id="mic-btn" onclick="toggleMic()" title="Toggle Voice Input">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+            stroke-linecap="square">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+            <line x1="12" y1="19" x2="12" y2="23"></line>
+            <line x1="8" y1="23" x2="16" y2="23"></line>
+          </svg>
+        </button>
         <textarea id="chat-input" rows="1" data-i18n-placeholder="chat_placeholder"
           onkeydown="handleInputKey(event)"></textarea>
         <button class="chat-send-btn" onclick="sendMessage()" data-i18n="send">SEND</button>

@@ -113,6 +113,14 @@ contextBridge.exposeInMainWorld('hexAPI', {
     unmute: () => ipcRenderer.invoke('butler:mute', { mute: false }),
     getSteamGames: () => ipcRenderer.invoke('butler:get-steam-games'),
     getEpicGames: () => ipcRenderer.invoke('butler:get-epic-games'),
+    // Ghost Tags Action Bridging
+    findFile: (name, root) => ipcRenderer.invoke('butler:find-file', { name, root }),
+    grepFile: (pattern, file) => ipcRenderer.invoke('butler:grep-file', { pattern, file }),
+    runPython: (script) => ipcRenderer.invoke('butler:run-python', { script }),
+    gitCommand: (cmd, repo) => ipcRenderer.invoke('butler:git', { cmd, repo }),
+    dockerStatus: () => ipcRenderer.invoke('butler:docker-status'),
+    notify: (title, message) => ipcRenderer.invoke('butler:notify', { title, message }),
+    recordScreen: (action) => ipcRenderer.invoke('butler:record-screen', { action }),
   },
 
   // ── Reminders ─────────────────────────────────

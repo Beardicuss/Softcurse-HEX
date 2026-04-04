@@ -381,10 +381,10 @@ body::after {
 /* ── TOP BAR ─────────────────────────────────────────────────── */
 #topbar {
   grid-area: topbar;
-  display: flex;
+  display: grid;
+  grid-template-columns: var(--sz-left, 260px) 1fr var(--sz-right, 240px);
   align-items: center;
-  justify-content: space-between;
-  padding: 0 20px;
+  padding: 0;
   background: rgba(1, 3, 12, 0.97);
   border-bottom: 1px solid rgba(0, 255, 200, 0.22);
   box-shadow: 0 2px 24px rgba(0, 255, 200, 0.07);
@@ -400,6 +400,8 @@ body::after {
   display: flex;
   align-items: center;
   gap: 12px;
+  padding-left: 20px;
+  white-space: nowrap;
 }
 
 #app-title {
@@ -410,6 +412,7 @@ body::after {
   cursor: default;
   text-shadow: 0 0 14px rgba(0, 255, 255, 0.5);
   animation: glitch 10s infinite;
+  white-space: nowrap;
 }
 
 #app-title:hover {
@@ -458,6 +461,8 @@ body::after {
   display: flex;
   align-items: center;
   gap: 12px;
+  padding-right: 20px;
+  justify-content: flex-end;
 }
 
 /* Language selector */
@@ -888,7 +893,8 @@ body::after {
 }
 
 .chat-send-btn,
-#mic-btn {
+#mic-btn,
+#vision-btn {
   font-family: var(--font-m);
   font-size: 10px;
   letter-spacing: 2px;
@@ -910,20 +916,26 @@ body::after {
   box-shadow: var(--glow);
 }
 
-#mic-btn {
+#mic-btn,
+#vision-btn {
   border-color: rgba(0, 255, 200, 0.3);
   color: rgba(0, 255, 200, 0.5);
   font-size: 16px;
   padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-#mic-btn.active {
+#mic-btn.active,
+#vision-btn.active {
   border-color: var(--orange);
   color: var(--orange);
   animation: mic-pulse 1.5s infinite;
 }
 
-#mic-btn:hover {
+#mic-btn:hover,
+#vision-btn:hover {
   border-color: var(--cyan);
   color: var(--cyan);
 }

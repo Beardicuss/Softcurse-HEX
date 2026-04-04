@@ -52,9 +52,11 @@ async function handleAIAction(action) {
           const found = r.found || appName;
           addHexMessage('**Opening** ' + found + (r.method ? ' (' + r.method + ')' : '') + '.');
           addLog('BUTLER', 'Launched: ' + found);
+          if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_app:${appName}`, true);
         } else {
           addHexMessage('**Could not open** "' + appName + '". ' + (r.error || '') + (r.hint ? ' ' + r.hint : ''));
           addLog('BUTLER', 'Launch failed: ' + appName + ' — ' + (r.error || ''), 'error');
+          if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_app:${appName}`, false, r.error || '');
         }
       }
       break;
@@ -67,8 +69,10 @@ async function handleAIAction(action) {
         if (fileResult.success) {
           addLog('BUTLER', `Created file: ${fileResult.path}`);
           addHexMessage(`**File created** on your Desktop: \`${action.args[0]}\``);
+          if (window.hexMemory) window.hexMemory.recordActionOutcome(`create_file:${action.args[0]}`, true);
         } else {
           addLog('BUTLER', `File creation failed: ${fileResult.error}`, 'error');
+          if (window.hexMemory) window.hexMemory.recordActionOutcome(`create_file:${action.args[0]}`, false, fileResult.error);
         }
       }
       break;
@@ -80,25 +84,39 @@ async function handleAIAction(action) {
         if (docResult.success) {
           addLog('BUTLER', `Created document: ${docResult.path}`);
           addHexMessage(`**Document created** on your Desktop: \`${action.args[0]}\`${docResult.format === 'rtf' ? ' (RTF format)' : ''}`);
+          if (window.hexMemory) window.hexMemory.recordActionOutcome(`create_doc:${action.args[0]}`, true);
         } else {
           addLog('BUTLER', `Document creation failed: ${docResult.error}`, 'error');
+          if (window.hexMemory) window.hexMemory.recordActionOutcome(`create_doc:${action.args[0]}`, false, docResult.error);
         }
       }
       break;
 
     case 'open_folder':
       if (action.args[0]) {
-        const folderResult = await window.hexAPI.butler.openFolder(action.args.join(':'));
-        if (folderResult.success) addLog('BUTLER', `Opened folder: ${folderResult.path}`);
-        else addLog('BUTLER', `Folder error: ${folderResult.error}`, 'error');
+        const p = action.args.join(':');
+        const folderResult = await window.hexAPI.butler.openFolder(p);
+        if (folderResult.success) {
+          addLog('BUTLER', `Opened folder: ${folderResult.path}`);
+          if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_folder:${p}`, true);
+        } else {
+          addLog('BUTLER', `Folder error: ${folderResult.error}`, 'error');
+          if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_folder:${p}`, false, folderResult.error);
+        }
       }
       break;
 
     case 'open_file':
       if (action.args[0]) {
-        const openResult = await window.hexAPI.butler.openFile(action.args.join(':'));
-        if (openResult.success) addLog('BUTLER', `Opened file: ${openResult.path}`);
-        else addLog('BUTLER', `File error: ${openResult.error}`, 'error');
+        const p = action.args.join(':');
+        const openResult = await window.hexAPI.butler.openFile(p);
+        if (openResult.success) {
+          addLog('BUTLER', `Opened file: ${openResult.path}`);
+          if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_file:${p}`, true);
+        } else {
+          addLog('BUTLER', `File error: ${openResult.error}`, 'error');
+          if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_file:${p}`, false, openResult.error);
+        }
       }
       break;
 
@@ -160,41 +178,75 @@ async function handleAIAction(action) {
       const [src, ...dParts] = action.args; const dest = dParts.join(':');
       const r = await window.hexAPI.butler.copy(src, dest);
       addLog('BUTLER', r.success ? `Copied to ${r.dest}` : `Copy failed: ${r.error}`);
-      if (r.success) addHexMessage(`**Copied** to \`${r.dest}\``);
+      if (r.success) {
+        addHexMessage(`**Copied** to \`${r.dest}\``);
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`copy:${src}`, true);
+      } else {
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`copy:${src}`, false, r.error);
+      }
       break;
     }
     case 'move': {
       const [msrc, ...mdParts] = action.args; const mdest = mdParts.join(':');
       const r = await window.hexAPI.butler.move(msrc, mdest);
       addLog('BUTLER', r.success ? `Moved to ${r.dest}` : `Move failed: ${r.error}`);
-      if (r.success) addHexMessage(`**Moved** to \`${r.dest}\``);
+      if (r.success) {
+        addHexMessage(`**Moved** to \`${r.dest}\``);
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`move:${msrc}`, true);
+      } else {
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`move:${msrc}`, false, r.error);
+      }
       break;
     }
     case 'delete': {
-      const r = await window.hexAPI.butler.delete(action.args.join(':'), false);
-      addLog('BUTLER', r.success ? `Deleted: ${action.args.join(':')}` : `Delete: ${r.error}`);
+      const target = action.args.join(':');
+      const r = await window.hexAPI.butler.delete(target, false);
+      addLog('BUTLER', r.success ? `Deleted: ${target}` : `Delete: ${r.error}`);
+      if (r.success) {
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`delete:${target}`, true);
+      } else {
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`delete:${target}`, false, r.error);
+      }
       break;
     }
     case 'delete_perm': {
-      const r = await window.hexAPI.butler.delete(action.args.join(':'), true);
-      addLog('BUTLER', r.success ? `Permanently deleted: ${action.args.join(':')}` : `Delete: ${r.error}`);
+      const target = action.args.join(':');
+      const r = await window.hexAPI.butler.delete(target, true);
+      addLog('BUTLER', r.success ? `Permanently deleted: ${target}` : `Delete: ${r.error}`);
+      if (r.success) {
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`delete_perm:${target}`, true);
+      } else {
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`delete_perm:${target}`, false, r.error);
+      }
       break;
     }
     case 'rename': {
-      const r = await window.hexAPI.butler.rename(action.args[0], action.args[1]);
+      const target = action.args[0];
+      const r = await window.hexAPI.butler.rename(target, action.args[1]);
       addLog('BUTLER', r.success ? `Renamed to ${r.path}` : `Rename: ${r.error}`);
-      if (r.success) addHexMessage(`**Renamed** to \`${r.path}\``);
+      if (r.success) {
+        addHexMessage(`**Renamed** to \`${r.path}\``);
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`rename:${target}`, true);
+      } else {
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`rename:${target}`, false, r.error);
+      }
       break;
     }
     case 'create_folder': {
       const folderPath = action.args.join(':');
       const r = await window.hexAPI.butler.createFolder(folderPath);
       addLog('BUTLER', r.success ? `Folder created: ${r.path}` : `Folder: ${r.error}`);
-      if (r.success) addHexMessage(`**Folder created:** \`${r.path}\``);
+      if (r.success) {
+        addHexMessage(`**Folder created:** \`${r.path}\``);
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`create_folder:${folderPath}`, true);
+      } else {
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`create_folder:${folderPath}`, false, r.error);
+      }
       break;
     }
     case 'list_dir': {
-      const r = await window.hexAPI.butler.listDir(action.args.join(':') || 'desktop');
+      const targetDir = action.args.join(':') || 'desktop';
+      const r = await window.hexAPI.butler.listDir(targetDir);
       if (r.success) {
         const dirs = r.items.filter(function (i) { return i.type === 'dir'; }).map(function (i) { return '[DIR] ' + i.name; });
         const files = r.items.filter(function (i) { return i.type === 'file'; }).map(function (i) { return '[FILE] ' + i.name; });
@@ -202,8 +254,10 @@ async function handleAIAction(action) {
         const more = r.count > 16 ? ('..and ' + (r.count - 16) + ' more') : '';
         addHexMessage('**' + r.path + '** - ' + r.count + ' items\n' + preview.join('\n') + more);
         addLog('BUTLER', 'Listed ' + r.count + ' items in ' + r.path);
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`list_dir:${targetDir}`, true);
       } else {
         addHexMessage('Could not list directory: ' + r.error);
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`list_dir:${targetDir}`, false, r.error);
       }
       break;
     }
@@ -211,11 +265,12 @@ async function handleAIAction(action) {
       const filePath = action.args.join(':');
       const r = await window.hexAPI.butler.fileInfo(filePath);
       if (r.success) {
-        addHexMessage(`**${filePath}**
-Size: ${r.sizeHuman}
-Type: ${r.isDir ? 'Folder' : 'File'}
-Modified: ${r.modified}`);
-      } else { addHexMessage(`File info error: ${r.error}`); }
+        addHexMessage(`**${filePath}**\nSize: ${r.sizeHuman}\nType: ${r.isDir ? 'Folder' : 'File'}\nModified: ${r.modified}`);
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`file_info:${filePath}`, true);
+      } else {
+        addHexMessage(`File info error: ${r.error}`);
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`file_info:${filePath}`, false, r.error);
+      }
       break;
     }
 
@@ -225,19 +280,24 @@ Modified: ${r.modified}`);
       if (r.success) {
         const top = r.processes.slice(0, 10).map(function (p) { return p.name + ' CPU:' + p.cpu + ' RAM:' + p.mem; }).join(', ');
         addLog('BUTLER', 'processes: ' + top);
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`list_processes_ok`, true);
         return { data: 'Running processes: ' + top };
       }
       break;
     }
     case 'kill_process': {
-      const r = await window.hexAPI.butler.killByName(action.args[0]);
-      addLog('BUTLER', r.success ? `Killed: ${action.args[0]}` : `Kill: ${r.error}`);
-      addHexMessage(r.success ? `**Process terminated:** ${action.args[0]}` : `Kill failed: ${r.error}`);
+      const procName = action.args[0];
+      const r = await window.hexAPI.butler.killByName(procName);
+      addLog('BUTLER', r.success ? `Killed: ${procName}` : `Kill: ${r.error}`);
+      addHexMessage(r.success ? `**Process terminated:** ${procName}` : `Kill failed: ${r.error}`);
+      if (window.hexMemory) window.hexMemory.recordActionOutcome(`kill_process:${procName}`, r.success, r.error || '');
       break;
     }
     case 'kill_pid': {
-      const r = await window.hexAPI.killProcess(parseInt(action.args[0]));
-      addLog('BUTLER', r.success ? `Killed PID ${action.args[0]}` : `Kill PID: ${r.error}`);
+      const pidStr = action.args[0];
+      const r = await window.hexAPI.killProcess(parseInt(pidStr));
+      addLog('BUTLER', r.success ? `Killed PID ${pidStr}` : `Kill PID: ${r.error}`);
+      if (window.hexMemory) window.hexMemory.recordActionOutcome(`kill_pid:${pidStr}`, r.success, r.error || '');
       break;
     }
     case 'sys_info': {
@@ -798,6 +858,59 @@ ${r.output.substring(0, 500)}
       break;
     }
 
+    // ── DEV TOOLS & ADVANCED ─────────────────────────────────────────
+    case 'find_file': {
+      const fileName = action.args[0];
+      const searchRoot = action.args.slice(1).join(':') || 'C:\\Users';
+      addHexMessage(`Searching for **${fileName}** in \`${searchRoot}\`…`);
+      const r = await window.hexAPI.butler.findFile(fileName, searchRoot);
+      if (r.success) addHexMessage('**Found:**\n```\n' + r.output.substring(0, 800) + '\n```');
+      else addHexMessage('Search failed: ' + r.error);
+      break;
+    }
+    case 'grep_file': {
+      const pattern = action.args[0];
+      const filePath = action.args.slice(1).join(':');
+      const r = await window.hexAPI.butler.grepFile(pattern, filePath);
+      if (r.success) addHexMessage('**Grep match:**\n```\n' + r.output.substring(0, 800) + '\n```');
+      else addHexMessage('Grep failed: ' + r.error);
+      break;
+    }
+    case 'run_python': {
+      const scriptPath = action.args.join(':');
+      addHexMessage(`Running Python script: \`${scriptPath}\``);
+      const r = await window.hexAPI.butler.runPython(scriptPath);
+      if (r.success) addHexMessage('**Output:**\n```\n' + r.output.substring(0, 800) + '\n```');
+      else addHexMessage('Python error: ' + r.error);
+      break;
+    }
+    case 'git': {
+      const subcmd = action.args[0];
+      const repo = action.args.slice(1).join(':') || '.';
+      const r = await window.hexAPI.butler.gitCommand(subcmd, repo);
+      if (r.success) addHexMessage('**Git ' + subcmd + ':**\n```\n' + r.output.substring(0, 800) + '\n```');
+      else addHexMessage('Git failed: ' + r.error);
+      break;
+    }
+    case 'docker_status': {
+      const r = await window.hexAPI.butler.dockerStatus();
+      if (r.success) addHexMessage('**Docker Status:**\n```\n' + r.output.substring(0, 800) + '\n```');
+      else addHexMessage('Docker error: ' + r.error);
+      break;
+    }
+    case 'notify': {
+      const title = action.args[0] || 'HEX Notification';
+      const msg = action.args.slice(1).join(':');
+      await window.hexAPI.butler.notify(title, msg);
+      break;
+    }
+    case 'record_screen': {
+      const state = action.args[0]?.toUpperCase();
+      addHexMessage(state === 'START' ? 'Screen recording initiated.' : 'Screen recording halted.');
+      await window.hexAPI.butler.recordScreen(state);
+      break;
+    }
+
     // ── PERIPHERALS ──────────────────────────────────────
     case 'eject_usb': {
       const letter = action.args[0] || 'E';
@@ -1040,35 +1153,6 @@ ${r.output.substring(0, 500)}
       addLog('BUTLER', rjR.success ? 'run_js OK' : 'run_js: ' + rjR.error);
       if (rjR.success && rjR.output) addHexMessage('JS output:\n' + rjR.output.substring(0, 400));
       else if (!rjR.success) addHexMessage('JS error: ' + rjR.error);
-      break;
-    }
-
-    // ── MAINTENANCE EXTRA ─────────────────────────────────────────────────────
-    case 'reg_write': {
-      const rwR = await window.hexAPI.butler.regWrite(
-        action.args[0], action.args[1], action.args[2], action.args[3], action.args[4]);
-      addLog('BUTLER', rwR.success ? 'Reg written' : 'Reg write: ' + rwR.error);
-      addHexMessage(rwR.success ? 'Registry key written.' : 'Registry write failed: ' + rwR.error);
-      break;
-    }
-    case 'list_games': {
-      const [stR, epR] = await Promise.all([
-        window.hexAPI.butler.getSteamGames().catch(function () { return { success: false, games: [] }; }),
-        window.hexAPI.butler.getEpicGames().catch(function () { return { success: false, games: [] }; }),
-      ]);
-      const gParts = [];
-      if (stR.success && stR.games.length) gParts.push('Steam (' + stR.games.length + '): ' + stR.games.map(function (g) { return g.name; }).join(', '));
-      if (epR.success && epR.games.length) gParts.push('Epic (' + epR.games.length + '): ' + epR.games.map(function (g) { return g.name; }).join(', '));
-      const gData = gParts.length ? gParts.join(' | ') : 'No games found';
-      addLog('BUTLER', 'games: ' + gData.substring(0, 100));
-      return { data: 'Installed games: ' + gData };
-    }
-    case 'chkdsk': {
-      const cdDrive = action.args[0] || 'C';
-      addHexMessage('Running CHKDSK on ' + cdDrive + ':... This may take a while.');
-      const cdR = await window.hexAPI.butler.chkdsk(cdDrive);
-      addHexMessage('CHKDSK ' + cdDrive + ':\n' + (cdR.output || '').substring(0, 500) + (cdR.note ? '\nNote: ' + cdR.note : ''));
-      addLog('BUTLER', 'chkdsk ' + cdDrive + ': done');
       break;
     }
 
