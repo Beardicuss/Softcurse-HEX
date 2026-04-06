@@ -47,7 +47,7 @@ function loadConfig() {
   return {
     language: 'ka',
     userName: 'Operator',
-    llm: { provider: 'ollama', model: 'llama3', apiKey: '', baseUrl: 'http://localhost:11434' },
+    llm: { provider: 'ollama', model: 'qwen2.5:7b', apiKey: '', baseUrl: 'http://localhost:11434' },
     voice: { enabled: true, wakeWord: 'hey hex', volume: 0.9, rate: 0.95, pitch: 0.85, voiceName: '' },
     monitoring: { breaks: true, breakIntervalMin: 90, idleThresholdMin: 5, proactiveAdvice: true },
     ui: { theme: 'cyber', notifications: true }

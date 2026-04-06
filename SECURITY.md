@@ -6,14 +6,14 @@ Currently, only the latest release of Softcurse H.E.X. receives active security 
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.0.x   | :white_check_mark: |
-| < 1.0   | :x:                |
+| 1.1.x   | :white_check_mark: |
+| < 1.1   | :x:                |
 
 ## Reporting a Vulnerability
 
 Because H.E.X. integrates highly-privileged local Operating System controls (UAC bypasses, Registry modifications, and PowerShell invocations), we take security vulnerabilities extremely seriously.
 
-**As of v2.2, H.E.X. processes highly sensitive local vectors:**
+**As of v1.1.0, H.E.X. processes highly sensitive local vectors:**
 - **Biometric Security Data:** Perceptual RGB face hashes are stored securely and locally in `userData/config.json`. This data is completely air-gapped and NEVER transmitted to the cloud.
 - **Plugin Sandbox Escapes:** Our `PluginLoader` runs `vm.createContext` specifically relaxing `fs`, `https`, and `child_process`. Plugins are meant to be robust.
 

@@ -107,7 +107,7 @@ We welcome OS action hook extensions or localization scripts! Before submitting,
 ## 🛣️ Roadmap
 - macOS & Linux parity for all PC Butler automation actions (currently Windows-centric).
 - Deeper Docker telemetry insights.
-- Fully migrating to Local LLM bindings via node-llama-cpp for absolute standalone offline memory handling.
+- Transitioning to full local inference for all cognitive sub-reasoning.
 
 ## 📄 License
 Distributed under the **MIT License**. See `LICENSE` for more information.
