@@ -8,6 +8,20 @@ class HexAI {
     this.config = null;
     this.history = [];
     this.MAX_HISTORY = 20;
+    // Complexity-aware routing: fast models for simple queries
+    this.FAST_MODELS = {
+      ollama: 'llama3',       // smallest local model (overridden if user has something smaller)
+      openai: 'gpt-4o-mini',
+      anthropic: 'claude-haiku-4-5-20251001',
+      gemini: 'gemini-2.0-flash-lite',
+      grok: 'grok-3-mini-fast',
+      openrouter: 'meta-llama/llama-3-8b-instruct',
+      mistral: 'mistral-small-latest',
+      groq: 'llama-3.1-8b-instant',
+      together: 'meta-llama/Llama-3-8b-chat-hf',
+      cohere: 'command-light',
+    };
+    this.COMPLEXITY_THRESHOLD = 0.4;  // below this → use fast model
   }
 
   configure(config) { this.config = config; }
@@ -43,6 +57,20 @@ class HexAI {
 
     try {
       const p = this.config && this.config.llm ? this.config.llm.provider : 'none';
+
+      // ── Complexity-aware routing ─────────────────────────────
+      const complexity = this._scoreComplexity(userMsg);
+      let swappedModel = false;
+      let originalModel = null;
+      if (complexity < this.COMPLEXITY_THRESHOLD && this.FAST_MODELS[p] && this.config?.llm?.model) {
+        const fast = this.FAST_MODELS[p];
+        if (fast !== this.config.llm.model) {
+          originalModel = this.config.llm.model;
+          this.config.llm.model = fast;
+          swappedModel = true;
+          window.hexTaskBus?.push(`Simple query (${(complexity * 100).toFixed(0)}%) → fast model: ${fast}`);
+        }
+      }
       window.hexTaskBus?.push(`Querying ${p} model...`);
 
       let routeProvider = p;
@@ -77,6 +105,9 @@ class HexAI {
       }
       // Guard: some providers return null content (empty/tool-only responses)
       if (!text || typeof text !== 'string') text = '…';
+
+      // Restore original model if swapped
+      if (swappedModel && originalModel) this.config.llm.model = originalModel;
     } catch (e) {
       console.error('AI error:', e);
       text = 'Neural link disrupted: ' + (e?.message || String(e));
@@ -459,6 +490,42 @@ class HexAI {
   clearHistory() {
     this.history = [];
     if (window.hexMemory) window.hexMemory.clearHistory();
+  }
+
+  // ── Complexity scorer (0.0 = trivial, 1.0 = very complex) ──
+  _scoreComplexity(msg) {
+    if (!msg) return 0;
+    const m = msg.toLowerCase().trim();
+    const words = m.split(/\s+/);
+    let score = 0;
+
+    // Length factor (0-0.3)
+    score += Math.min(0.3, words.length / 50);
+
+    // Simple query indicators (reduce score)
+    const SIMPLE = /^(hi|hello|hey|yo|thanks|thank you|good morning|good night|bye|ok|sup|what time|what's the time|what day)/i;
+    if (SIMPLE.test(m)) return 0.1;
+    if (words.length <= 3 && !m.includes('?')) return 0.15;
+
+    // Complex query indicators (increase score)
+    const COMPLEX_KEYWORDS = ['debug', 'error', 'fix', 'code', 'script', 'implement', 'build', 'create',
+      'analyze', 'compare', 'explain how', 'step by step', 'architecture', 'refactor', 'optimize',
+      'configure', 'install', 'deploy', 'migrate', 'automate', 'schedule', 'multi', 'workflow'];
+    for (const kw of COMPLEX_KEYWORDS) {
+      if (m.includes(kw)) { score += 0.15; break; }
+    }
+
+    // Question complexity
+    const questionWords = (m.match(/\b(how|why|what if|could you|can you|would|explain)\b/gi) || []).length;
+    score += Math.min(0.2, questionWords * 0.1);
+
+    // Code/technical indicators
+    if (/[{}<>()\[\]=;]/.test(m) || /```/.test(m)) score += 0.2;
+
+    // Multi-step indicators
+    if (/\b(then|after that|also|and then|next|finally|first|second)\b/i.test(m)) score += 0.15;
+
+    return Math.min(1, score);
   }
 }
 

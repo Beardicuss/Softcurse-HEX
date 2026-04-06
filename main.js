@@ -23,6 +23,7 @@ const { exec, spawn } = require('child_process');
 const schedule = require('node-schedule');
 const si = require('systeminformation');
 const PluginLoader = require('./src/js/plugin-loader');
+const FaceAuth = require('./src/js/face-auth');
 
 // Local voice engine (Whisper STT + Piper TTS)
 let localVoice;
@@ -1497,4 +1498,352 @@ ipcMain.handle('butler:browser-scrape', async (_, { url }) => {
   } catch (e) {
     return { success: false, error: e.message };
   }
+});
+
+// ─── IPC: RECURRING SCHEDULES ────────────────────────────────────────────────
+const RECURRING_PATH = path.join(app.getPath('userData'), 'recurring.json');
+const activeRecurring = new Map();
+
+function loadRecurringSchedules() {
+  try {
+    if (!fs.existsSync(RECURRING_PATH)) return;
+    const data = JSON.parse(fs.readFileSync(RECURRING_PATH, 'utf8'));
+    for (const entry of (data || [])) {
+      armRecurring(entry);
+    }
+    if (data?.length) sendLog('SCHEDULER', `${data.length} recurring schedule(s) loaded.`);
+  } catch (_) { }
+}
+
+function armRecurring(entry) {
+  if (activeRecurring.has(entry.id)) return;
+  try {
+    const job = schedule.scheduleJob(entry.cron, async () => {
+      sendLog('SCHEDULER', `Recurring fire: ${entry.label}`);
+      if (mainWindow) mainWindow.webContents.send('reminder-fire', { label: `[Recurring] ${entry.label}`, id: entry.id });
+    });
+    if (job) activeRecurring.set(entry.id, { ...entry, job });
+  } catch (e) {
+    sendLog('SCHEDULER', `Bad cron "${entry.cron}": ${e.message}`);
+  }
+}
+
+function saveRecurring() {
+  const data = [...activeRecurring.values()].map(({ id, cron, label, command }) => ({ id, cron, label, command }));
+  fs.writeFileSync(RECURRING_PATH, JSON.stringify(data, null, 2));
+}
+
+app.whenReady().then(() => loadRecurringSchedules());
+
+ipcMain.handle('schedule:add-recurring', (_, { cron, label, command }) => {
+  const id = 'rec_' + Date.now().toString(36);
+  const entry = { id, cron, label: label || cron, command: command || '' };
+  armRecurring(entry);
+  if (!activeRecurring.has(id)) return { success: false, error: 'Invalid cron expression' };
+  saveRecurring();
+  return { success: true, id, cron, label: entry.label };
+});
+
+ipcMain.handle('schedule:cancel-recurring', (_, { id }) => {
+  const entry = activeRecurring.get(id);
+  if (!entry) return { success: false, error: 'Not found' };
+  entry.job?.cancel();
+  activeRecurring.delete(id);
+  saveRecurring();
+  return { success: true };
+});
+
+ipcMain.handle('schedule:list-recurring', () => {
+  return { success: true, schedules: [...activeRecurring.values()].map(({ id, cron, label }) => ({ id, cron, label })) };
+});
+
+// ─── IPC: CLIPBOARD HISTORY ─────────────────────────────────────────────────
+const clipboardHistory = [];
+const MAX_CLIP_HISTORY = 50;
+let lastClipText = '';
+
+function pollClipboard() {
+  try {
+    const { clipboard } = require('electron');
+    const current = clipboard.readText();
+    if (current && current !== lastClipText && current.trim().length > 0) {
+      lastClipText = current;
+      clipboardHistory.unshift({ text: current.substring(0, 1000), ts: Date.now() });
+      if (clipboardHistory.length > MAX_CLIP_HISTORY) clipboardHistory.pop();
+    }
+  } catch (_) { }
+}
+
+app.whenReady().then(() => setInterval(pollClipboard, 2000));
+
+ipcMain.handle('clipboard:history', () => {
+  return { success: true, items: clipboardHistory.slice(0, 30) };
+});
+
+ipcMain.handle('clipboard:search', (_, { query }) => {
+  const q = (query || '').toLowerCase();
+  const found = clipboardHistory.filter(c => c.text.toLowerCase().includes(q));
+  return { success: true, items: found.slice(0, 20) };
+});
+
+ipcMain.handle('clipboard:paste-item', (_, { index }) => {
+  const item = clipboardHistory[index];
+  if (!item) return { success: false, error: 'Invalid index' };
+  require('electron').clipboard.writeText(item.text);
+  return { success: true, text: item.text.substring(0, 100) };
+});
+
+// ─── IPC: SYSTEM HEALTH MONITOR ──────────────────────────────────────────────
+ipcMain.handle('system:health', async () => {
+  try {
+    const [cpu, mem, disk, temp, battery, net] = await Promise.all([
+      si.currentLoad(),
+      si.mem(),
+      si.fsSize(),
+      si.cpuTemperature().catch(() => null),
+      si.battery().catch(() => null),
+      si.networkStats().catch(() => null),
+    ]);
+
+    const result = {
+      cpu: {
+        load: Math.round(cpu.currentLoad * 10) / 10,
+        cores: cpu.cpus?.length || os.cpus().length,
+      },
+      ram: {
+        total_gb: Math.round(mem.total / 1e9 * 10) / 10,
+        used_gb: Math.round(mem.active / 1e9 * 10) / 10,
+        free_gb: Math.round(mem.available / 1e9 * 10) / 10,
+        percent: Math.round(mem.active / mem.total * 100),
+      },
+      disks: (disk || []).map(d => ({
+        mount: d.mount,
+        size_gb: Math.round(d.size / 1e9),
+        used_gb: Math.round(d.used / 1e9),
+        percent: Math.round(d.use),
+      })),
+      temperature: temp?.main ? Math.round(temp.main) + '°C' : null,
+      battery: battery?.hasBattery ? { percent: battery.percent, charging: battery.isCharging } : null,
+      network: net?.[0] ? {
+        iface: net[0].iface,
+        rx_sec: Math.round(net[0].rx_sec / 1024) + ' KB/s',
+        tx_sec: Math.round(net[0].tx_sec / 1024) + ' KB/s',
+      } : null,
+      uptime_hrs: Math.round(os.uptime() / 3600 * 10) / 10,
+    };
+
+    // Alerts
+    result.alerts = [];
+    if (result.ram.percent > 85) result.alerts.push(`⚠ RAM usage: ${result.ram.percent}%`);
+    if (result.cpu.load > 80) result.alerts.push(`⚠ CPU load: ${result.cpu.load}%`);
+    for (const d of result.disks) {
+      if (d.percent > 90) result.alerts.push(`⚠ Disk ${d.mount}: ${d.percent}% full`);
+    }
+    if (temp?.main && temp.main > 80) result.alerts.push(`🔥 CPU temp: ${temp.main}°C`);
+
+    return { success: true, health: result };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// ─── IPC: SMART FILE OPERATIONS ──────────────────────────────────────────────
+ipcMain.handle('butler:batch-rename', async (_, { dir, pattern, replacement }) => {
+  try {
+    if (!dir || !pattern) return { success: false, error: 'Missing dir or pattern' };
+    const files = fs.readdirSync(dir);
+    const regex = new RegExp(pattern, 'gi');
+    let count = 0;
+    for (const file of files) {
+      const newName = file.replace(regex, replacement || '');
+      if (newName !== file) {
+        fs.renameSync(path.join(dir, file), path.join(dir, newName));
+        count++;
+      }
+    }
+    return { success: true, renamed: count };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('butler:organize-files', async (_, { dir }) => {
+  try {
+    if (!dir) return { success: false, error: 'No directory' };
+    const files = fs.readdirSync(dir, { withFileTypes: true });
+    const typeMap = {
+      images: ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg', '.webp', '.ico'],
+      videos: ['.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm'],
+      audio: ['.mp3', '.wav', '.flac', '.ogg', '.aac', '.wma', '.m4a'],
+      documents: ['.pdf', '.doc', '.docx', '.txt', '.rtf', '.xls', '.xlsx', '.ppt', '.pptx', '.csv'],
+      archives: ['.zip', '.rar', '.7z', '.tar', '.gz', '.bz2'],
+      code: ['.js', '.ts', '.py', '.html', '.css', '.json', '.xml', '.java', '.cpp', '.c', '.h', '.rs', '.go'],
+    };
+    let moved = 0;
+    for (const file of files) {
+      if (!file.isFile()) continue;
+      const ext = path.extname(file.name).toLowerCase();
+      let category = 'other';
+      for (const [cat, exts] of Object.entries(typeMap)) {
+        if (exts.includes(ext)) { category = cat; break; }
+      }
+      const destDir = path.join(dir, category);
+      if (!fs.existsSync(destDir)) fs.mkdirSync(destDir);
+      fs.renameSync(path.join(dir, file.name), path.join(destDir, file.name));
+      moved++;
+    }
+    return { success: true, organized: moved };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('butler:find-duplicates', async (_, { dir }) => {
+  try {
+    if (!dir) return { success: false, error: 'No directory' };
+    const files = fs.readdirSync(dir, { withFileTypes: true }).filter(f => f.isFile());
+    const sizeMap = new Map();
+    for (const f of files) {
+      const stat = fs.statSync(path.join(dir, f.name));
+      const key = stat.size;
+      if (!sizeMap.has(key)) sizeMap.set(key, []);
+      sizeMap.get(key).push(f.name);
+    }
+    const duplicates = [...sizeMap.entries()]
+      .filter(([, names]) => names.length > 1)
+      .map(([size, names]) => ({ size, files: names }));
+    return { success: true, duplicates, total: duplicates.reduce((s, d) => s + d.files.length, 0) };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// ─── IPC: SCREEN RECORDING ───────────────────────────────────────────────────
+let screenRecordProcess = null;
+
+ipcMain.handle('butler:record-screen', async (_, { action }) => {
+  const desktopDir = path.join(os.homedir(), 'Desktop');
+
+  if (action === 'start' || action === 'START') {
+    if (screenRecordProcess) return { success: false, error: 'Already recording' };
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const outPath = path.join(desktopDir, `recording_${ts}.mp4`);
+
+    try {
+      // Use ffmpeg with gdigrab (Windows) for screen + audio capture
+      const ffmpegPaths = ['ffmpeg', 'D:\\Tools\\ffmpeg.exe', path.join(os.homedir(), 'ffmpeg.exe')];
+      let ffmpegBin = null;
+      for (const p of ffmpegPaths) {
+        try {
+          const check = await butlerExec(`"${p}" -version`, { timeout: 3000 });
+          if (check.ok) { ffmpegBin = p; break; }
+        } catch (_) { }
+      }
+
+      if (!ffmpegBin) {
+        // Fallback: use PowerShell screen recorder via .NET
+        const ps = `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Screen]::PrimaryScreen`;
+        return { success: false, error: 'ffmpeg not found. Install ffmpeg for screen recording with audio.' };
+      }
+
+      // Start ffmpeg recording: screen (gdigrab) + system audio (dshow)
+      const args = [
+        '-f', 'gdigrab', '-framerate', '30', '-i', 'desktop',
+        '-f', 'dshow', '-i', 'audio=Stereo Mix',
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+        '-c:a', 'aac', '-b:a', '128k',
+        '-y', outPath
+      ];
+
+      // Try with audio first, fall back to video-only
+      try {
+        screenRecordProcess = spawn(ffmpegBin, args, { stdio: 'pipe' });
+      } catch (_) {
+        // Fallback: video only (no audio device)
+        const videoArgs = [
+          '-f', 'gdigrab', '-framerate', '30', '-i', 'desktop',
+          '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+          '-y', outPath
+        ];
+        screenRecordProcess = spawn(ffmpegBin, videoArgs, { stdio: 'pipe' });
+      }
+
+      screenRecordProcess._outPath = outPath;
+      screenRecordProcess.on('exit', () => { screenRecordProcess = null; });
+      screenRecordProcess.on('error', (e) => {
+        sendLog('BUTLER', `Recording error: ${e.message}`);
+        screenRecordProcess = null;
+      });
+
+      sendLog('BUTLER', `Screen recording started: ${outPath}`);
+      return { success: true, status: 'recording', path: outPath };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  }
+
+  if (action === 'stop' || action === 'STOP') {
+    if (!screenRecordProcess) return { success: false, error: 'Not recording' };
+    const outPath = screenRecordProcess._outPath;
+    try {
+      // Send 'q' to ffmpeg to gracefully stop
+      screenRecordProcess.stdin.write('q');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      if (screenRecordProcess) {
+        screenRecordProcess.kill('SIGINT');
+        screenRecordProcess = null;
+      }
+    } catch (_) {
+      screenRecordProcess?.kill();
+      screenRecordProcess = null;
+    }
+    sendLog('BUTLER', `Screen recording saved: ${outPath}`);
+    if (outPath && fs.existsSync(outPath)) shell.openPath(outPath);
+    return { success: true, status: 'stopped', path: outPath };
+  }
+
+  return { success: false, error: 'Invalid action. Use START or STOP.' };
+});
+
+// ─── FACE RECOGNITION AUTH ───────────────────────────────────────────────────
+const faceAuth = new FaceAuth(app.getPath('userData'), (...args) => {
+  const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+  sendLog('SECURITY', msg);
+});
+
+ipcMain.handle('face-auth:settings', () => {
+  return { success: true, ...faceAuth.getSettings() };
+});
+
+ipcMain.handle('face-auth:enable', () => {
+  return faceAuth.enable();
+});
+
+ipcMain.handle('face-auth:disable', () => {
+  return faceAuth.disable();
+});
+
+ipcMain.handle('face-auth:enroll', (_, { imageDataUrl }) => {
+  return faceAuth.enroll(imageDataUrl);
+});
+
+ipcMain.handle('face-auth:unenroll', () => {
+  return faceAuth.unenroll();
+});
+
+ipcMain.handle('face-auth:verify', (_, { imageDataUrl }) => {
+  return faceAuth.verify(imageDataUrl);
+});
+
+ipcMain.handle('face-auth:set-threshold', (_, { value }) => {
+  return faceAuth.setThreshold(value);
+});
+
+// On app ready, send face-auth status to renderer so it can show lock screen if needed
+app.whenReady().then(() => {
+  setTimeout(() => {
+    if (mainWindow && faceAuth.isEnabled()) {
+      mainWindow.webContents.send('face-auth:required', faceAuth.getSettings());
+    }
+  }, 1500);
 });

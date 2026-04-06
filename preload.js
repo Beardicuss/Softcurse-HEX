@@ -155,6 +155,42 @@ contextBridge.exposeInMainWorld('hexAPI', {
   setReminder: (r) => ipcRenderer.invoke('reminders:set', r),
   cancelReminder: (id) => ipcRenderer.invoke('reminders:cancel', id),
 
+  // ── Recurring Schedules ─────────────────────────
+  recurring: {
+    add: (cron, label, command) => ipcRenderer.invoke('schedule:add-recurring', { cron, label, command }),
+    cancel: (id) => ipcRenderer.invoke('schedule:cancel-recurring', { id }),
+    list: () => ipcRenderer.invoke('schedule:list-recurring'),
+  },
+
+  // ── Clipboard History ───────────────────────────
+  clipboard: {
+    history: () => ipcRenderer.invoke('clipboard:history'),
+    search: (query) => ipcRenderer.invoke('clipboard:search', { query }),
+    paste: (index) => ipcRenderer.invoke('clipboard:paste-item', { index }),
+  },
+
+  // ── System Health ───────────────────────────────
+  systemHealth: () => ipcRenderer.invoke('system:health'),
+
+  // ── Smart File Ops ──────────────────────────────
+  smartFiles: {
+    batchRename: (dir, pattern, replacement) => ipcRenderer.invoke('butler:batch-rename', { dir, pattern, replacement }),
+    organize: (dir) => ipcRenderer.invoke('butler:organize-files', { dir }),
+    findDuplicates: (dir) => ipcRenderer.invoke('butler:find-duplicates', { dir }),
+  },
+
+  // ── Face Auth ───────────────────────────────────
+  faceAuth: {
+    settings: () => ipcRenderer.invoke('face-auth:settings'),
+    enable: () => ipcRenderer.invoke('face-auth:enable'),
+    disable: () => ipcRenderer.invoke('face-auth:disable'),
+    enroll: (imageDataUrl) => ipcRenderer.invoke('face-auth:enroll', { imageDataUrl }),
+    unenroll: () => ipcRenderer.invoke('face-auth:unenroll'),
+    verify: (imageDataUrl) => ipcRenderer.invoke('face-auth:verify', { imageDataUrl }),
+    setThreshold: (value) => ipcRenderer.invoke('face-auth:set-threshold', { value }),
+    onRequired: (cb) => ipcRenderer.on('face-auth:required', (_, d) => cb(d)),
+  },
+
   // ── Memory ───────────────────────────────────
   getMemory: () => ipcRenderer.invoke('memory:get'),
   setMemory: (data) => ipcRenderer.invoke('memory:set', data),

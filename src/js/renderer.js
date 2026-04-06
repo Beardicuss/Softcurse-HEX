@@ -385,13 +385,23 @@ async function sendMessage() {
       else parallelBatch.push(action);
     }
 
+    const ActionResult = require('./action-result');
+
     // Fire parallel batch first
     if (parallelBatch.length > 0) {
       const batchStart = Date.now();
       const promises = parallelBatch.map(async (action) => {
         window.hexTaskBus?.push(`Executing: ${action.type} ${(action.args || []).join(' ')}`);
-        const actionResult = await handleAIAction(action);
-        if (actionResult && actionResult.data) {
+        const start = Date.now();
+        const rawResult = await handleAIAction(action);
+        const actionResult = new ActionResult({
+          success: rawResult ? (rawResult.success !== false) : true,
+          action: action.type,
+          data: rawResult?.data || rawResult,
+          durationMs: Date.now() - start
+        });
+
+        if (actionResult && actionResult.data && typeof actionResult.data === 'string') {
           infoResults.push('[' + action.type.toUpperCase() + ' RESULT]: ' + actionResult.data);
         }
         return actionResult;
