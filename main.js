@@ -10,7 +10,7 @@ console.error = (...args) => {
   _origConsoleError.apply(console, args);
 };
 
-const { app, BrowserWindow, ipcMain, powerMonitor, shell, dialog, session, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, powerMonitor, shell, dialog, session, Tray, Menu, nativeImage, globalShortcut } = require('electron');
 
 // Audio safety flags
 app.commandLine.appendSwitch('disable-features', 'AudioServiceOutOfProcess');
@@ -22,6 +22,7 @@ const os = require('os');
 const { exec, spawn } = require('child_process');
 const schedule = require('node-schedule');
 const si = require('systeminformation');
+const PluginLoader = require('./src/js/plugin-loader');
 
 // Local voice engine (Whisper STT + Piper TTS)
 let localVoice;
@@ -402,24 +403,62 @@ ipcMain.handle('browser:open-url', (_, url) => {
 // ────────────────────────────────────────────────────────────────────────────────
 const { buildAppFinderPS } = require('./src/js/ipc-butler')({ sendLog, dialog, shell, mainWindow, runCmd, butlerExec });
 require('./src/js/ipc-games')({ sendLog, shell, butlerExec, buildAppFinderPS });
-// ─── IPC: REMINDERS ──────────────────────────────────────────────────────────
+// ─── IPC: REMINDERS (PERSISTENT) ─────────────────────────────────────────────
+const REMINDERS_PATH = path.join(app.getPath('userData'), 'reminders.json');
 const activeReminders = new Map();
 
+function loadPersistedReminders() {
+  try {
+    if (!fs.existsSync(REMINDERS_PATH)) return;
+    const saved = JSON.parse(fs.readFileSync(REMINDERS_PATH, 'utf8'));
+    const now = Date.now();
+    for (const r of saved) {
+      const remaining = new Date(r.fireAt).getTime() - now;
+      if (remaining > 0) {
+        const job = schedule.scheduleJob(new Date(r.fireAt), () => {
+          safeSend('reminder:fire', { id: r.id, label: r.label });
+          sendLog('HEX', `Reminder fired: ${r.label}`, 'info');
+          activeReminders.delete(r.id);
+          savePersistedReminders();
+        });
+        activeReminders.set(r.id, { job, label: r.label, fireAt: r.fireAt });
+      } else {
+        // Missed reminder — fire immediately
+        safeSend('reminder:fire', { id: r.id, label: r.label });
+        sendLog('HEX', `Missed reminder fired: ${r.label}`, 'info');
+      }
+    }
+    if (activeReminders.size > 0) sendLog('HEX', `Restored ${activeReminders.size} persisted reminder(s).`, 'info');
+  } catch (e) { console.warn('Failed to load reminders:', e.message); }
+}
+
+function savePersistedReminders() {
+  try {
+    const arr = [];
+    for (const [id, data] of activeReminders) {
+      arr.push({ id, label: data.label, fireAt: data.fireAt });
+    }
+    fs.writeFileSync(REMINDERS_PATH, JSON.stringify(arr, null, 2));
+  } catch (e) { console.warn('Failed to save reminders:', e.message); }
+}
+
 ipcMain.handle('reminders:set', (_, { id, label, delayMs }) => {
-  if (activeReminders.has(id)) activeReminders.get(id).cancel();
-  const fireAt = new Date(Date.now() + delayMs);
-  const job = schedule.scheduleJob(fireAt, () => {
+  if (activeReminders.has(id)) activeReminders.get(id).job.cancel();
+  const fireAt = new Date(Date.now() + delayMs).toISOString();
+  const job = schedule.scheduleJob(new Date(fireAt), () => {
     safeSend('reminder:fire', { id, label });
     sendLog('HEX', `Reminder fired: ${label}`, 'info');
     activeReminders.delete(id);
+    savePersistedReminders();
   });
-  activeReminders.set(id, job);
+  activeReminders.set(id, { job, label, fireAt });
+  savePersistedReminders();
   sendLog('HEX', `Reminder set: "${label}" in ${Math.round(delayMs / 60000)} min`, 'info');
   return { success: true, fireAt };
 });
 
 ipcMain.handle('reminders:cancel', (_, id) => {
-  if (activeReminders.has(id)) { activeReminders.get(id).cancel(); activeReminders.delete(id); }
+  if (activeReminders.has(id)) { activeReminders.get(id).job.cancel(); activeReminders.delete(id); savePersistedReminders(); }
   return { success: true };
 });
 
@@ -1042,11 +1081,420 @@ app.whenReady().then(() => {
       else console.log("Ollama local process started via VBS.");
     });
   }
+
+  // ── Load persisted reminders ────────────────────────────────────────────────
+  loadPersistedReminders();
+
+  // ── Global Hotkey: Ctrl+Shift+H to summon H.E.X. ───────────────────────────
+  try {
+    globalShortcut.register('Ctrl+Shift+H', () => {
+      if (mainWindow) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        if (!mainWindow.isVisible()) mainWindow.show();
+        mainWindow.focus();
+      }
+    });
+  } catch (e) { console.warn('Global shortcut registration failed:', e.message); }
 });
 
 app.on('will-quit', () => {
+  // ── Unregister global shortcuts ──────────────────────────────────────────
+  globalShortcut.unregisterAll();
+
   const ollamaStopVbs = "D:\\Dev\\Artificial intelligence\\stop-ollama.vbs";
   if (fs.existsSync(ollamaStopVbs)) {
     exec(`cscript.exe //nologo "${ollamaStopVbs}"`);
+  }
+});
+
+// ─── IPC: OLLAMA MODEL DISCOVERY ─────────────────────────────────────────────
+ipcMain.handle('ollama:list-models', async () => {
+  try {
+    const baseUrl = config.llm?.baseUrl || 'http://localhost:11434';
+    const res = await fetch(`${baseUrl}/api/tags`);
+    if (!res.ok) return { success: false, error: `HTTP ${res.status}` };
+    const data = await res.json();
+    const models = (data.models || []).map(m => ({
+      name: m.name,
+      size: m.size ? Math.round(m.size / 1e9 * 10) / 10 + ' GB' : '?',
+      modified: m.modified_at || ''
+    }));
+    return { success: true, models };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// ─── IPC: WEATHER ────────────────────────────────────────────────────────────
+ipcMain.handle('butler:weather', async (_, { city }) => {
+  try {
+    // First try wttr.in (no API key needed)
+    const c = (city || '').trim().replace(/[^a-zA-Z0-9 ,.-]/g, '') || 'auto';
+    const res = await fetch(`https://wttr.in/${encodeURIComponent(c)}?format=j1`, {
+      headers: { 'User-Agent': 'HEX/1.1' }
+    });
+    if (!res.ok) return { success: false, error: `Weather API HTTP ${res.status}` };
+    const data = await res.json();
+    const cur = data.current_condition?.[0] || {};
+    const area = data.nearest_area?.[0] || {};
+    return {
+      success: true,
+      city: area.areaName?.[0]?.value || city || '?',
+      country: area.country?.[0]?.value || '?',
+      temp_c: cur.temp_C || '?',
+      temp_f: cur.temp_F || '?',
+      feels_like_c: cur.FeelsLikeC || '?',
+      humidity: cur.humidity || '?',
+      wind_kmph: cur.windspeedKmph || '?',
+      wind_dir: cur.winddir16Point || '?',
+      description: cur.weatherDesc?.[0]?.value || '?',
+      uv: cur.uvIndex || '?',
+      visibility_km: cur.visibility || '?',
+    };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// ─── IPC: QR CODE GENERATION ─────────────────────────────────────────────────
+ipcMain.handle('butler:qr-code', async (_, { text }) => {
+  try {
+    const input = (text || '').trim();
+    if (!input) return { success: false, error: 'No text provided' };
+    // Use PowerShell + .NET to generate QR code as PNG
+    const ts = Date.now();
+    const outPath = path.join(os.homedir(), 'Desktop', `qr_${ts}.png`);
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(input)}`;
+    const ps = `Invoke-WebRequest -Uri '${qrUrl}' -OutFile '${outPath}'`;
+    const r = await butlerExec(`powershell -NoProfile -Command "${ps.replace(/"/g, '\\"')}"`, { timeout: 15000 });
+    if (r.ok && fs.existsSync(outPath)) {
+      shell.openPath(outPath);
+      sendLog('BUTLER', `QR code saved: ${outPath}`);
+      return { success: true, path: outPath };
+    }
+    return { success: false, error: r.err || 'QR generation failed' };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// ─── IPC: SPEED TEST ─────────────────────────────────────────────────────────
+ipcMain.handle('butler:speed-test', async () => {
+  try {
+    // Download test (~10MB file) to measure speed
+    const testUrl = 'https://speed.cloudflare.com/__down?bytes=10000000';
+    const start = Date.now();
+    const res = await fetch(testUrl);
+    if (!res.ok) return { success: false, error: `HTTP ${res.status}` };
+    const buffer = await res.arrayBuffer();
+    const elapsed = (Date.now() - start) / 1000;
+    const sizeMB = buffer.byteLength / (1024 * 1024);
+    const speedMbps = Math.round((sizeMB * 8 / elapsed) * 10) / 10;
+    sendLog('BUTLER', `Speed test: ${speedMbps} Mbps (${sizeMB.toFixed(1)} MB in ${elapsed.toFixed(1)}s)`);
+    return {
+      success: true,
+      download_mbps: speedMbps,
+      size_mb: Math.round(sizeMB * 10) / 10,
+      elapsed_sec: Math.round(elapsed * 10) / 10,
+    };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+
+// ─── IPC: MORNING DIGEST ─────────────────────────────────────────────────────
+const LAST_DIGEST_PATH = path.join(app.getPath('userData'), 'last_digest.json');
+
+ipcMain.handle('butler:morning-digest', async () => {
+  try {
+    // Check if we already ran today
+    try {
+      if (fs.existsSync(LAST_DIGEST_PATH)) {
+        const last = JSON.parse(fs.readFileSync(LAST_DIGEST_PATH, 'utf8'));
+        const today = new Date().toDateString();
+        if (last.date === today) return { success: true, skipped: true, reason: 'Already briefed today' };
+      }
+    } catch (_) { }
+
+    const results = {};
+
+    // Weather
+    try {
+      const wRes = await fetch('https://wttr.in/?format=j1', { headers: { 'User-Agent': 'HEX/1.1' } });
+      if (wRes.ok) {
+        const w = await wRes.json();
+        const cur = w.current_condition?.[0] || {};
+        const area = w.nearest_area?.[0] || {};
+        results.weather = {
+          city: area.areaName?.[0]?.value || '?',
+          temp: cur.temp_C + '°C',
+          description: cur.weatherDesc?.[0]?.value || '?',
+          humidity: cur.humidity + '%',
+          wind: cur.windspeedKmph + ' km/h',
+        };
+      }
+    } catch (_) { results.weather = null; }
+
+    // System health
+    try {
+      const mem = process.memoryUsage();
+      const uptime = os.uptime();
+      const hrs = Math.floor(uptime / 3600);
+      const mins = Math.floor((uptime % 3600) / 60);
+      results.system = {
+        uptime: `${hrs}h ${mins}m`,
+        freeRAM: Math.round(os.freemem() / 1e9 * 10) / 10 + ' GB',
+        totalRAM: Math.round(os.totalmem() / 1e9 * 10) / 10 + ' GB',
+        cpuCores: os.cpus().length,
+        platform: os.platform() + ' ' + os.release(),
+      };
+    } catch (_) { results.system = null; }
+
+    // Pending reminders
+    try {
+      const pending = [];
+      for (const [id, data] of activeReminders) {
+        pending.push({ id, label: data.label, fireAt: data.fireAt });
+      }
+      results.reminders = pending;
+    } catch (_) { results.reminders = []; }
+
+    results.date = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    results.time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+    // Mark as done for today
+    fs.writeFileSync(LAST_DIGEST_PATH, JSON.stringify({ date: new Date().toDateString() }));
+
+    return { success: true, skipped: false, digest: results };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// ─── IPC: DICTIONARY ─────────────────────────────────────────────────────────
+ipcMain.handle('butler:define', async (_, { word }) => {
+  try {
+    const w = (word || '').trim().replace(/[^a-zA-Z\s-]/g, '');
+    if (!w) return { success: false, error: 'No word provided' };
+    const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(w)}`);
+    if (!res.ok) return { success: false, error: `Word "${w}" not found` };
+    const data = await res.json();
+    const entry = data[0] || {};
+    const meanings = (entry.meanings || []).slice(0, 3).map(m => ({
+      partOfSpeech: m.partOfSpeech,
+      definitions: (m.definitions || []).slice(0, 2).map(d => d.definition),
+      example: m.definitions?.[0]?.example || null,
+    }));
+    return {
+      success: true,
+      word: entry.word || w,
+      phonetic: entry.phonetic || entry.phonetics?.[0]?.text || '',
+      meanings,
+    };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// ─── IPC: TRANSLATE ──────────────────────────────────────────────────────────
+ipcMain.handle('butler:translate', async (_, { text, from, to }) => {
+  try {
+    const t = (text || '').trim();
+    if (!t) return { success: false, error: 'No text provided' };
+    const src = from || 'en';
+    const tgt = to || 'ru';
+    // Use MyMemory free API (no key needed, 5000 chars/day)
+    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(t.substring(0, 500))}&langpair=${src}|${tgt}`;
+    const res = await fetch(url);
+    if (!res.ok) return { success: false, error: `Translation API HTTP ${res.status}` };
+    const data = await res.json();
+    return {
+      success: true,
+      original: t,
+      translated: data.responseData?.translatedText || '?',
+      from: src,
+      to: tgt,
+    };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// ─── IPC: SEND EMAIL ─────────────────────────────────────────────────────────
+ipcMain.handle('butler:send-email', async (_, { to, subject, body }) => {
+  try {
+    if (!to || !subject) return { success: false, error: 'Missing to/subject' };
+    // Use PowerShell Send-MailMessage (available on all Windows)
+    // User must configure SMTP in config.json under smtp: { server, port, user, pass }
+    const smtp = config.smtp;
+    if (!smtp || !smtp.server || !smtp.user) {
+      return { success: false, error: 'Email not configured. Set smtp.server, smtp.port, smtp.user, smtp.pass in config.' };
+    }
+    const ps = [
+      `$pass = ConvertTo-SecureString '${smtp.pass}' -AsPlainText -Force`,
+      `$cred = New-Object System.Management.Automation.PSCredential('${smtp.user}', $pass)`,
+      `Send-MailMessage -From '${smtp.user}' -To '${to}' -Subject '${(subject || '').replace(/'/g, "''")}' -Body '${(body || '').replace(/'/g, "''")}' -SmtpServer '${smtp.server}' -Port ${smtp.port || 587} -UseSsl -Credential $cred`,
+    ].join('; ');
+    const r = await butlerExec(`powershell -NoProfile -Command "${ps.replace(/"/g, '\\"')}"`, { timeout: 30000 });
+    if (r.ok) {
+      sendLog('BUTLER', `Email sent to ${to}`);
+      return { success: true, to, subject };
+    }
+    return { success: false, error: r.err || 'Send failed' };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// ─── IPC: YOUTUBE / MEDIA DOWNLOAD ───────────────────────────────────────────
+ipcMain.handle('butler:download-media', async (_, { url, format }) => {
+  try {
+    if (!url) return { success: false, error: 'No URL provided' };
+    const desktopDir = path.join(os.homedir(), 'Desktop');
+    const fmt = format || 'best';
+
+    // Try yt-dlp first (most capable)
+    const ytdlpPaths = [
+      'yt-dlp',  // in PATH
+      path.join(os.homedir(), 'yt-dlp.exe'),
+      'D:\\Tools\\yt-dlp.exe',
+    ];
+
+    let ytdlpBin = null;
+    for (const p of ytdlpPaths) {
+      try {
+        const check = await butlerExec(`"${p}" --version`, { timeout: 5000 });
+        if (check.ok) { ytdlpBin = p; break; }
+      } catch (_) { }
+    }
+
+    if (ytdlpBin) {
+      sendLog('BUTLER', `Downloading via yt-dlp: ${url}`);
+      const outputTmpl = path.join(desktopDir, '%(title)s.%(ext)s');
+      let cmd = `"${ytdlpBin}" -o "${outputTmpl}" "${url}"`;
+      if (fmt === 'audio') cmd = `"${ytdlpBin}" -x --audio-format mp3 -o "${outputTmpl}" "${url}"`;
+      else if (fmt === 'mp4') cmd = `"${ytdlpBin}" -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4" -o "${outputTmpl}" "${url}"`;
+
+      const r = await butlerExec(cmd, { timeout: 300000 }); // 5min timeout
+      if (r.ok) {
+        sendLog('BUTLER', `Download complete: ${url}`);
+        return { success: true, method: 'yt-dlp', output: r.out?.substring(0, 500) || '' };
+      }
+      return { success: false, error: r.err || 'yt-dlp failed' };
+    }
+
+    // Fallback: direct download for simple URLs
+    sendLog('BUTLER', `yt-dlp not found. Direct download: ${url}`);
+    const ts = Date.now();
+    const ext = url.match(/\.(mp4|mp3|webm|mkv|avi|wav|flac|ogg)/i)?.[1] || 'mp4';
+    const outPath = path.join(desktopDir, `download_${ts}.${ext}`);
+    const ps = `Invoke-WebRequest -Uri '${url}' -OutFile '${outPath}'`;
+    const r = await butlerExec(`powershell -NoProfile -Command "${ps.replace(/"/g, '\\"')}"`, { timeout: 120000 });
+    if (r.ok && fs.existsSync(outPath)) {
+      shell.openPath(outPath);
+      return { success: true, method: 'direct', path: outPath };
+    }
+    return { success: false, error: 'yt-dlp not installed and direct download failed. Install yt-dlp for YouTube support.' };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// ─── PLUGIN SYSTEM ───────────────────────────────────────────────────────────
+const pluginsDir = path.join(app.getPath('userData'), 'plugins');
+const pluginLoader = new PluginLoader(pluginsDir, (...args) => {
+  const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+  sendLog('PLUGINS', msg);
+});
+
+// Copy bundled sample plugins on first run
+app.whenReady().then(() => {
+  const bundledPluginsDir = path.join(__dirname, 'plugins');
+  if (fs.existsSync(bundledPluginsDir)) {
+    try {
+      const entries = fs.readdirSync(bundledPluginsDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const dest = path.join(pluginsDir, entry.name);
+        if (!fs.existsSync(dest)) {
+          fs.cpSync(path.join(bundledPluginsDir, entry.name), dest, { recursive: true });
+          console.log(`[Plugins] Copied bundled plugin: ${entry.name}`);
+        }
+      }
+    } catch (e) { console.warn('Plugin copy error:', e.message); }
+  }
+  // Auto-load all discovered plugins
+  const loaded = pluginLoader.loadAll();
+  if (loaded.length) sendLog('PLUGINS', `${loaded.length} plugin(s) active.`);
+});
+
+ipcMain.handle('plugins:list', () => {
+  return { success: true, plugins: pluginLoader.listLoaded() };
+});
+
+ipcMain.handle('plugins:discover', () => {
+  return { success: true, plugins: pluginLoader.discover().map(m => ({ id: m.id, name: m.name, version: m.version, description: m.description, actions: m.actions })) };
+});
+
+ipcMain.handle('plugins:load', (_, { id }) => {
+  const manifests = pluginLoader.discover();
+  const manifest = manifests.find(m => m.id === id);
+  if (!manifest) return { success: false, error: `Plugin "${id}" not found` };
+  const ok = pluginLoader.loadPlugin(manifest);
+  return { success: ok, error: ok ? null : 'Failed to load plugin' };
+});
+
+ipcMain.handle('plugins:unload', (_, { id }) => {
+  return { success: pluginLoader.unloadPlugin(id) };
+});
+
+ipcMain.handle('plugins:execute', async (_, { pluginId, action, args }) => {
+  return await pluginLoader.execute(pluginId, action, args || []);
+});
+
+ipcMain.handle('plugins:get-action-tags', () => {
+  return { success: true, tags: pluginLoader.getActionTags() };
+});
+
+// ─── IPC: BROWSER AUTOMATION ─────────────────────────────────────────────────
+ipcMain.handle('butler:browser-open', async (_, { url }) => {
+  try {
+    if (!url) return { success: false, error: 'No URL provided' };
+    await shell.openExternal(url);
+    sendLog('BUTLER', `Opened in browser: ${url}`);
+    return { success: true, url };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('butler:browser-search', async (_, { query }) => {
+  try {
+    if (!query) return { success: false, error: 'No query provided' };
+    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+    await shell.openExternal(searchUrl);
+    sendLog('BUTLER', `Google search: ${query}`);
+    return { success: true, query, url: searchUrl };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('butler:browser-scrape', async (_, { url }) => {
+  try {
+    if (!url) return { success: false, error: 'No URL provided' };
+    // Use PowerShell Invoke-WebRequest to grab page content
+    const ps = `(Invoke-WebRequest -Uri '${url}' -UseBasicParsing).Content | Select-Object -First 1`;
+    const r = await butlerExec(`powershell -NoProfile -Command "${ps.replace(/"/g, '\\"')}"`, { timeout: 15000 });
+    if (r.ok) {
+      // Extract text-like content, strip HTML tags
+      let text = (r.out || '').replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      text = text.substring(0, 3000); // Limit size
+      return { success: true, url, text, length: text.length };
+    }
+    return { success: false, error: r.err || 'Scrape failed' };
+  } catch (e) {
+    return { success: false, error: e.message };
   }
 });

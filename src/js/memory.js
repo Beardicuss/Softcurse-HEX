@@ -19,6 +19,7 @@ class HexMemory {
     this.edges = [];   // relationships between nodes
     this.clusters = [];  // auto-generated summary clusters
     this.episodes = [];  // compressed session summaries
+    this.reflections = []; // Tier 2: LLM-synthesized observations
     this.summary = '';  // legacy rolling summary (kept for compat)
     this.history = [];  // conversation turns
     this.selfKnowledge = null;  // meta-memory index
@@ -44,7 +45,17 @@ class HexMemory {
     this._dirty = false;
     this._saveTimer = null;
     this._extracting = false;   // prevent concurrent extraction
+    this._reflecting = false;   // prevent concurrent reflection
+    this._lastReflection = null;  // cooldown timestamp
     this.onLog = null;
+
+    // ── Suppress mechanism (session-scoped) ──────────────────────────────
+    this._sessionMentions = new Map();  // nodeId → mention count this session
+    this.SUPPRESS_THRESHOLD = 3;        // hide from prompt after N mentions
+    this.SUPPRESS_WINDOW_MS = 5 * 60 * 60 * 1000;  // 5h window
+
+    // ── Content hash index (fast dedup) ──────────────────────────────────
+    this._contentHashes = new Map();  // hash → nodeId (built on load)
 
     // ── Tier definitions ──────────────────────────────────────────────────
     this.PROTECTED_TYPES = new Set(['user', 'health', 'system', 'action_outcome']);
@@ -65,6 +76,7 @@ class HexMemory {
           this.edges = data.edges || [];
           this.clusters = data.clusters || [];
           this.episodes = data.episodes || [];
+          this.reflections = data.reflections || [];
           this.history = data.history || [];
           this.summary = data.summary || '';
           this.selfKnowledge = data.selfKnowledge || null;
@@ -74,6 +86,7 @@ class HexMemory {
         }
         this._log(`Memory loaded: ${this.nodes.length} nodes, ${this.history.length} turns, ${this.episodes.length} sessions`);
         this._updateSelfKnowledge();
+        this._rebuildHashIndex();
       } else {
         this._log('No prior memory. Starting fresh.');
       }
@@ -122,6 +135,7 @@ class HexMemory {
         edges: this.edges,
         clusters: this.clusters,
         episodes: this.episodes,
+        reflections: this.reflections,
         history: this.history.slice(-this.MAX_HISTORY_KEEP),
         summary: this.summary,
         selfKnowledge: this.selfKnowledge,
@@ -198,6 +212,9 @@ class HexMemory {
     node.tier = this._classifyTier(node);
 
     this.nodes.push(node);
+
+    // Register in hash index
+    this._contentHashes.set(this._contentHash(content), node.id);
 
     // Async conflict check (non-blocking)
     this._checkConflictsAsync(node);
@@ -479,6 +496,145 @@ class HexMemory {
         this._log('Auto-compress error: ' + (e?.message || ''));
       }
     }
+    // Also trigger reflection if enough unabsorbed facts
+    this.maybeReflect();
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════════
+  //  REFLECTION ENGINE — Tier 2 Memory (Facts → Observations)
+  // ════════════════════════════════════════════════════════════════════════════════
+  /**
+   * Synthesizes clusters of related facts into higher-level observations.
+   * Observations start as "pending" and auto-promote to "confirmed" after 3 days
+   * if the user doesn't deny them.
+   */
+  async maybeReflect() {
+    const MIN_FACTS_FOR_REFLECTION = 5;
+    const activeNodes = this.nodes.filter(n => n.status === 'active' && !n._absorbed);
+    if (activeNodes.length < MIN_FACTS_FOR_REFLECTION) return;
+    if (this._reflecting) return;
+
+    // Cooldown: max once per 30 minutes
+    const now = Date.now();
+    if (this._lastReflection && now - this._lastReflection < 30 * 60 * 1000) return;
+
+    this._reflecting = true;
+    this._lastReflection = now;
+
+    try {
+      // Gather recent unabsorbed facts (max 15)
+      const recentFacts = activeNodes
+        .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
+        .slice(0, 15)
+        .map(n => `[${n.type}] ${n.content}`);
+
+      const prompt = `You are a reflection engine. Given these facts about a user, synthesize 1-3 higher-level OBSERVATIONS or PATTERNS you notice. These should be insights the user might not have explicitly stated.
+
+FACTS:
+${recentFacts.join('\n')}
+
+Respond in JSON:
+{
+  "observations": [
+    { "content": "observation text", "confidence": 0.6, "based_on_types": ["type1","type2"] }
+  ],
+  "nothing": true/false
+}
+
+Rules:
+- Observations should be HIGHER LEVEL than individual facts (patterns, tendencies, preferences)
+- Maximum 3 observations
+- confidence 0.5-0.7 for subtle patterns, 0.8+ for obvious ones
+- Return nothing=true if no meaningful patterns emerge`;
+
+      const raw = await this._quickLLMCall(prompt);
+      if (!raw) return;
+
+      let parsed;
+      try {
+        const clean = raw.replace(/```json\s*/i, '').replace(/```\s*$/, '').trim();
+        parsed = JSON.parse(clean);
+      } catch (_) {
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) return;
+        try { parsed = JSON.parse(jsonMatch[0]); } catch (_) { return; }
+      }
+
+      if (parsed.nothing || !parsed.observations?.length) return;
+
+      for (const obs of parsed.observations) {
+        if (!obs.content || obs.content.length < 10) continue;
+        // Check if we already have this reflection
+        const existing = (this.reflections || []).find(r =>
+          this._wordOverlap(r.content, obs.content) > 0.6
+        );
+        if (existing) continue;
+
+        const reflection = {
+          id: this._uid(),
+          content: obs.content,
+          confidence: obs.confidence || 0.6,
+          status: 'pending',  // pending → confirmed → promoted
+          based_on_types: obs.based_on_types || [],
+          created_at: Date.now(),
+          confirmed_at: null,
+          promoted_at: null,
+        };
+        this.reflections.push(reflection);
+        this._log(`Reflection: "${obs.content.substring(0, 80)}..." (pending)`);
+      }
+
+      // Mark source facts as absorbed
+      for (const n of activeNodes.slice(0, 15)) {
+        n._absorbed = true;
+      }
+
+      this._autoPromoteReflections();
+      this._scheduleSave();
+    } catch (e) {
+      this._log('Reflection error: ' + (e?.message || ''));
+    } finally {
+      this._reflecting = false;
+    }
+  }
+
+  /**
+   * Auto-promote reflections that have been pending for 3+ days without denial.
+   */
+  _autoPromoteReflections() {
+    const AUTO_CONFIRM_DAYS = 3;
+    const now = Date.now();
+    for (const r of (this.reflections || [])) {
+      if (r.status === 'pending' && now - r.created_at > AUTO_CONFIRM_DAYS * 86400000) {
+        r.status = 'confirmed';
+        r.confirmed_at = now;
+        this._log(`Auto-confirmed reflection: "${r.content.substring(0, 60)}"`);
+      }
+      if (r.status === 'confirmed' && now - r.confirmed_at > AUTO_CONFIRM_DAYS * 86400000) {
+        r.status = 'promoted';
+        r.promoted_at = now;
+        // Promote to permanent node
+        this.addNode('observation', r.content, Math.min(0.95, r.confidence + 0.15), { temporal: 'current' });
+        this._log(`Promoted reflection to permanent memory: "${r.content.substring(0, 60)}"`);
+      }
+    }
+    // Cleanup: remove denied/promoted older than 30 days
+    this.reflections = (this.reflections || []).filter(r => {
+      if (r.status === 'denied' || r.status === 'promoted') {
+        return now - (r.promoted_at || r.created_at) < 30 * 86400000;
+      }
+      return true;
+    });
+  }
+
+  denyReflection(id) {
+    const r = (this.reflections || []).find(r => r.id === id);
+    if (r) {
+      r.status = 'denied';
+      r.denied_at = Date.now();
+      this._log(`User denied reflection: "${r.content.substring(0, 60)}"`);
+      this._scheduleSave();
+    }
   }
 
   async _extractWithLLM(userMsg, aiReply) {
@@ -736,9 +892,18 @@ Rules:
         score: this._relevanceScore(n, currentMessage || '')
       })).sort((a, b) => b.score - a.score).slice(0, 24);
 
+      // ── Suppress filter: hide facts mentioned too many times this session ──
+      const unsuppressed = scored.filter(({ node }) => {
+        const mentions = this._sessionMentions.get(node.id) || 0;
+        if (mentions >= this.SUPPRESS_THRESHOLD) return false;
+        // Track this mention
+        this._sessionMentions.set(node.id, mentions + 1);
+        return true;
+      });
+
       // Group by type
       const groups = {};
-      for (const { node } of scored) {
+      for (const { node } of unsuppressed) {
         const t = node.type || 'general';
         if (!groups[t]) groups[t] = [];
         const conf = node.confidence;
@@ -764,6 +929,16 @@ Rules:
     const failures = activeNodes.filter(n => n.type === 'action_outcome' && n.content.startsWith('Action failed:'));
     if (failures.length) {
       parts.push('[KNOWN FAILURES — avoid repeating]\n' + failures.map(n => n.content).join('\n'));
+    }
+
+    // 3.5. Proactive observations from reflection engine
+    const pendingReflections = (this.reflections || []).filter(r => r.status === 'pending' || r.status === 'confirmed');
+    if (pendingReflections.length) {
+      const obsLines = pendingReflections.slice(0, 3).map(r => {
+        const qualifier = r.status === 'pending' ? ' (not sure yet)' : '';
+        return `• ${r.content}${qualifier}`;
+      });
+      parts.push('[YOUR OBSERVATIONS ABOUT USER — mention naturally if relevant]\n' + obsLines.join('\n'));
     }
 
     // 4. Relevant episodic recall
@@ -837,12 +1012,21 @@ Rules:
 
   clearFacts() { this.nodes = this.edges = this.clusters = []; this._scheduleSave(); }
   clearHistory() { this.history = []; this.summary = ''; this._scheduleSave(); }
-  clearAll() { this.nodes = this.edges = this.clusters = this.episodes = []; this.history = []; this.summary = ''; this.selfKnowledge = null; this._scheduleSave(); }
+  clearAll() { this.nodes = this.edges = this.clusters = this.episodes = []; this.reflections = []; this.history = []; this.summary = ''; this.selfKnowledge = null; this._scheduleSave(); }
 
   // ════════════════════════════════════════════════════════════════════════════════
   //  HELPERS
   // ════════════════════════════════════════════════════════════════════════════════
   _findSimilarNode(type, content) {
+    // Fast path: exact SHA-256 hash match
+    const hash = this._contentHash(content);
+    const hashHit = this._contentHashes.get(hash);
+    if (hashHit) {
+      const node = this.nodes.find(n => n.id === hashHit && n.status === 'active');
+      if (node) return { node, score: 1.0 };
+    }
+
+    // Slow path: keyword overlap for fuzzy matching
     let best = null, bestScore = 0;
     for (const n of this.nodes) {
       if (n.status !== 'active' || n.type !== type) continue;
@@ -859,6 +1043,31 @@ Rules:
     let overlap = 0;
     for (const w of wa) if (wb.has(w)) overlap++;
     return overlap / Math.max(wa.size, wb.size);
+  }
+
+  _contentHash(content) {
+    // Simple cyrb53 hash (fast browser-compatible alternative to SHA-256)
+    const str = (content || '').trim().toLowerCase();
+    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+    for (let i = 0; i < str.length; i++) {
+      const ch = str.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+    h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+    h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+  }
+
+  _rebuildHashIndex() {
+    this._contentHashes.clear();
+    for (const n of this.nodes) {
+      if (n.status === 'active') {
+        this._contentHashes.set(this._contentHash(n.content), n.id);
+      }
+    }
   }
 
   _uid() {

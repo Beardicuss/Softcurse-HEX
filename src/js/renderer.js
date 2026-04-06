@@ -374,9 +374,35 @@ async function sendMessage() {
     // Speak response
     if (config.voice?.enabled !== false) speakWithConfig(hexText);
 
-    // Execute actions — collect results from info-gathering ones
+    // Execute actions — batch independent actions in parallel
     const infoResults = [];
-    for (const action of (result.actions || [])) {
+    const SEQUENTIAL_ACTIONS = new Set(['shutdown', 'restart', 'logoff', 'lock_screen']); // must run alone
+    const actions = result.actions || [];
+    const parallelBatch = [];
+    const sequentialQueue = [];
+    for (const action of actions) {
+      if (SEQUENTIAL_ACTIONS.has(action.type)) sequentialQueue.push(action);
+      else parallelBatch.push(action);
+    }
+
+    // Fire parallel batch first
+    if (parallelBatch.length > 0) {
+      const batchStart = Date.now();
+      const promises = parallelBatch.map(async (action) => {
+        window.hexTaskBus?.push(`Executing: ${action.type} ${(action.args || []).join(' ')}`);
+        const actionResult = await handleAIAction(action);
+        if (actionResult && actionResult.data) {
+          infoResults.push('[' + action.type.toUpperCase() + ' RESULT]: ' + actionResult.data);
+        }
+        return actionResult;
+      });
+      await Promise.allSettled(promises);
+      const elapsed = Date.now() - batchStart;
+      if (parallelBatch.length > 1) addLog('HEX', `${parallelBatch.length} actions executed in parallel (${elapsed}ms)`);
+    }
+
+    // Then sequential actions
+    for (const action of sequentialQueue) {
       window.hexTaskBus?.push(`Executing: ${action.type} ${(action.args || []).join(' ')}`);
       const actionResult = await handleAIAction(action);
       if (actionResult && actionResult.data) {

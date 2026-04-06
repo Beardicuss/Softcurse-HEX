@@ -173,6 +173,174 @@ async function handleAIAction(action) {
       }
       break;
 
+    case 'weather': {
+      const city = action.args.join(':') || '';
+      const r = await window.hexAPI.butler.weather(city);
+      if (r.success) {
+        addHexMessage(
+          `**${r.city}, ${r.country}**\n` +
+          `🌡 ${r.temp_c}°C (feels like ${r.feels_like_c}°C)\n` +
+          `💧 Humidity: ${r.humidity}% | 💨 Wind: ${r.wind_kmph} km/h ${r.wind_dir}\n` +
+          `☁ ${r.description} | UV: ${r.uv} | Visibility: ${r.visibility_km} km`
+        );
+        if (window.hexMemory) window.hexMemory.recordActionOutcome('weather', true);
+      } else {
+        addHexMessage(`Weather lookup failed: ${r.error}`);
+        if (window.hexMemory) window.hexMemory.recordActionOutcome('weather', false, r.error);
+      }
+      break;
+    }
+
+    case 'qr_code': {
+      const qrText = action.args.join(':');
+      const r = await window.hexAPI.butler.qrCode(qrText);
+      addLog('BUTLER', r.success ? `QR saved: ${r.path}` : `QR failed: ${r.error}`);
+      if (r.success) {
+        addHexMessage(`**QR code saved** to \`${r.path}\``);
+        if (window.hexMemory) window.hexMemory.recordActionOutcome('qr_code', true);
+      } else {
+        if (window.hexMemory) window.hexMemory.recordActionOutcome('qr_code', false, r.error);
+      }
+      break;
+    }
+
+    case 'speed_test': {
+      addHexMessage('Running speed test...');
+      const r = await window.hexAPI.butler.speedTest();
+      if (r.success) {
+        addHexMessage(
+          `**Speed Test Result**\n` +
+          `⬇ Download: **${r.download_mbps} Mbps**\n` +
+          `📦 ${r.size_mb} MB in ${r.elapsed_sec}s`
+        );
+        if (window.hexMemory) window.hexMemory.recordActionOutcome('speed_test', true);
+      } else {
+        addHexMessage(`Speed test failed: ${r.error}`);
+        if (window.hexMemory) window.hexMemory.recordActionOutcome('speed_test', false, r.error);
+      }
+      break;
+    }
+
+    case 'morning_digest': {
+      const r = await window.hexAPI.butler.morningDigest();
+      if (r.success && !r.skipped) {
+        const d = r.digest;
+        let msg = `☀ **Morning Briefing — ${d.date}**\n\n`;
+        if (d.weather) msg += `🌡 **${d.weather.city}**: ${d.weather.temp}, ${d.weather.description}, 💧 ${d.weather.humidity}, 💨 ${d.weather.wind}\n`;
+        if (d.system) msg += `💻 Uptime: ${d.system.uptime} | RAM: ${d.system.freeRAM} free / ${d.system.totalRAM}\n`;
+        if (d.reminders?.length) msg += `⏰ ${d.reminders.length} pending reminder(s): ${d.reminders.map(r => r.label).join(', ')}\n`;
+        else msg += `✅ No pending reminders.\n`;
+        addHexMessage(msg);
+      } else if (r.skipped) {
+        addHexMessage('Already briefed today. Say "morning digest" again tomorrow!');
+      }
+      break;
+    }
+
+    case 'define': {
+      const word = action.args.join(' ');
+      const r = await window.hexAPI.butler.define(word);
+      if (r.success) {
+        let msg = `📖 **${r.word}** ${r.phonetic}\n\n`;
+        for (const m of r.meanings) {
+          msg += `*${m.partOfSpeech}*\n`;
+          for (const d of m.definitions) msg += `  • ${d}\n`;
+          if (m.example) msg += `  _"${m.example}"_\n`;
+        }
+        addHexMessage(msg);
+      } else {
+        addHexMessage(`Dictionary: ${r.error}`);
+      }
+      break;
+    }
+
+    case 'translate': {
+      const parts = action.args.join(':').split(':');
+      const text = parts[0] || '';
+      const from = parts[1] || 'en';
+      const to = parts[2] || 'ru';
+      const r = await window.hexAPI.butler.translate(text, from, to);
+      if (r.success) {
+        addHexMessage(`🌐 **${r.from} → ${r.to}**\n\n"${r.original}"\n↓\n"${r.translated}"`);
+      } else {
+        addHexMessage(`Translation failed: ${r.error}`);
+      }
+      break;
+    }
+
+    case 'send_email': {
+      const to = action.args[0] || '';
+      const subject = action.args[1] || 'Message from H.E.X.';
+      const body = action.args.slice(2).join(':') || '';
+      const r = await window.hexAPI.butler.sendEmail(to, subject, body);
+      if (r.success) {
+        addHexMessage(`📧 **Email sent** to \`${r.to}\`\nSubject: ${r.subject}`);
+        if (window.hexMemory) window.hexMemory.recordActionOutcome('send_email', true);
+      } else {
+        addHexMessage(`Email failed: ${r.error}`);
+        if (window.hexMemory) window.hexMemory.recordActionOutcome('send_email', false, r.error);
+      }
+      break;
+    }
+
+    case 'download_media': {
+      const mediaUrl = action.args[0] || '';
+      const fmt = action.args[1] || 'best';  // best | audio | mp4
+      addHexMessage(`⬇ Downloading media... (${fmt})`);
+      const r = await window.hexAPI.butler.downloadMedia(mediaUrl, fmt);
+      if (r.success) {
+        addHexMessage(`✅ **Download complete** via ${r.method}\n${r.path || r.output || ''}`);
+        if (window.hexMemory) window.hexMemory.recordActionOutcome('download_media', true);
+      } else {
+        addHexMessage(`Download failed: ${r.error}`);
+        if (window.hexMemory) window.hexMemory.recordActionOutcome('download_media', false, r.error);
+      }
+      break;
+    }
+
+    case 'plugin': {
+      const pluginId = action.args[0] || '';
+      const pluginAction = action.args[1] || 'default';
+      const pluginArgs = action.args.slice(2);
+      const r = await window.hexAPI.plugins.execute(pluginId, pluginAction, pluginArgs);
+      if (r.success) {
+        addHexMessage(typeof r.result === 'string' ? r.result : `Plugin \`${pluginId}\` → ${JSON.stringify(r.result)}`);
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`plugin:${pluginId}:${pluginAction}`, true);
+      } else {
+        addHexMessage(`Plugin error: ${r.error}`);
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`plugin:${pluginId}:${pluginAction}`, false, r.error);
+      }
+      break;
+    }
+
+    case 'browser_open': {
+      const url = action.args.join(':');
+      const r = await window.hexAPI.browser.open(url);
+      if (r.success) addHexMessage(`🌐 Opened: ${r.url}`);
+      else addHexMessage(`Browser open failed: ${r.error}`);
+      break;
+    }
+
+    case 'browser_search': {
+      const query = action.args.join(' ');
+      const r = await window.hexAPI.browser.search(query);
+      if (r.success) addHexMessage(`🔍 Searching: "${r.query}"`);
+      else addHexMessage(`Search failed: ${r.error}`);
+      break;
+    }
+
+    case 'browser_scrape': {
+      const scrapeUrl = action.args.join(':');
+      addHexMessage(`🕷 Scraping \`${scrapeUrl}\`...`);
+      const r = await window.hexAPI.browser.scrape(scrapeUrl);
+      if (r.success) {
+        return { data: r.text };  // Feed into follow-up AI call
+      } else {
+        addHexMessage(`Scrape failed: ${r.error}`);
+      }
+      break;
+    }
+
     // ── File & Folder ────────────────────────────────────────
     case 'copy': {
       const [src, ...dParts] = action.args; const dest = dParts.join(':');

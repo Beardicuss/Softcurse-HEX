@@ -71,6 +71,14 @@ contextBridge.exposeInMainWorld('hexAPI', {
     setEnv: (variable, value) => ipcRenderer.invoke('butler:set-env', { variable, value }),
     // ── Maintenance ────────────────────────────────────────
     cleanTemp: () => ipcRenderer.invoke('butler:clean-temp'),
+    weather: (city) => ipcRenderer.invoke('butler:weather', { city }),
+    qrCode: (text) => ipcRenderer.invoke('butler:qr-code', { text }),
+    speedTest: () => ipcRenderer.invoke('butler:speed-test'),
+    morningDigest: () => ipcRenderer.invoke('butler:morning-digest'),
+    define: (word) => ipcRenderer.invoke('butler:define', { word }),
+    translate: (text, from, to) => ipcRenderer.invoke('butler:translate', { text, from, to }),
+    sendEmail: (to, subject, body) => ipcRenderer.invoke('butler:send-email', { to, subject, body }),
+    downloadMedia: (url, format) => ipcRenderer.invoke('butler:download-media', { url, format }),
     setWallpaper: (imagePath) => ipcRenderer.invoke('butler:set-wallpaper', { imagePath }),
     // ── Scripting ──────────────────────────────────────────
     runPs: (script) => ipcRenderer.invoke('butler:run-ps', { script }),
@@ -121,6 +129,26 @@ contextBridge.exposeInMainWorld('hexAPI', {
     dockerStatus: () => ipcRenderer.invoke('butler:docker-status'),
     notify: (title, message) => ipcRenderer.invoke('butler:notify', { title, message }),
     recordScreen: (action) => ipcRenderer.invoke('butler:record-screen', { action }),
+  },
+
+  // ── Ollama ──────────────────────────────────────
+  ollamaListModels: () => ipcRenderer.invoke('ollama:list-models'),
+
+  // ── Plugins ─────────────────────────────────────
+  plugins: {
+    list: () => ipcRenderer.invoke('plugins:list'),
+    discover: () => ipcRenderer.invoke('plugins:discover'),
+    load: (id) => ipcRenderer.invoke('plugins:load', { id }),
+    unload: (id) => ipcRenderer.invoke('plugins:unload', { id }),
+    execute: (pluginId, action, args) => ipcRenderer.invoke('plugins:execute', { pluginId, action, args }),
+    getActionTags: () => ipcRenderer.invoke('plugins:get-action-tags'),
+  },
+
+  // ── Browser Automation ──────────────────────────
+  browser: {
+    open: (url) => ipcRenderer.invoke('butler:browser-open', { url }),
+    search: (query) => ipcRenderer.invoke('butler:browser-search', { query }),
+    scrape: (url) => ipcRenderer.invoke('butler:browser-scrape', { url }),
   },
 
   // ── Reminders ─────────────────────────────────

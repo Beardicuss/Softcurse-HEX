@@ -1,0 +1,11 @@
+{
+    "id": "hello-world",
+    "name": "Hello World",
+    "version": "1.0.0",
+    "description": "Reference plugin — demonstrates the H.E.X. plugin API",
+    "main": "index.js",
+    "actions": [
+        "greet",
+        "info"
+    ]
+}
