@@ -1,0 +1,11 @@
+{
+    "id": "hex-games-launcher",
+    "name": "Local Game Launcher",
+    "version": "1.0",
+    "description": "Scans and launches installed games from Steam, Epic, or custom directories via the command line.",
+    "main": "index.js",
+    "actions": [
+        "scan_games",
+        "launch_game"
+    ]
+}

@@ -37,10 +37,11 @@ It exists to bridge the gap between AI chat wrappers and true operating system a
 - 🖥️ **Total OS Master Suite:** Executes native PowerShell commands seamlessly. Read/write to the Registry, install software via `winget`, terminate PIDs, empty caches, schedule native Windows tasks, and deploy sweeps using natural language.
 - 👁️ **Computer Vision Optics:** Features asynchronous hardware frame-grabbing via Electron's `desktopCapturer`. H.E.X. can "look" at your screen and natively feed visual payloads into the Gemini Vision API.
 - 🎙️ **Hardware-Level Voice (STT):** Integrates isolated Native C++ Speech-to-Text inference models locally via `sherpa-onnx` for offline phonetic parsing, with zero-latency.
-- 📂 **Global Omni-Launcher:** Dynamically indexes `/Start Menu` and `/Desktop` `.lnk` paths for fuzzy matching application launches.
+- 🔌 **Extensible Plugin Engine:** A sandboxed `PluginLoader` allowing community JavaScript plugins to execute natively, hook into standard IPC pipelines, and be called seamlessly by the AI's contextual brain.
+- 🔐 **Biometric Authentication:** Zero-trust startup utilizing a structural CSS lock screen and `getUserMedia` perceptual RGB hashing to secure access behind local facial recognition.
+- 📝 **Clipboard Memory:** Hotkey `Ctrl+Shift+V` access to a persistent 50-item clipboard history injected directly via `robotjs`.
 - 🧠 **Multi-Provider Nexus:** Plugs natively into Ollama (Local), Google Gemini, OpenAI, Anthropic, Grok, Mistral, and OpenRouter architectures.
 - 🛡️ **OODA Cognitive Architecture:** Enforces a 5-phase reasoning loop completely nullifying command-injection hallucinations, linked tightly with self-healing Action Outcome Telemetry.
-- ⚙️ **Anti-Quota Resiliency:** Employs dynamic self-healing network routers holding steady during API rate constraints (e.g., auto-downgrading throttled endpoints smoothly).
 
 ## 📦 Installation
 ### Prerequisites
@@ -85,6 +86,8 @@ graph TD;
     Preload -->|Event Emitters| Main[Electron Main Runtime]
     Main --> Butler(ipc-butler.js / PowerShell C# Wrappers)
     Main --> Hardware(desktopCapturer / Web Speech APIs)
+    Main --> Plugins(PluginLoader / Sandboxed Scripts)
+    Plugins --> Renderer
 ```
 
 ## 🧪 Testing

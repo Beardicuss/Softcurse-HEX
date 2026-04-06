@@ -1447,5 +1447,33 @@ ${r.output.substring(0, 500)}
       }
       break;
     }
+
+    // ── Plugin Actions ──
+    // Format: [ACTION:plugin:PLUGIN_ID:ACTION_NAME:ARG1:ARG2...]
+    case 'plugin': {
+      const pluginId = action.args[0];
+      const pluginAction = action.args[1];
+      const pluginArgs = action.args.slice(2);
+      if (!pluginId || !pluginAction) {
+        addLog('PLUGIN', 'Missing plugin ID or action name');
+        break;
+      }
+      addLog('PLUGIN', `Executing ${pluginId}:${pluginAction}(${pluginArgs.join(', ')})`);
+      try {
+        const r = await window.hexAPI.plugins.execute(pluginId, pluginAction, pluginArgs);
+        if (r.success) {
+          const resultStr = typeof r.result === 'string' ? r.result : JSON.stringify(r.result);
+          addLog('PLUGIN', `${pluginId}:${pluginAction} → ${resultStr}`);
+          return { data: `[Plugin: ${pluginId}] ${resultStr}` };
+        } else {
+          addLog('PLUGIN', `${pluginId}:${pluginAction} failed: ${r.error}`);
+          addHexMessage(`Plugin error: ${r.error}`);
+        }
+      } catch (e) {
+        addLog('PLUGIN', `Plugin execution error: ${e.message}`);
+        addHexMessage(`Plugin error: ${e.message}`);
+      }
+      break;
+    }
   }
 }

@@ -1,0 +1,11 @@
+{
+    "id": "hex-discord-webhook",
+    "name": "Discord Webhook Broadcaster",
+    "version": "1.0",
+    "description": "Demonstrates connecting to external Discord APIs by sending automated system alerts to a Discord webhook URL.",
+    "main": "index.js",
+    "actions": [
+        "send_webhook_message",
+        "broadcast_system_status"
+    ]
+}

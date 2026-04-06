@@ -35,6 +35,49 @@
   <div id="scanline"></div>
   <div id="toast-container"></div>
 
+  <!-- ── Face Auth Lock Screen ────────────────────────── -->
+  <div id="face-lock-overlay"
+    style="display:none;position:fixed;inset:0;background:var(--bg);z-index:99999;flex-direction:column;align-items:center;justify-content:center;color:var(--cyan);font-family:var(--font-m);">
+    <div
+      style="font-family:var(--font-d);font-size:48px;letter-spacing:10px;color:var(--cyan2);margin-bottom:20px;text-shadow:var(--glow);">
+      SYSTEM LOCKED</div>
+    <div
+      style="position:relative;width:320px;height:240px;border:1px solid var(--accent);background:var(--surface);margin-bottom:20px;box-shadow:var(--glow);overflow:hidden;">
+      <video id="lock-video" width="320" height="240" autoplay playsinline
+        style="object-fit:cover;opacity:0.8;"></video>
+      <canvas id="lock-canvas" width="320" height="240" style="display:none;"></canvas>
+      <div id="lock-scan-line"
+        style="position:absolute;top:0;left:0;width:100%;height:2px;background:var(--cyan);box-shadow:0 0 10px var(--cyan);animation:scan-vertical 3s linear infinite;">
+      </div>
+      <!-- Corner brackets -->
+      <div
+        style="position:absolute;top:10px;left:10px;width:20px;height:20px;border-top:2px solid var(--cyan);border-left:2px solid var(--cyan);">
+      </div>
+      <div
+        style="position:absolute;top:10px;right:10px;width:20px;height:20px;border-top:2px solid var(--cyan);border-right:2px solid var(--cyan);">
+      </div>
+      <div
+        style="position:absolute;bottom:10px;left:10px;width:20px;height:20px;border-bottom:2px solid var(--cyan);border-left:2px solid var(--cyan);">
+      </div>
+      <div
+        style="position:absolute;bottom:10px;right:10px;width:20px;height:20px;border-bottom:2px solid var(--cyan);border-right:2px solid var(--cyan);">
+      </div>
+    </div>
+    <div id="lock-status" style="font-size:14px;letter-spacing:2px;margin-bottom:30px;min-height:20px;"
+      class="glitch-text">INITIALIZING SENSORS...</div>
+    <div style="display:flex;gap:15px;align-items:center;">
+      <button class="btn btn-primary" onclick="attemptFaceUnlock()" style="font-size:14px;padding:10px 30px;">SCAN
+        FACE</button>
+      <button class="btn btn-secondary" onclick="document.getElementById('lock-pin-area').style.display='flex'"
+        style="font-size:12px;">OVERRIDE</button>
+    </div>
+    <div id="lock-pin-area" style="display:none;margin-top:20px;gap:10px;">
+      <input type="password" id="lock-pin" class="form-control" placeholder="ACCESS CODE"
+        style="width:200px;text-align:center;letter-spacing:5px;">
+      <button class="btn btn-secondary" onclick="attemptPinUnlock()">ENTER</button>
+    </div>
+  </div>
+
   <!-- ── Settings Modal ───────────────────────────────── -->
   <div id="settings-overlay">
     <div id="settings-modal">
@@ -46,6 +89,8 @@
         <button class="stab" data-tab="tab-voice" onclick="switchSettingsTab('tab-voice')">🎙 VOICE</button>
         <button class="stab" data-tab="tab-persona" onclick="switchSettingsTab('tab-persona')">◆ PERSONA</button>
         <button class="stab" data-tab="tab-memory" onclick="switchSettingsTab('tab-memory')">🧠 MEMORY</button>
+        <button class="stab" data-tab="tab-security" onclick="switchSettingsTab('tab-security')">🛡 SECURITY</button>
+        <button class="stab" data-tab="tab-plugins" onclick="switchSettingsTab('tab-plugins')">🔌 PLUGINS</button>
       </div>
 
       <!-- ══ TAB: GENERAL ══════════════════════════════════ -->
@@ -441,6 +486,84 @@
         </div>
       </div>
 
+      <!-- ══ TAB: SECURITY ══════════════════════════════════ -->
+      <div class="stab-panel" id="tab-security">
+        <div class="settings-section-label">◆ FACE RECOGNITION AUTH</div>
+        <div class="form-group">
+          <label class="form-label">ENABLE FACE UNLOCK ON BOOT</label>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <select id="cfg-face-enabled" class="form-control" onchange="toggleFaceAuth(this.value === 'true')"
+              style="flex:1;">
+              <option value="false">Disabled</option>
+              <option value="true">Enabled</option>
+            </select>
+            <span id="face-enroll-status" class="label-tag" style="color:var(--orange);">UNENROLLED</span>
+          </div>
+          <div class="form-hint" style="margin-top:6px;">Protects H.E.X. from unauthorized access. Uses local offline
+            perceptual hashing (no cloud).</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">MATCH THRESHOLD</label>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <input type="range" id="cfg-face-threshold" min="0.5" max="0.99" step="0.01" value="0.85"
+              oninput="document.getElementById('face-thresh-val').textContent=Math.round(this.value*100)+'%'"
+              onchange="setFaceThreshold(this.value)" style="flex:1;accent-color:var(--cyan);">
+            <span id="face-thresh-val" class="mono" style="font-size:11px;width:34px;">85%</span>
+          </div>
+          <div class="form-hint">Higher values require exact lighting/angle. 85% is recommended.</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">ENROLLMENT VIEWFINDER</label>
+          <div
+            style="border:1px solid var(--accent);background:var(--bg);height:180px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;">
+            <video id="enroll-video" width="240" height="180" style="display:none;object-fit:cover;"></video>
+            <canvas id="enroll-canvas" width="240" height="180" style="display:none;"></canvas>
+            <div id="enroll-placeholder" class="mono" style="color:var(--muted);font-size:11px;text-align:center;">
+              [ WEBCAM INACTIVE ]<br>Click Start Scanner to begin
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:10px;">
+            <button class="btn btn-secondary" id="btn-start-scanner" onclick="startFaceEnrollment()">1. START
+              SCANNER</button>
+            <button class="btn btn-primary" id="btn-capture-face" onclick="captureFaceEnrollment()" disabled>2. CAPTURE
+              & ENROLL</button>
+            <button class="btn btn-secondary" onclick="unenrollFace()"
+              style="border-color:var(--orange);color:var(--orange);">CLEAR DATA</button>
+          </div>
+        </div>
+
+        <div class="settings-section-label">◆ SYSTEM OVERRIDE</div>
+        <div class="form-group">
+          <label class="form-label">OVERRIDE PIN</label>
+          <input type="password" id="cfg-override-pin" class="form-control" placeholder="Required if Face Auth fails">
+          <div class="form-hint">Used as secondary fallback option during lock screen.</div>
+        </div>
+      </div>
+
+      <!-- ══ TAB: PLUGINS ═══════════════════════════════════ -->
+      <div class="stab-panel" id="tab-plugins">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <div class="settings-section-label" style="margin:0;">◆ INSTALLED PLUGINS</div>
+          <button class="btn btn-secondary" onclick="loadPluginsList()" style="font-size:9px;padding:4px 10px;">↻
+            REFRESH</button>
+        </div>
+
+        <div id="plugins-list"
+          style="display:flex;flex-direction:column;gap:10px;min-height:200px;max-height:400px;overflow-y:auto;padding-right:6px;">
+          <!-- Dynamically populated -->
+        </div>
+
+        <div class="form-hint" style="margin-top:15px;padding-top:10px;border-top:1px solid var(--border);">
+          Plugins extend H.E.X.'s capabilities. Place valid JavaScript plugins inside the <code class="mono"
+            style="color:var(--magenta);">plugins/</code> directory in the application data folder.
+          <br><br>
+          <button class="btn btn-secondary" style="width:100%; border-color:var(--cyan); color:var(--cyan);"
+            onclick="openPluginsFolder()">📂 OPEN PLUGINS FOLDER</button>
+        </div>
+      </div>
+
       <!-- Footer buttons -->
       <div class="modal-btns">
         <button class="btn btn-secondary" onclick="closeSettings()" data-i18n="cancel">CANCEL</button>
@@ -467,6 +590,25 @@
         <span class="label-tag">ACTION</span>
       </div>
       <div id="process-list"></div>
+    </div>
+  </div>
+
+  <!-- ── Clipboard Modal ───────────────────────────────── -->
+  <div id="clipboard-overlay"
+    style="display:none;position:fixed;inset:0;background:rgba(2,2,2,0.85);z-index:9000;align-items:center;justify-content:center;">
+    <div id="clipboard-modal"
+      style="width:500px;max-height:80vh;background:var(--surface);border:1px solid var(--accent);box-shadow:var(--glow);padding:20px;display:flex;flex-direction:column;gap:15px;position:relative;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div class="section-title">CLIPBOARD HISTORY</div>
+        <button class="btn btn-secondary" onclick="closeClipboard()" style="padding:4px 12px;font-size:9px;">✕
+          CLOSE</button>
+      </div>
+      <input type="text" id="clipboard-search" class="form-control" placeholder="Search clipboard..."
+        oninput="searchClipboard(this.value)" style="margin-bottom:5px;">
+      <div id="clipboard-list"
+        style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px;padding-right:5px;min-height:200px;">
+        <!-- Dynamically populated -->
+      </div>
     </div>
   </div>
 
@@ -851,6 +993,15 @@
           <div class="stat-bar-fill" id="bar-disk" style="width:0%"></div>
         </div>
       </div>
+
+      <div class="divider"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div class="section-title" style="font-size:12px;">◆ RECURRING COMMS</div>
+        <button class="btn btn-secondary" onclick="refreshRecurring()" style="font-size:9px;padding:2px 6px;">↻</button>
+      </div>
+      <div id="recurring-list" style="display:flex;flex-direction:column;gap:6px;max-height:150px;overflow-y:auto;">
+        <!-- Dynamically populated -->
+      </div>
     </aside>
 
     <!-- BOTTOM TERMINAL -->
@@ -886,6 +1037,7 @@
   <script src="js/commands.js"></script>
   <script src="js/personality-ui.js"></script>
   <script src="js/settings-ui.js"></script>
+  <script src="js/v2-ui.js"></script>
   <script src="js/personalities.js"></script>
   <script src="js/orb.js"></script>
   <script src="js/actions.js"></script>

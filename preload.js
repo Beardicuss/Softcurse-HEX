@@ -142,6 +142,7 @@ contextBridge.exposeInMainWorld('hexAPI', {
     unload: (id) => ipcRenderer.invoke('plugins:unload', { id }),
     execute: (pluginId, action, args) => ipcRenderer.invoke('plugins:execute', { pluginId, action, args }),
     getActionTags: () => ipcRenderer.invoke('plugins:get-action-tags'),
+    openFolder: () => ipcRenderer.invoke('plugins:open-folder'),
   },
 
   // ── Browser Automation ──────────────────────────

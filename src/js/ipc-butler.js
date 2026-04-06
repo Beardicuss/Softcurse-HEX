@@ -772,24 +772,6 @@ $apps | ConvertTo-Json -Compress
       return { success: true };
     } catch (e) { return { success: false, error: e.message }; }
   });
-
-  ipcMain.handle('butler:record-screen', async (_, { action }) => {
-    try {
-      if (action === 'START') {
-        const desktop = path.join(os.homedir(), 'Desktop', 'hex_capture_' + Date.now() + '.mp4');
-        const ps = `Start-Process ffmpeg -ArgumentList "-f gdigrab -framerate 30 -i desktop -c:v libx264 \`"${desktop}\`"" -WindowStyle Hidden -PassThru | Select-Object -ExpandProperty Id`;
-        const r = await butlerExec(`powershell -NoProfile -Command "${ps}"`);
-        global.hexRecordPid = parseInt((r.out || '').trim());
-      } else {
-        if (global.hexRecordPid) {
-          await runCmd(`taskkill /PID ${global.hexRecordPid} /T /F`);
-          global.hexRecordPid = null;
-        }
-      }
-      return { success: true };
-    } catch (e) { return { success: false, error: e.message }; }
-  });
-
   // Expose buildAppFinderPS so ipc-games can use it
   return { buildAppFinderPS };
 };

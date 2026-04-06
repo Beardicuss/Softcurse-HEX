@@ -47,3 +47,5 @@ Push your branch to your fork and submit a Pull Request to the `main` branch of 
 ## 🛡️ Best Practices
 - **Security:** Do not commit hardcoded API keys or personal data.
 - **Native Modules:** If modifying Native Module invocations, ensure cross-platform compatibility where possible, or clearly document OS-specific boundaries.
+- **Community Plugins:** If developing a custom plugin for the `src/plugins/` distribution bundle, you MUST provide a valid `manifest.json` outlining the `id`, `name`, and valid `[ACTION:plugin]` dispatch array.
+- **UI Components:** v2.2 transitions to structural CSS designs. Contributions to `style.css` must adhere to the cyberpunk glow constraints and leverage CSS variables instead of hard-coded colors.

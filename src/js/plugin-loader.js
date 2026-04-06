@@ -85,12 +85,14 @@ class PluginLoader {
                 module: { exports: {} },
                 exports: {},
                 require: (mod) => {
-                    // Whitelist safe modules
-                    const ALLOWED = ['path', 'url', 'querystring', 'crypto', 'util'];
-                    if (ALLOWED.includes(mod)) return require(mod);
                     // Allow relative requires within plugin dir
                     if (mod.startsWith('.')) return require(path.resolve(manifest._dir, mod));
-                    throw new Error(`Plugin "${manifest.id}" cannot require("${mod}") — not whitelisted`);
+                    // Allow built-in node modules and dependencies installed in the plugin directory
+                    try {
+                        return require(mod);
+                    } catch (e) {
+                        throw new Error(`Plugin "${manifest.id}" cannot require("${mod}") — module not found or permission denied`);
+                    }
                 },
                 console: {
                     log: (...args) => this.log(`[Plugin:${manifest.id}]`, ...args),

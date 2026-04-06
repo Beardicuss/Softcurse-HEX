@@ -28,6 +28,16 @@ async function init() {
 
   // Configure subsystems
   window.hexAI.configure(config);
+
+  // ── Load plugin action tags for AI prompt injection ──
+  try {
+    const res = await window.hexAPI.plugins.getActionTags();
+    window._hexPluginTags = (res && res.tags) ? res.tags : (Array.isArray(res) ? res : []);
+    if (window._hexPluginTags.length > 0) {
+      addLog('PLUGINS', `${window._hexPluginTags.length} plugin action(s) registered for AI.`);
+    }
+  } catch (e) { window._hexPluginTags = []; }
+
   // Push saved modelsDir to engine before init so it knows where models are
   if (config.voice?.modelsDir) {
     await window.hexAPI.voice.setModelsDir(config.voice.modelsDir).catch(() => { });

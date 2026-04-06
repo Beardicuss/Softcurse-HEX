@@ -1,0 +1,10 @@
+{
+    "id": "hex-crypto-tracker",
+    "name": "Crypto Market Tracker",
+    "version": "1.0",
+    "description": "Fetches live cryptocurrency prices using the external CoinGecko API over HTTPS.",
+    "main": "index.js",
+    "actions": [
+        "get_crypto_price"
+    ]
+}

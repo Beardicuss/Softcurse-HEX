@@ -577,6 +577,25 @@ window.buildHexSystemPrompt = function (state, lang, userMsg) {
     '                              (then analyze results and advise in next turn)',
   ].join('\n');
 
+  // ── Dynamic plugin actions ──────────────────────────────────────────────────
+  let pluginActionsBlock = '';
+  if (window._hexPluginTags && window._hexPluginTags.length > 0) {
+    pluginActionsBlock = [
+      '',
+      '=== INSTALLED PLUGINS ===',
+      'These plugins extend your capabilities. Use them when relevant.',
+      'Format: [ACTION:plugin:PLUGIN_ID:ACTION_NAME:ARG1:ARG2...]',
+      '',
+      ...window._hexPluginTags,
+      '',
+      'Examples:',
+      '  "what is bitcoin price"    -> "Checking. [ACTION:plugin:hex-crypto-tracker:get_crypto_price:bitcoin]"',
+      '  "scan my games folder"     -> "[ACTION:plugin:hex-games-launcher:scan_games]"',
+      '  "launch MyGame"            -> "[ACTION:plugin:hex-games-launcher:launch_game:MyGame]"',
+      '  "post to discord: hello"   -> "[ACTION:plugin:hex-discord-webhook:send_webhook_message:hello]"',
+    ].join('\n');
+  }
+
   // ── Assemble ───────────────────────────────────────────────────────────────
   return [
     personalityPrompt,
@@ -592,6 +611,7 @@ window.buildHexSystemPrompt = function (state, lang, userMsg) {
     brainBlock,
     '',
     actionsBlock,
+    pluginActionsBlock,
     '',
     quickRefBlock,
   ].join('\n');

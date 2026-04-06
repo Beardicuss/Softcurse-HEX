@@ -1409,6 +1409,12 @@ const pluginLoader = new PluginLoader(pluginsDir, (...args) => {
   sendLog('PLUGINS', msg);
 });
 
+ipcMain.handle('plugins:open-folder', async () => {
+  if (!fs.existsSync(pluginsDir)) fs.mkdirSync(pluginsDir, { recursive: true });
+  await shell.openPath(pluginsDir);
+  return { success: true };
+});
+
 // Copy bundled sample plugins on first run
 app.whenReady().then(() => {
   const bundledPluginsDir = path.join(__dirname, 'plugins');
