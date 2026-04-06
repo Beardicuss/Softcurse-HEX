@@ -113,7 +113,7 @@ We welcome OS action hook extensions or localization scripts! Before submitting,
 Distributed under the **MIT License**. See `LICENSE` for more information.
 
 ## 👥 Acknowledgements
-- Built by [**Softcurse Studios**](https://softcurse-website.pages.dev/).
+- Built by [**Softcurse LAB**](https://softcurse-website.pages.dev/).
 - Uses [Sherpa-ONNX](https://github.com/k2-fsa/sherpa-onnx) for robust local Speech-to-Text pipelines.
 
 ## 💬 Support
