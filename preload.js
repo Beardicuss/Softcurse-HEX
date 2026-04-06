@@ -7,6 +7,10 @@ contextBridge.exposeInMainWorld('hexAPI', {
   getConfig: () => ipcRenderer.invoke('config:get'),
   setConfig: (cfg) => ipcRenderer.invoke('config:set', cfg),
 
+  // ── Memory ────────────────────────────────────
+  getMemory: () => ipcRenderer.invoke('memory:get'),
+  setMemory: (data) => ipcRenderer.invoke('memory:set', data),
+
   // ── Window controls ───────────────────────────
   minimize: () => ipcRenderer.send('window:minimize'),
   maximize: () => ipcRenderer.send('window:maximize'),

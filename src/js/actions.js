@@ -25,6 +25,35 @@ async function handleAIAction(action) {
       const appName = action.args.join(' ').trim();
       if (appName) {
         addLog('BUTLER', `Launching: ${appName}`);
+
+        // Intercept: Memory-aware URL alias resolution
+        if (window.hexMemory && window.hexMemory.nodes) {
+          const aliasLower = appName.toLowerCase();
+          const targetNodes = window.hexMemory.nodes.filter(n => {
+            const cLower = n.content.toLowerCase();
+            return (cLower.includes('http://') || cLower.includes('https://')) &&
+              aliasLower.split(/\s+/).some(word => word.length > 3 && cLower.includes(word));
+          });
+
+          if (targetNodes.length > 0) {
+            const bestNode = targetNodes.sort((a, b) => b.confidence - a.confidence)[0];
+            const match = bestNode.content.match(/https?:\/\/[^\s]+/);
+            if (match) {
+              const url = match[0];
+              addLog('BUTLER', `Memory resolved alias "${appName}" to URL: ${url}`);
+              const r = await window.hexAPI.openUrl(url);
+              if (r.success) {
+                addHexMessage(`**Opening resolved link:** ${url}`);
+                if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_app:${appName}`, true);
+              } else {
+                addHexMessage(`**Failed to open link:** ${url}`);
+                if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_app:${appName}`, false, r.error || '');
+              }
+              break;   // Exit the open_app case completely, we handled it as a URL
+            }
+          }
+        }
+
         let r;
 
         let fuzzyMatch = null;
@@ -57,6 +86,52 @@ async function handleAIAction(action) {
           addHexMessage('**Could not open** "' + appName + '". ' + (r.error || '') + (r.hint ? ' ' + r.hint : ''));
           addLog('BUTLER', 'Launch failed: ' + appName + ' — ' + (r.error || ''), 'error');
           if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_app:${appName}`, false, r.error || '');
+        }
+      }
+      break;
+    }
+
+    case 'open_url': {
+      const url = action.args.join(':').trim();
+      if (url) {
+        addLog('BUTLER', `Opening URL: ${url}`);
+        const r = await window.hexAPI.openUrl(url);
+        if (r?.success) {
+          addHexMessage(`**Opened:** ${url}`);
+          if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_url:${url}`, true);
+        } else {
+          addHexMessage(`**Failed to open:** ${url}`);
+          if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_url:${url}`, false, r?.error || '');
+        }
+      }
+      break;
+    }
+
+    case 'browser_open': {
+      const bUrl = action.args.join(':').trim();
+      if (bUrl) {
+        addLog('BUTLER', `Browser open: ${bUrl}`);
+        const r = await window.hexAPI.openUrl(bUrl);
+        if (r?.success) {
+          addHexMessage(`**Opened in browser:** ${bUrl}`);
+        } else {
+          addHexMessage(`**Failed:** ${bUrl} — ${r?.error || 'Unknown error'}`);
+        }
+      }
+      break;
+    }
+
+    case 'browser_search': {
+      const query = action.args.join(' ').trim();
+      if (query) {
+        addLog('BUTLER', `Browser search: ${query}`);
+        try {
+          const r = await window.hexAPI.butler.browserSearch(query);
+          addHexMessage(`**Searching Google:** ${query}`);
+        } catch (e) {
+          const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+          await window.hexAPI.openUrl(searchUrl);
+          addHexMessage(`**Searching Google:** ${query}`);
         }
       }
       break;

@@ -381,6 +381,11 @@ async function sendMessage() {
     addHexMessage(hexText);
     addLog('HEX', `→ ${String(hexText).substring(0, 100)}${hexText.length > 100 ? '…' : ''}`);
 
+    // Trigger asynchronous memory extraction (non-blocking)
+    if (window.hexMemory) {
+      window.hexMemory.extractFromExchange(text, hexText).catch(console.error);
+    }
+
     // Speak response
     if (config.voice?.enabled !== false) speakWithConfig(hexText);
 
@@ -395,7 +400,13 @@ async function sendMessage() {
       else parallelBatch.push(action);
     }
 
-    const ActionResult = require('./action-result');
+    // ActionResult — inline because require() is unavailable in renderer
+    const ActionResult = class {
+      constructor({ success, action, data, durationMs }) {
+        this.success = success; this.action = action;
+        this.data = data; this.durationMs = durationMs;
+      }
+    };
 
     // Fire parallel batch first
     if (parallelBatch.length > 0) {

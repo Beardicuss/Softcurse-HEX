@@ -10,7 +10,7 @@ class HexAI {
     this.MAX_HISTORY = 20;
     // Complexity-aware routing: fast models for simple queries
     this.FAST_MODELS = {
-      ollama: 'llama3',       // smallest local model (overridden if user has something smaller)
+      ollama: 'qwen2.5:7b',  // default local model (overridden by user config)
       openai: 'gpt-4o-mini',
       anthropic: 'claude-haiku-4-5-20251001',
       gemini: 'gemini-2.0-flash-lite',
@@ -129,7 +129,7 @@ class HexAI {
   // ── Ollama (local) ────────────────────────────────────────
   async _ollama(system, visionData = null) {
     const baseUrl = this.config.llm.baseUrl || 'http://localhost:11434';
-    const model = this.config.llm.model || 'llama3';
+    const model = this.config.llm.model || 'qwen2.5:7b';
 
     // Inject image into the latest user message for multimodal Ollama models (llava, minicpm-v, etc.)
     const msgs = this._msgs();
@@ -353,7 +353,57 @@ class HexAI {
   }
 
   // ── Helpers ───────────────────────────────────────────────
-  _msgs() { return this.history.map(m => ({ role: m.role, content: m.content })); }
+  _msgs() {
+    const raw = this.history.map(m => ({ role: m.role, content: m.content }));
+
+    // ── Memory Reminder Injection ──────────────────────────────
+    // Small models (Llama 3.1 8B) suffer from "lost in the middle" —
+    // they ignore facts buried deep in the system prompt. Injecting a
+    // compact memory summary as a system message right before the user's
+    // latest message ensures it lands in the model's attention window.
+    const reminder = this._buildMemoryReminder();
+    if (reminder) {
+      // Insert right before the last user message
+      const lastUserIdx = raw.length - 1;
+      if (lastUserIdx >= 0 && raw[lastUserIdx].role === 'user') {
+        raw.splice(lastUserIdx, 0, { role: 'system', content: reminder });
+      } else {
+        raw.push({ role: 'system', content: reminder });
+      }
+    }
+
+    return raw;
+  }
+
+  /**
+   * Build compact memory summary for injection into conversation history.
+   * Only includes the most important facts — keeps token count low (~200 tokens).
+   */
+  _buildMemoryReminder() {
+    if (!window.hexMemory) return null;
+    const nodes = window.hexMemory.nodes;
+    if (!nodes || !nodes.length) return null;
+
+    const active = nodes.filter(n => n.status === 'active');
+    if (!active.length) return null;
+
+    // Pick the top facts by tier (protected first) and confidence
+    const top = active
+      .sort((a, b) => (a.tier - b.tier) || (b.confidence - a.confidence))
+      .slice(0, 15)
+      .map(n => '• ' + n.content);
+
+    if (!top.length) return null;
+
+    return [
+      '[MEMORY RECALL — these are REAL facts YOU saved about this user]',
+      ...top,
+      '',
+      'USE these facts when answering. NEVER say you have no memory or cannot remember.',
+      'If the user asks about something listed above, answer directly from these facts.',
+      'If the user says "open my website", find the URL above and use [ACTION:open_url:THE_URL].'
+    ].join('\n');
+  }
 
   _parseActions(text) {
     const actions = [];

@@ -379,8 +379,26 @@ class HexMemory {
     const msg = userMsg || '';
 
     // ── Identity ───────────────────────────────────────────────────────────
-    const nameM = msg.match(/(?:my name is|i'm|call me|i am)\s+([A-ZА-Я][a-zа-я]{2,20})/i);
-    if (nameM) this.addNode('user', "User's name is " + nameM[1], 0.95);
+    const NOT_NAMES = new Set(['still', 'trying', 'going', 'just', 'also', 'here', 'there', 'very', 'really', 'always', 'never', 'actually', 'currently', 'basically', 'simply', 'using', 'working', 'looking', 'having', 'doing', 'making', 'getting', 'being', 'about', 'sorry', 'sure', 'fine', 'good', 'great', 'okay', 'well']);
+    const nameM = msg.match(/(?:my name is|call me)\s+([A-ZА-Я][a-zа-я]{2,20})/i);
+    if (nameM && !NOT_NAMES.has(nameM[1].toLowerCase())) this.addNode('user', "User's name is " + nameM[1], 0.95);
+
+    // ── URLs & Websites ──────────────────────────────────────────────────
+    const urlM = msg.match(/(?:my (?:website|site|url|page|blog|portfolio) (?:is|at|:))?\s*(https?:\/\/[^\s]+)/i);
+    if (urlM) {
+      const url = urlM[1].replace(/[.,;!?]+$/, '');
+      // Try to extract a label from context
+      const labelM = msg.match(/(?:(?:my|the)\s+)?(\w[\w\s]{2,30}?)(?:\s+(?:is|at|:)\s*https?:)/i);
+      const label = labelM ? labelM[1].trim() : 'website';
+      this.addNode('user', `User has a ${label} at ${url}`, 0.95);
+    }
+    // Explicit "remember X is Y" pattern
+    const rememberM = msg.match(/remember\s+(?:that\s+)?(?:my\s+)?(.+?)\s+(?:is|at|=)\s+(https?:\/\/[^\s]+)/i);
+    if (rememberM) {
+      const alias = rememberM[1].trim();
+      const url = rememberM[2].replace(/[.,;!?]+$/, '');
+      this.addNode('user', `User's ${alias} is ${url}`, 0.95);
+    }
 
     // ── OS & platform ──────────────────────────────────────────────────────
     const osM = msg.match(/\b(windows\s*1[01]|windows|macos|mac\s*os|linux|ubuntu|debian|arch)\b/i);
@@ -734,7 +752,7 @@ Rules:
         const res = await fetch((cfg.baseUrl || 'http://localhost:11434') + '/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: cfg.model || 'llama3', messages: msgs, stream: false, options: { temperature: 0.1, num_predict: 400 } })
+          body: JSON.stringify({ model: cfg.model || 'qwen2.5:7b', messages: msgs, stream: false, options: { temperature: 0.1, num_predict: 400 } })
         });
         if (!res.ok) return null;
         return (await res.json())?.message?.content || null;
