@@ -32,7 +32,17 @@
 
 <body>
 
-  <div id="scanline"></div>
+  <!-- ── V3 Global Overlays ────────────────────────── -->
+  <div class="noise-overlay"></div>
+  <div class="pulsar-cursor">
+    <div class="pulsar-dot"></div>
+    <div class="pulsar-line top"></div>
+    <div class="pulsar-line bottom"></div>
+    <div class="pulsar-line left"></div>
+    <div class="pulsar-line right"></div>
+    <div class="pulsar-ring"></div>
+    <div class="pulsar-ring2"></div>
+  </div>
   <div id="toast-container"></div>
 
   <!-- ── Face Auth Lock Screen ────────────────────────── -->
@@ -1042,6 +1052,30 @@
   <script src="js/orb.js"></script>
   <script src="js/actions.js"></script>
   <script src="js/renderer.js"></script>
+  <!-- ── V3 Custom Cursor Tracking ──────────────────── -->
+  <script>
+    (function () {
+      const cursor = document.querySelector('.pulsar-cursor');
+      if (!cursor) return;
+
+      document.addEventListener('mousemove', e => {
+        cursor.style.left = e.clientX + 'px';
+        cursor.style.top = e.clientY + 'px';
+      });
+
+      // Expand crosshairs & boost glow on interactive hover
+      document.addEventListener('mouseover', e => {
+        if (e.target.closest('a, button, input, textarea, select, [role="button"], .task-card, .lang-btn, .win-btn, .toast-btn, .btn-primary, .btn-secondary, #mic-status, .task-run-btn')) {
+          cursor.classList.add('hovering');
+        }
+      });
+      document.addEventListener('mouseout', e => {
+        if (e.target.closest('a, button, input, textarea, select, [role="button"], .task-card, .lang-btn, .win-btn, .toast-btn, .btn-primary, .btn-secondary, #mic-status, .task-run-btn')) {
+          cursor.classList.remove('hovering');
+        }
+      });
+    })();
+  </script>
 </body>
 
 </html>
