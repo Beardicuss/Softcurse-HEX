@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld('hexAPI', {
     scanApps: () => ipcRenderer.invoke('butler:scan-apps'),
     // ── Originals ──────────────────────────────────────────
     openApp: (name) => ipcRenderer.invoke('butler:open-app', name),
+    findFiles: (query, category, maxResults) => ipcRenderer.invoke('butler:find-files', { query, category, maxResults }),
+    findExeInFolder: (folderPath, appName) => ipcRenderer.invoke('butler:find-exe-in-folder', { folderPath, appName }),
     createFile: (name, content) => ipcRenderer.invoke('butler:create-file', { name, content }),
     createDoc: (name, content) => ipcRenderer.invoke('butler:create-doc', { name, content }),
     openFolder: (p) => ipcRenderer.invoke('butler:open-folder', p),

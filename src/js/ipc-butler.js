@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 // == ipc-butler.js == PC Actions & Filesystem ================================
 // Extracted from main.js
 
@@ -18,63 +18,53 @@ module.exports = function registerButlerIPC({ sendLog, dialog, shell, mainWindow
   //  4. Program Files recursive     → last resort filesystem search
   function buildAppFinderPS(name) {
     const safe = name.replace(/'/g, "''").replace(/"/g, '');
-    return `
-$n = '${safe}'; $nl = $n.ToLower(); $found = $null
-
-# 1. Get-StartApps — searches Start Menu (Win10/11 built-in)
-try {
-  $apps = Get-StartApps | Where-Object { $_.Name -like "*$n*" }
-  if ($apps) {
-    $exact = $apps | Where-Object { $_.Name.ToLower() -eq $nl }
-    $app   = if ($exact) { $exact[0] } else { $apps[0] }
-    Write-Host "FOUND:startapp:$($app.AppID):$($app.Name)"
-    exit 0
-  }
-} catch {}
-
-# 2. Registry App Paths (HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths)
-try {
-  $base = 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths'
-  $keys = Get-ChildItem $base -ErrorAction SilentlyContinue |
-          Where-Object { $_.PSChildName -like "*$n*" }
-  if ($keys) {
-    $path = (Get-ItemProperty $keys[0].PSPath).'(default)'
-    if ($path -and (Test-Path $path)) {
-      Write-Host "FOUND:path:$path:$($keys[0].PSChildName)"
-      exit 0
-    }
-  }
-} catch {}
-
-# 3. Search common install directories
-$dirs = @(
-  $env:ProgramFiles,
-  (process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)'),  // safe
-  "$env:LOCALAPPDATA\\Programs",
-  "$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs",
-  "$env:ProgramData\\Microsoft\\Windows\\Start Menu\\Programs"
-)
-foreach ($dir in $dirs) {
-  if (-not $dir) { continue }
-  # Search .lnk shortcuts first (faster, covers all Start Menu entries)
-  $lnks = Get-ChildItem -Path $dir -Filter "*.lnk" -Recurse -ErrorAction SilentlyContinue |
-          Where-Object { $_.BaseName -like "*$n*" } | Select-Object -First 1
-  if ($lnks) {
-    Write-Host "FOUND:lnk:$($lnks.FullName):$($lnks.BaseName)"
-    exit 0
-  }
-  # Search .exe files
-  $exes = Get-ChildItem -Path $dir -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue |
-          Where-Object { $_.BaseName -like "*$n*" -and $_.BaseName -notlike "*uninstall*" -and $_.BaseName -notlike "*setup*" } |
-          Select-Object -First 1
-  if ($exes) {
-    Write-Host "FOUND:exe:$($exes.FullName):$($exes.BaseName)"
-    exit 0
-  }
-}
-
-Write-Host "NOTFOUND"
-`.trim();
+    const ps = [
+      "$n = '" + safe + "'; $nl = $n.ToLower()",
+      "",
+      "# 1. Get-StartApps",
+      "try {",
+      "  $apps = Get-StartApps | Where-Object { $_.Name -like '*$n*' }",
+      "  if ($apps) {",
+      "    $exact = $apps | Where-Object { $_.Name.ToLower() -eq $nl }",
+      "    $app = if ($exact) { $exact[0] } else { $apps[0] }",
+      '    Write-Host "FOUND:startapp:$($app.AppID):$($app.Name)"',
+      "    exit 0",
+      "  }",
+      "} catch {}",
+      "",
+      "# 2. Registry App Paths",
+      "try {",
+      "  $base = 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths'",
+      "  $keys = Get-ChildItem $base -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -like '*$n*' }",
+      "  if ($keys) {",
+      "    $p = (Get-ItemProperty $keys[0].PSPath).'(default)'",
+      "    if ($p -and (Test-Path $p)) {",
+      '      Write-Host "FOUND:path:${p}:$($keys[0].PSChildName)"',
+      "      exit 0",
+      "    }",
+      "  }",
+      "} catch {}",
+      "",
+      "# 3. Search install directories",
+      "$x86 = [Environment]::GetFolderPath('ProgramFilesX86')",
+      '$dirs = @($env:ProgramFiles, $x86, "$env:LOCALAPPDATA\\Programs", "$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs", "$env:ProgramData\\Microsoft\\Windows\\Start Menu\\Programs")',
+      "foreach ($dir in $dirs) {",
+      "  if (-not $dir) { continue }",
+      "  $lnks = Get-ChildItem -Path $dir -Filter '*.lnk' -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.BaseName -like '*$n*' } | Select-Object -First 1",
+      "  if ($lnks) {",
+      '    Write-Host "FOUND:lnk:$($lnks.FullName):$($lnks.BaseName)"',
+      "    exit 0",
+      "  }",
+      "  $exes = Get-ChildItem -Path $dir -Filter '*.exe' -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.BaseName -like '*$n*' -and $_.BaseName -notlike '*uninstall*' -and $_.BaseName -notlike '*setup*' } | Select-Object -First 1",
+      "  if ($exes) {",
+      '    Write-Host "FOUND:exe:$($exes.FullName):$($exes.BaseName)"',
+      "    exit 0",
+      "  }",
+      "}",
+      "",
+      'Write-Host "NOTFOUND"',
+    ];
+    return ps.join('\n');
   }
 
   ipcMain.handle('butler:open-app', async (_, appName) => {
@@ -107,8 +97,9 @@ Write-Host "NOTFOUND"
       'explorer': 'explorer.exe', 'file explorer': 'explorer.exe',
       'this pc': 'explorer.exe =', 'my computer': 'explorer.exe =',
       'chrome': 'chrome.exe', 'google chrome': 'chrome.exe',
-      'firefox': 'firefox.exe', 'edge': 'msedge.exe',
-      'windows media player': 'wmplayer.exe',
+      'firefox': 'firefox.exe', 'edge': 'msedge.exe', 'microsoft edge': 'msedge.exe',
+      'media player': 'wmplayer.exe', 'windows media player': 'wmplayer.exe', 'wmplayer': 'wmplayer.exe',
+      'vlc': 'vlc.exe', 'vlc media player': 'vlc.exe',
       'taskmgr': 'taskmgr.exe', 'task manager': 'taskmgr.exe',
       'control panel': 'control.exe', 'control': 'control.exe',
       'settings': 'ms-settings:', 'windows settings': 'ms-settings:',
@@ -119,12 +110,38 @@ Write-Host "NOTFOUND"
       'msconfig': 'msconfig.exe', 'system configuration': 'msconfig.exe',
       'msinfo32': 'msinfo32.exe', 'system information': 'msinfo32.exe',
       'dxdiag': 'dxdiag.exe',
+      'vscode': 'code.exe', 'code': 'code.exe', 'visual studio code': 'code.exe',
+      'word': 'winword.exe', 'microsoft word': 'winword.exe',
+      'excel': 'excel.exe', 'microsoft excel': 'excel.exe',
+      'powerpoint': 'powerpnt.exe', 'microsoft powerpoint': 'powerpnt.exe',
+      'outlook': 'outlook.exe', 'microsoft outlook': 'outlook.exe',
+      'obs': 'obs64.exe', 'obs studio': 'obs64.exe',
+      'gimp': 'gimp.exe', 'audacity': 'audacity.exe',
+      'winrar': 'winrar.exe', '7zip': '7zFM.exe', '7-zip': '7zFM.exe',
+      'brave': 'brave.exe', 'brave browser': 'brave.exe',
+      'opera': 'opera.exe', 'opera gx': 'opera.exe',
+      'photoshop': 'Photoshop.exe', 'adobe photoshop': 'Photoshop.exe',
+      'premiere': 'Adobe Premiere Pro.exe', 'premiere pro': 'Adobe Premiere Pro.exe',
+      'blender': 'blender.exe', 'unity': 'Unity.exe', 'unity hub': 'Unity Hub.exe',
+      'git bash': 'git-bash.exe',
     };
 
+    // ── Exact match ──
     if (INSTANT[nl]) {
       return new Promise(resolve => {
         exec(`start "" "${INSTANT[nl]}"`, { shell: true }, err =>
           resolve({ success: true, app: name, method: 'instant' })
+        );
+      });
+    }
+
+    // ── Fuzzy match: partial name resolution ──
+    const fuzzyKey = Object.keys(INSTANT).find(k => k.includes(nl) || nl.includes(k));
+    if (fuzzyKey) {
+      sendLog('BUTLER', `Fuzzy matched "${name}" → "${fuzzyKey}"`);
+      return new Promise(resolve => {
+        exec(`start "" "${INSTANT[fuzzyKey]}"`, { shell: true }, err =>
+          resolve({ success: true, app: name, method: 'instant-fuzzy', matched: fuzzyKey })
         );
       });
     }
@@ -203,7 +220,7 @@ $apps = @()
 try {
   Get-StartApps | ForEach-Object { $apps += @{ name=$_.Name; appId=$_.AppID; type='startapp' } }
 } catch {}
-$dirs = @("$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs", "$env:ProgramData\\Microsoft\\Windows\\Start Menu\\Programs", "$env:PUBLIC\\Desktop", "$env:USERPROFILE\\Desktop", (process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)'), $env:ProgramFiles)
+$dirs = @("$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs", "$env:ProgramData\\Microsoft\\Windows\\Start Menu\\Programs", "$env:PUBLIC\\Desktop", "$env:USERPROFILE\\Desktop", [Environment]::GetFolderPath('ProgramFilesX86'), $env:ProgramFiles)
 foreach ($d in $dirs) {
   if (Test-Path $d) {
     Get-ChildItem -Path $d -Filter "*.lnk" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
@@ -229,6 +246,122 @@ $apps | ConvertTo-Json -Compress
       return { success: false, error: e.message };
     } finally {
       try { fs.unlinkSync(tmpPs); } catch (_) { }
+    }
+  });
+
+  // ── FULL-PC FILE SEARCH ──────────────────────────────────────────────────
+  const FILE_CATEGORIES = {
+    music: ['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.aac', '.wma', '.opus'],
+    video: ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v'],
+    image: ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg', '.ico', '.tiff'],
+    document: ['.pdf', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt', '.txt', '.md', '.rtf', '.odt', '.csv'],
+    code: ['.js', '.ts', '.py', '.java', '.cpp', '.c', '.cs', '.html', '.css', '.json', '.xml'],
+    archive: ['.zip', '.rar', '.7z', '.tar', '.gz', '.bz2'],
+  };
+
+  ipcMain.handle('butler:find-files', async (_, { query, category, maxResults }) => {
+    if (process.platform !== 'win32') return { success: false, error: 'Windows only' };
+    const max = maxResults || 50;
+    const safeQuery = (query || '').replace(/'/g, "''").replace(/"/g, '');
+
+    // Build extension filter for PowerShell fallback
+    let extFilter = '';
+    if (category && FILE_CATEGORIES[category.toLowerCase()]) {
+      const exts = FILE_CATEGORIES[category.toLowerCase()];
+      extFilter = exts.map(e => "$_.Extension -eq '" + e + "'").join(' -or ');
+    }
+
+    // Build extension clauses for Windows Search Index
+    let indexExtClause = '';
+    if (category && FILE_CATEGORIES[category.toLowerCase()]) {
+      const exts = FILE_CATEGORIES[category.toLowerCase()];
+      const clauses = exts.map(e => "System.ItemType = '" + e + "'").join(' OR ');
+      indexExtClause = ' AND (' + clauses + ')';
+    }
+
+    const psLines = [
+      "$query = '" + safeQuery + "'",
+      "$max   = " + max,
+      "$results = @()",
+      "",
+      "# Method 1: Windows Search Index (instant, all indexed drives)",
+      "try {",
+      "  $conn = New-Object -ComObject ADODB.Connection",
+      "  $rs   = New-Object -ComObject ADODB.Recordset",
+      "  $conn.Open('Provider=Search.CollatorDSO;Extended Properties=\"Application=Windows\"')",
+      '  $sql = "SELECT TOP $max System.ItemPathDisplay, System.ItemName, System.Size, System.ItemType FROM SystemIndex WHERE System.ItemName LIKE ' + "'%$query%'" + indexExtClause + '"',
+      "  $rs.Open($sql, $conn)",
+      "  while (-not $rs.EOF) {",
+      "    $results += @{ path=$rs.Fields.Item('System.ItemPathDisplay').Value; name=$rs.Fields.Item('System.ItemName').Value; size=$rs.Fields.Item('System.Size').Value; type=$rs.Fields.Item('System.ItemType').Value }",
+      "    $rs.MoveNext()",
+      "  }",
+      "  $rs.Close(); $conn.Close()",
+      "} catch {}",
+      "",
+      "# Method 2: Recursive scan (fallback)",
+      "if ($results.Count -eq 0) {",
+      "  $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used -ne $null } | Select-Object -ExpandProperty Root",
+      "  foreach ($drv in $drives) {",
+      "    if ($results.Count -ge $max) { break }",
+      "    $found = Get-ChildItem -Path $drv -Filter '*$query*' -Recurse -ErrorAction SilentlyContinue -File |" + (extFilter ? " Where-Object { " + extFilter + " } |" : ""),
+      "      Select-Object -First ($max - $results.Count)",
+      "    foreach ($f in $found) {",
+      "      $results += @{ path=$f.FullName; name=$f.Name; size=$f.Length; type=$f.Extension }",
+      "    }",
+      "  }",
+      "}",
+      "",
+      "$results | ConvertTo-Json -Compress",
+    ];
+
+    const tmpPs = path.join(os.tmpdir(), 'hex-find-files-' + Date.now() + '.ps1');
+    try {
+      fs.writeFileSync(tmpPs, psLines.join('\n'), 'utf8');
+      const r = await butlerExec(
+        `powershell -NoProfile -ExecutionPolicy Bypass -File "${tmpPs}"`,
+        { timeout: 60000 }
+      );
+      const jsonStr = (r.out || '').trim();
+      if (jsonStr && jsonStr.startsWith('[')) {
+        const parsed = JSON.parse(jsonStr);
+        sendLog('BUTLER', `File search: found ${parsed.length} results for "${query}"`, 'info');
+        return { success: true, files: parsed, count: parsed.length };
+      } else if (jsonStr && jsonStr.startsWith('{')) {
+        const parsed = [JSON.parse(jsonStr)];
+        sendLog('BUTLER', `File search: found 1 result for "${query}"`, 'info');
+        return { success: true, files: parsed, count: 1 };
+      }
+      return { success: true, files: [], count: 0, note: 'No files found matching "' + query + '"' };
+    } catch (e) {
+      sendLog('BUTLER', `File search error: ${e.message}`, 'error');
+      return { success: false, error: e.message };
+    } finally {
+      try { fs.unlinkSync(tmpPs); } catch (_) { }
+    }
+  });
+
+  ipcMain.handle('butler:find-exe-in-folder', async (_, { folderPath, appName }) => {
+    if (process.platform !== 'win32') return null;
+    const safeDir = folderPath.replace(/'/g, "''").replace(/"/g, '');
+    const cleanName = (appName || '').replace(/'/g, '').replace(/"/g, '').replace(/ /g, '*');
+
+    // Prioritize EXEs that contain the app name (fuzzy), then fallback to the largest EXE
+    const ps = `
+      $files = Get-ChildItem -Path '${safeDir}' -Filter '*.exe' -Recurse -ErrorAction SilentlyContinue
+      if ($files) {
+        $best = $files | Where-Object { $_.Name -match '${cleanName}' -or $_.Name -match '${cleanName.replace(/\s/g, '')}' } | Sort-Object Length -Descending | Select-Object -First 1
+        if (-not $best) {
+          $best = $files | Sort-Object Length -Descending | Select-Object -First 1
+        }
+        if ($best) { $best.FullName }
+      }
+    `;
+    try {
+      const r = await butlerExec(`powershell -NoProfile -Command "${ps.replace(/\n/g, '; ')}"`, { timeout: 10000 });
+      const out = (r.out || '').trim();
+      return out ? out : null;
+    } catch {
+      return null;
     }
   });
 

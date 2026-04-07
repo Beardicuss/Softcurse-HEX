@@ -26,6 +26,66 @@ async function handleAIAction(action) {
       if (appName) {
         addLog('BUTLER', `Launching: ${appName}`);
 
+        // ── Pillar 4: Memory-first lookup for user-taught app paths ──
+        // ── Pillar 4: Memory-first lookup for user-taught app paths ──
+        // ── Pillar 4: Memory-first lookup for user-taught app paths ──
+        if (window.hexMemory && window.hexMemory.nodes) {
+          const aliasLower = appName.toLowerCase();
+
+          const targetNodes = window.hexMemory.nodes.filter(n => {
+            if (!n || !n.content) return false;
+            const cLower = n.content.toLowerCase();
+
+            // Explicitly reject system folders that the background scanner spam-logs
+            if (cLower.includes('start menu') || cLower.includes('programdata\\microsoft')) return false;
+
+            return (cLower.includes(':\\') || cLower.includes(':/')) &&
+              aliasLower.split(/\s+/).every(word => cLower.includes(word));
+          });
+
+          if (targetNodes.length > 0) {
+            // Sort by confidence, but prioritize ones that explicitly have the appName in the PATH string if possible
+            const bestNode = targetNodes.sort((a, b) => {
+              const aIsAppPath = a.content.toLowerCase().startsWith('app_path:');
+              const bIsAppPath = b.content.toLowerCase().startsWith('app_path:');
+              if (aIsAppPath && !bIsAppPath) return -1;
+              if (bIsAppPath && !aIsAppPath) return 1;
+
+              const aHasName = a.content.toLowerCase().includes(appName.toLowerCase());
+              const bHasName = b.content.toLowerCase().includes(appName.toLowerCase());
+              if (aHasName && !bHasName) return -1;
+              if (bHasName && !aHasName) return 1;
+
+              return b.confidence - a.confidence;
+            })[0];
+
+            // Extract Windows path
+            // Handle C:\Program Files (x86)\..., brackets, dashes, etc
+            const match = bestNode.content.match(/[A-Za-z]:\\[a-zA-Z0-9\s\\._\-\(\)\[\],]+/, "");
+
+            if (match) {
+              let savedPath = match[0].trim();
+              if (savedPath) {
+                addLog('BUTLER', `Memory recall: "${appName}" → ${savedPath}`);
+
+                // If it looks like a folder, try to find the EXE inside it first!
+                if (!savedPath.toLowerCase().endsWith('.exe') && !savedPath.toLowerCase().endsWith('.lnk')) {
+                  const exePath = await window.hexAPI.butler.findExeInFolder(savedPath, appName);
+                  if (exePath) {
+                    savedPath = exePath; // Upgrade the path to the real exe!
+                  }
+                }
+
+                let r = await window.hexAPI.butler.openFile(savedPath);
+
+                if (r && r.success) {
+                  addHexMessage(`**Opening** ${appName} (remembered path)`);
+                  break;
+                }
+              }
+            }
+          }
+        }
         // Intercept: Memory-aware URL alias resolution
         if (window.hexMemory && window.hexMemory.nodes) {
           const aliasLower = appName.toLowerCase();
@@ -86,6 +146,56 @@ async function handleAIAction(action) {
           addHexMessage('**Could not open** "' + appName + '". ' + (r.error || '') + (r.hint ? ' ' + r.hint : ''));
           addLog('BUTLER', 'Launch failed: ' + appName + ' — ' + (r.error || ''), 'error');
           if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_app:${appName}`, false, r.error || '');
+
+          // ── Pillar 4: Self-learning — ask user for correct path ──
+          addHexMessage(`I couldn't find "**${appName}**" on your system. Could you tell me the **exact app name** and **where the .exe file is located**? For example: \`VLC is at D:\\Programs\\VLC\\vlc.exe\`. I'll remember it for next time! 🧠`);
+        }
+      }
+      break;
+    }
+
+    case 'find_files': {
+      const qParams = action.args.join(' ').trim().split(':');
+      const query = (qParams[0] || '').trim();
+      const category = (qParams.length > 1 ? qParams[1].trim() : '');
+      if (query) {
+        addLog('BUTLER', `Searching PC for files: ${query} ${category ? '(' + category + ')' : ''}`);
+        addHexMessage(`*Scanning all drives for "**${query}**"...* 🔍`);
+        const r = await window.hexAPI.butler.findFiles(query, category);
+        if (r && r.success) {
+          if (r.count > 0) {
+            let msg = `**Found ${r.count} result(s) for "${query}":**\n\n`;
+            r.files.forEach(f => {
+              const sizeMB = (f.size / (1024 * 1024)).toFixed(1);
+              msg += `- 📄 **${f.name}** (${sizeMB} MB)\n  \`${f.path}\`\n  <button class="action-btn" onclick="window.hexAPI.butler.openFile('${f.path.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')">Open</button> <button class="action-btn" onclick="window.hexAPI.butler.openFolder('${f.path.substring(0, Math.max(f.path.lastIndexOf('\\\\'), f.path.lastIndexOf('/'))).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')">Locate</button>\n\n`;
+            });
+            addHexMessage(msg);
+          } else {
+            addHexMessage(`I couldn't find any files matching "**${query}**" on your PC.`);
+          }
+        } else {
+          addHexMessage(`Something went wrong while searching: ${r.error}`);
+        }
+      }
+      break;
+    }
+
+    case 'save_app_path': {
+      const qParams = action.args.join(' ').trim().split(':');
+      const appName = (qParams.shift() || '').trim().toLowerCase();
+      const appPath = qParams.join(':').trim();
+
+      // Attempt to clean path
+      let cleanPath = appPath;
+      if (!cleanPath.toLowerCase().endsWith('.exe') && !cleanPath.toLowerCase().endsWith('.lnk')) {
+        // If the user provided a folder, we can guess the exe or just save the folder
+        addLog('BUTLER', `User provided partial path: ${cleanPath}`);
+      }
+
+      if (appName && cleanPath) {
+        if (window.hexMemory) {
+          window.hexMemory.saveFact(`app_path:${appName}=${cleanPath}`);
+          addHexMessage(`**Saved!** I've learned that you keep **${appName}** at \`${cleanPath}\`. I'll use this next time you ask to open it.`);
         }
       }
       break;
