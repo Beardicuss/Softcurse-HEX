@@ -1,31 +1,42 @@
 ---
 name: Bug report
-about: Create a report to help us improve
-title: "[BUG] "
-labels: 'bug'
+about: Report a bug to help us improve
+title: '[BUG] '
+labels: bug, needs-triage
 assignees: ''
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+## Describe the bug
+<!-- A clear and concise description of what the bug is. -->
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
+## Steps to reproduce
+<!-- Please provide numbered steps to reliably reproduce the issue. -->
+1. Open H.E.X.
 2. Click on '....'
-3. Speak '....'
+3. Type '....'
 4. See error
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+## Expected behavior
+<!-- A clear and concise description of what you expected to happen. -->
 
-**Desktop Environment:**
- - OS: [e.g. Windows 11, macOS Sonoma]
- - Electron Version: [e.g. 41.1.1]
- - Model/Provider Setup: [e.g. Ollama Llama 3 / Google Gemini Vision]
+## Actual behavior
+<!-- A clear and concise description of what actually happened instead. -->
 
-**Terminal Trace (Error Logs)**
-If applicable, paste the terminal error log output or native @electron/rebuild failures here.
+## Screenshots / logs
+<!-- If applicable, paste console logs from the bottom terminal, or upload screenshots to help explain your problem. -->
 
-**Additional context**
-Add any other context about the problem here.
+## Environment
+<!-- Please complete the following information. Check the boxes that apply using [x]. -->
+**OS:**
+- [ ] Windows 11
+- [ ] Windows 10
+- [ ] macOS
+- [ ] Linux
+- [ ] Other: ______
+
+**Versions:**
+- H.E.X. Version: ______
+- Node Version: ______
+
+## Additional context
+<!-- Add any other context about the problem here (e.g., occurs only during voice input, happens during specific animations). -->

@@ -1,24 +1,38 @@
 ## Description
-Please include a summary of the change and which issue is fixed. Please also include relevant motivation and context.
-
-Fixes # (issue number)
+<!-- Please include a summary of the change and which issue is fixed. Please also include relevant motivation and context. -->
 
 ## Type of change
-Please delete options that are not relevant.
-
-- [ ] Bug fix (non-breaking change which fixes an issue)
-- [ ] New feature (non-breaking change which adds functionality)
+<!-- Please check the boxes that apply to your PR. -->
+- [ ] Bug fix (non-breaking)
+- [ ] New feature (non-breaking)
 - [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
 - [ ] Documentation update
+- [ ] Refactor / code quality
+- [ ] Test coverage
+- [ ] CI/CD / infrastructure
 
 ## How Has This Been Tested?
-Please describe the tests that you ran to verify your changes. Because H.E.X. interacts directly with native OS hardware, explain your sandbox test environment.
-- [ ] Local Environment Verification (Windows/Mac/Linux)
-- [ ] LLM Endpoint Validation
+<!-- Please describe the tests that you ran to verify your changes. Provide instructions so we can reproduce. -->
+- [ ] Unit tests
+- [ ] Integration tests
+- [ ] End-to-end tests
+- [ ] Manual testing
 
-## Checklist:
-- [ ] My code follows the style guidelines of this project
-- [ ] I have performed a self-review of my own code
-- [ ] I have commented my code, particularly in hard-to-understand native integrations
-- [ ] My changes generate no new warnings in the console
-- [ ] I have verified that destructive actions are wrapped in the `butlerConfirm` safety dialog
+**Steps to reproduce testing scenario:**
+1.
+2.
+
+## Checklist
+<!-- Please review the below and assure all boxes are checked before requesting review! -->
+- [ ] I have performed a self-review of my code
+- [ ] I have added tests that prove my fix/feature works
+- [ ] All new and existing tests pass
+- [ ] I have updated the documentation accordingly
+- [ ] My changes generate no new warnings or linting errors
+- [ ] I have added an entry to CHANGELOG.md (if applicable)
+
+## Screenshots
+<!-- If your changes affect the UI, please provide before and after screenshots! -->
+
+## Related Issues
+<!-- Link to any relevant issues here using keywords like 'Closes #X' or 'Fixes #X'. -->

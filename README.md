@@ -1,121 +1,128 @@
 <div align="center">
-  <img src="src/assets/hex.gif" alt="Softcurse H.E.X. Header" width="600" />
-
-  # Softcurse H.E.X.
-
-  [![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](#)
-  [![Electron](https://img.shields.io/badge/Electron-41.1.1-47848f?status=active&logo=electron)](#)
-  [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](#)
-  [![Website](https://img.shields.io/badge/Website-Softcurse%20Studios-blueviolet)](https://softcurse-website.pages.dev/)
-  [![License](https://img.shields.io/badge/License-MIT-green.svg)](#)
-
-  > 🚀 A high-performance desktop intelligence that pairs deep native OS control with multimodal LLM cognition.
+  <br />
+  <h1 align="center">Softcurse H.E.X.</h1>
+  <p align="center">
+    <strong>A tactical, high-precision cyberpunk-inspired desktop AI assistant and command center.</strong>
+  </p>
+  <p align="center">
+    <img alt="Version" src="https://img.shields.io/badge/version-1.1.0-cyan?style=for-the-badge&logo=electron">
+    <a href="https://github.com/Beardicuss/Softcurse-HEX/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-cyan.svg?style=for-the-badge"></a>
+    <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-cyan?style=for-the-badge&logo=windows">
+    <img alt="Node" src="https://img.shields.io/badge/node-%3E%3D18.0.0-cyan?style=for-the-badge&logo=node.js">
+  </p>
+  <br />
 </div>
 
-## Table of Contents
-- [Overview](#overview)
-- [✨ Features](#-features)
-- [📦 Installation](#-installation)
-- [🚀 Quick Start](#-quick-start)
-- [📖 Documentation](#-documentation)
-- [🔧 Configuration](#-configuration)
-- [💡 Advanced Usage](#-advanced-usage)
-- [🏗️ Architecture](#️-architecture)
-- [🧪 Testing](#-testing)
-- [🤝 Contributing](#-contributing)
-- [�️ Roadmap](#️-roadmap)
-- [�📄 License](#-license)
-- [👥 Acknowledgements](#-acknowledgements)
-- [💬 Support](#-support)
+## 📑 Table of Contents
+- [Overview](#-overview)
+- [Features](#-features)
+- [Installation](#-installation)
+- [Quick Start](#-quick-start)
+- [Configuration](#-configuration)
+- [Architecture](#-architecture)
+- [Contributing](#-contributing)
+- [Roadmap](#-roadmap)
+- [License](#-license)
 
-## Overview
-**Softcurse H.E.X. (Heuristic Experience eXecutive)** is a fully autonomous desktop agent engineered in Electron. Capable of viewing your screen, executing direct PowerShell hardware interrupts, scheduling background jobs, mapping local registry edits, and engaging in multi-lingual conversation via offline STT models. 
+---
 
-It exists to bridge the gap between AI chat wrappers and true operating system agency, designed primarily for power users and developers seeking an interactive cybernetic terminal assistant.
+## 🔎 Overview
+
+**Softcurse H.E.X.** is not your standard desktop assistant. It is a strictly tactical, cyberpunk-inspired command center designed for power users who demand precision, immersion, and localized intelligence. Discarding soft UI conventions, H.E.X. employs strict geometric structures, deep void-black aesthetics, and reactive elements to create an interface that feels like military-grade software from the future. 
+
+Whether you need a copilot for your workflow or a specialized utility hub, H.E.X. integrates into your desktop with zero compromises.
+
+---
 
 ## ✨ Features
-- 🖥️ **Total OS Master Suite:** Executes native PowerShell commands seamlessly. Read/write to the Registry, install software via `winget`, terminate PIDs, empty caches, schedule native Windows tasks, and deploy sweeps using natural language.
-- 👁️ **Computer Vision Optics:** Features asynchronous hardware frame-grabbing via Electron's `desktopCapturer`. H.E.X. can "look" at your screen and natively feed visual payloads into the Gemini Vision API.
-- 🎙️ **Hardware-Level Voice (STT):** Integrates isolated Native C++ Speech-to-Text inference models locally via `sherpa-onnx` for offline phonetic parsing, with zero-latency.
-- 🔌 **Extensible Plugin Engine:** A sandboxed `PluginLoader` allowing community JavaScript plugins to execute natively, hook into standard IPC pipelines, and be called seamlessly by the AI's contextual brain.
-- 🔐 **Biometric Authentication:** Zero-trust startup utilizing a structural CSS lock screen and `getUserMedia` perceptual RGB hashing to secure access behind local facial recognition.
-- 📝 **Clipboard Memory:** Hotkey `Ctrl+Shift+V` access to a persistent 50-item clipboard history injected directly via `robotjs`.
-- 🧠 **Multi-Provider Nexus:** Plugs natively into Ollama (Local), Google Gemini, OpenAI, Anthropic, Grok, Mistral, and OpenRouter architectures.
-- 🛡️ **OODA Cognitive Architecture:** Enforces a 5-phase reasoning loop completely nullifying command-injection hallucinations, linked tightly with self-healing Action Outcome Telemetry.
+
+- **Cyberpunk UI Architecture:** "SOFTCURSE/SYS v3.0 OMEGA" design language powered by pure vanilla CSS glassmorphism, eliminating all generic rounded corners for rigid tactical brackets.
+- **Local Intelligence:** Seamlessly hooks into local AI infrastructure (like Ollama or custom endpoints) for zero-latency, private responses.
+- **Multimodal Inputs:** Built-in support for voice recognition (`#mic-btn`) and vision capabilities (`#vision-btn`).
+- **Reactive Atmosphere:** Custom Pulsar cursor targeting system, CRT scanline overlays, dynamic film grain, and 25+ systemic keyframe animations (glitches, radar pulses).
+- **Vitals Telemetry:** Real-time system monitoring strip updating critical host metrics via terminal outputs.
+- **Pure Desktop Immersion:** Electron-powered framed app optimized specifically for Windows environments.
+
+---
 
 ## 📦 Installation
-### Prerequisites
-- **Node.js** v18+ (v24 recommended)
-- **C++ Build Tools** (For compiling `sherpa-onnx` native dependencies)
 
-### Setup
+To deploy H.E.X. on your local machine, ensure you have Node.js (v18+) and npm installed.
+
 ```bash
-git clone https://github.com/Softcurse-Lab/softcurse-hex.git
-cd softcurse-hex
+# Clone the repository
+git clone https://github.com/Beardicuss/Softcurse-HEX.git
+
+# Navigate to the directory
+cd Softcurse-HEX
+
+# Install dependencies
 npm install
 ```
-*Note: The `postinstall` script inside `package.json` automatically triggers `electron-builder install-app-deps` to recompile the native dependencies against your specific Electron headers.*
+
+---
 
 ## 🚀 Quick Start
-To launch the application into your development environment immediately:
+
+Launch the tactical interface:
+
 ```bash
 npm start
 ```
 
-## 📖 Documentation
-Because Softcurse H.E.X. operates intuitively through conversation, this README serves as the primary technical documentation. For full internal module specifications, review the source files located inside `src/js/`. 
+Upon launch, the void-black console will initialize. The AI (represented by the interactive core orb) will await your input. Use the bottom terminal input field to send commands, or click the mic button to engage voice protocols.
+
+---
 
 ## 🔧 Configuration
-Configuration is securely retained locally in your OS `%APPDATA%` directory within a serialized `settings.json` file. 
-You can interact with the configuration natively by using the UI settings panel (`Ctrl + ,`). 
-- **LLM Settings:** Base URL overrides, API Keys, and Custom System Prompts.
-- **Microphone Parameters:** Silence timeouts, volume thresholds.
-- **Personality Overrides:** Agent naming or voice tone parameters.
 
-## 💡 Advanced Usage
-### The Optics Subsystem (`[ACTION:capture_screen]`)
-If you ask the agent *"What is on my screen right now?"* or click the **EYE** icon, Chromium scrapes the monitor framebuffer, executes base64 binary encoding, and injects it synchronously into the multimodal message stack in order to solve coding bugs visible on your desktop.
+While H.E.X. runs out of the box, power users can configure their AI endpoints and UI behaviors.
 
-### Native SendKeys Actions
-H.E.X employs a dynamic C# compilation bridge (`Add-Type`) escaping over PowerShell to simulate pure hardware keyboard inputs. Ask it to *"Type 'hello world' on my keyboard"* and the pipeline dynamically scrubs parameters for hallucinated curly braces before invoking `[System.Windows.Forms.SendKeys]::SendWait()`.
+1. Click the **SETTINGS** text in the top-right console to open the modal overlay.
+2. Edit system prompt instructions, adjust text generation boundaries (temperature), or configure speech options.
+3. Your settings are saved locally and persist between deployments.
+
+Alternatively, environment and API keys (if using external providers instead of local LLMs) can be configured within the source prior to packaging. 
+
+---
 
 ## 🏗️ Architecture
-```mermaid
-graph TD;
-    Renderer[GUI / AI Logic / Chat] -->|Context Bridge IPC| Preload[Secure Node Boundary]
-    Preload -->|Event Emitters| Main[Electron Main Runtime]
-    Main --> Butler(ipc-butler.js / PowerShell C# Wrappers)
-    Main --> Hardware(desktopCapturer / Web Speech APIs)
-    Main --> Plugins(PluginLoader / Sandboxed Scripts)
-    Plugins --> Renderer
-```
 
-## 🧪 Testing
-Because H.E.X. relies on highly privileged, platform-specific OS logic (such as Registry manipulation and UAC bypass), we rely primarily on manual sandbox staging rather than automated headless DOM testing. 
+H.E.X. is built on a streamlined modern stack:
+- **Framework:** Electron (providing the desktop shell and system deep-links)
+- **Frontend:** Vanilla HTML/CSS/JS (no heavy framework overhead to ensure instant startup and animation fluidty)
+- **Design System:** Custom CSS tokens (`:root`) driven by a strict 4-color military palette (Cyan, Orange, Magenta, Blue on Void Black).
+- **Typography Matrix:** Orbitron (Hero), Rajdhani (Tactical), JetBrains Mono (Data), Chakra Petch (Body).
 
-To safely sandbox the LLM logic, you can toggle `SAFE_EXECUTION` bounds inside `main.js` to prompt UI dialogs before destructive sweeps.
+---
 
 ## 🤝 Contributing
-We welcome OS action hook extensions or localization scripts! Before submitting, please review our [Contributing Guidelines](CONTRIBUTING.md) and our [Code of Conduct](CODE_OF_CONDUCT.md).
 
-1. Fork the Project.
-2. Branch your Feature (`git checkout -b feature/NewIPCAction`).
-3. Commit your Changes (`git commit -m 'Added registry sweeping'`).
-4. Push to the Branch (`git push origin feature/NewIPCAction`).
-5. Open a Pull Request.
+We welcome structural engineers and code tacticians. Read our [Contributing Guide](.github/CONTRIBUTING.md) to understand our workflow, branch conventions, and design philosophy before submitting a pull request.
+
+Please review the [Code of Conduct](.github/CODE_OF_CONDUCT.md) before participating in the community.
+
+---
 
 ## 🛣️ Roadmap
-- macOS & Linux parity for all PC Butler automation actions (currently Windows-centric).
-- Deeper Docker telemetry insights.
-- Transitioning to full local inference for all cognitive sub-reasoning.
+
+- [ ] Complete local LLM dynamic port discovery.
+- [ ] Implement multi-monitor HUD widget modes.
+- [ ] Real-time hardware telemetry integration (GPU/CPU usage bars).
+- [ ] Expanded audio feedback for UI clicks and alerts.
+
+---
 
 ## 📄 License
-Distributed under the **MIT License**. See `LICENSE` for more information.
 
-## 👥 Acknowledgements
-- Built by [**Softcurse LAB**](https://softcurse-website.pages.dev/).
-- Uses [Sherpa-ONNX](https://github.com/k2-fsa/sherpa-onnx) for robust local Speech-to-Text pipelines.
+This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for complete details. 
+
+You are permitted to freely use, modify, and distribute this software, provided you retain the copyright notice.
+
+---
 
 ## 💬 Support
-- **Bugs & Features**: For general issues or feature requests, please use our strictly-formatted [GitHub Issue Templates](.github/ISSUE_TEMPLATE/). Ensure you attach Electron console trace dumps if the issue relates to Native Module compilation (`@electron/rebuild`).
-- **Security Vulnerabilities**: Given H.E.X.'s extensive OS privilege hooks, do not report exploitable bugs publicly. Please refer to our [Security Policy](SECURITY.md) for private disclosure instructions.
+
+If you encounter unexpected anomalies or system crashes, please submit a report via the [GitHub Issues](https://github.com/Beardicuss/Softcurse-HEX/issues) tracker.
+
+*Shape your computer beautifully, and rule the grid.*

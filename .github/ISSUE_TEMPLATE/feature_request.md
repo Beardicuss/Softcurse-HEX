@@ -1,19 +1,24 @@
 ---
 name: Feature request
-about: Suggest an idea for Softcurse H.E.X.
-title: "[FEATURE] "
-labels: 'enhancement'
+about: Suggest an idea or improvement
+title: '[FEAT] '
+labels: enhancement
 assignees: ''
 ---
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+## Problem / Motivation
+<!-- What problem does this solve? Is there a current limitation in the tactical workflow? Who is affected? -->
 
-**Describe the solution you'd like**
-A clear and concise description of what you want to happen (e.g. a new PC Butler OS command script).
+## Proposed Solution
+<!-- Describe your proposed feature in detail. How should it work? How should it look? -->
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+## Alternatives Considered
+<!-- A clear and concise description of any alternative solutions or features you've considered. -->
 
-**Additional context**
-Add any other context or screenshots about the feature request here.
+## Acceptance Criteria
+<!-- Checkbox list of what "done" looks like for this feature. -->
+- [ ] 
+- [ ] 
+
+## Additional Context
+<!-- Add any other context, mockup images, or references to other tools here. -->
