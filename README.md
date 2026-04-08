@@ -3,7 +3,7 @@
   <br /><br />
   <h1 align="center">Softcurse H.E.X.</h1>
   <p align="center">
-    <strong>A tactical, high-precision cyberpunk-inspired desktop AI assistant and command center.</strong>
+    <strong>A tactical, high-precision Softcurse Systems desktop AI assistant and command center.</strong>
   </p>
   <p align="center">
     <img alt="Version" src="https://img.shields.io/badge/version-1.1.0-cyan?style=for-the-badge&logo=electron">
