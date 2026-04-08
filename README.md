@@ -1,5 +1,6 @@
 <div align="center">
-  <br />
+  <img src="src/assets/hex.png" alt="Softcurse H.E.X. UI Preview" width="800">
+  <br /><br />
   <h1 align="center">Softcurse H.E.X.</h1>
   <p align="center">
     <strong>A tactical, high-precision cyberpunk-inspired desktop AI assistant and command center.</strong>
@@ -10,6 +11,8 @@
     <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-cyan?style=for-the-badge&logo=windows">
     <img alt="Node" src="https://img.shields.io/badge/node-%3E%3D18.0.0-cyan?style=for-the-badge&logo=node.js">
   </p>
+  <br />
+  <img src="src/assets/hex.gif" alt="H.E.X. Interaction Demo" width="600">
   <br />
 </div>
 
