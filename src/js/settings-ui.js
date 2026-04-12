@@ -85,12 +85,24 @@ async function openSettings() {
   refreshVoiceStatus();
   document.getElementById('cfg-username').value = cfg.userName || '';
   document.getElementById('cfg-language').value = cfg.language || 'ka';
-  document.getElementById('cfg-provider').value = cfg.llm?.provider || 'none';
+  // -- API KEY MIGRATION & INIT --
+  if (!cfg.llm) cfg.llm = {};
+  if (!cfg.llm.apiKeys) {
+    cfg.llm.apiKeys = {};
+    if (cfg.llm.apiKey && cfg.llm.provider) {
+      cfg.llm.apiKeys[cfg.llm.provider] = cfg.llm.apiKey;
+    }
+  }
+  window._tempApiKeys = { ...cfg.llm.apiKeys };
+
+  const p = cfg.llm.provider || 'none';
+  window._currentProvider = p;
+  document.getElementById('cfg-provider').value = p;
   const autoEl = document.getElementById('cfg-autoollama');
   if (autoEl) autoEl.value = String(cfg.llm?.autoOllama === true);
   document.getElementById('cfg-baseurl').value = cfg.llm?.baseUrl || 'http://localhost:11434';
   document.getElementById('cfg-model').value = cfg.llm?.model || '';
-  document.getElementById('cfg-apikey').value = cfg.llm?.apiKey || '';
+  document.getElementById('cfg-apikey').value = window._tempApiKeys[p] || '';
   document.getElementById('cfg-wakeword').value = cfg.voice?.wakeWord || 'hey hex';
   // Restore saved models directory into the input field
   const mdirEl = document.getElementById('cfg-models-dir');
@@ -287,6 +299,14 @@ function closeSettings() {
 
 function updateProviderUI() {
   const p = document.getElementById('cfg-provider').value;
+  const keyInput = document.getElementById('cfg-apikey');
+
+  // Save current key into temp before swapping field value
+  if (window._currentProvider) {
+    window._tempApiKeys[window._currentProvider] = keyInput.value.trim();
+  }
+  window._currentProvider = p;
+  if (keyInput) keyInput.value = window._tempApiKeys[p] || '';
   const hints = PROVIDER_HINTS[p] || PROVIDER_HINTS.none;
 
   document.getElementById('cfg-baseurl-group').style.display = p === 'ollama' ? '' : 'none';
@@ -397,6 +417,11 @@ function selectModel(name) {
 }
 
 async function saveSettings() {
+  if (window._currentProvider) {
+    const keyInput = document.getElementById('cfg-apikey');
+    if (keyInput) window._tempApiKeys[window._currentProvider] = keyInput.value.trim();
+  }
+
   const newLang = document.getElementById('cfg-language').value;
   const newCfg = {
     userName: document.getElementById('cfg-username').value || 'Operator',
@@ -406,7 +431,8 @@ async function saveSettings() {
       autoOllama: document.getElementById('cfg-autoollama')?.value === 'true',
       baseUrl: document.getElementById('cfg-baseurl').value,
       model: document.getElementById('cfg-model').value,
-      apiKey: document.getElementById('cfg-apikey').value,
+      apiKeys: window._tempApiKeys,
+      apiKey: window._tempApiKeys[document.getElementById('cfg-provider').value] || '',
       visionApiKey: document.getElementById('cfg-visionkey')?.value || ''
     },
     browser: {

@@ -57,17 +57,15 @@ class HexAI {
 
     try {
       const p = this.config && this.config.llm ? this.config.llm.provider : 'none';
+      const origKey = this.config?.llm?.apiKey;
+      const origModel = this.config?.llm?.model;
 
       // ── Complexity-aware routing ─────────────────────────────
       const complexity = this._scoreComplexity(userMsg);
-      let swappedModel = false;
-      let originalModel = null;
       if (complexity < this.COMPLEXITY_THRESHOLD && this.FAST_MODELS[p] && this.config?.llm?.model) {
         const fast = this.FAST_MODELS[p];
         if (fast !== this.config.llm.model) {
-          originalModel = this.config.llm.model;
           this.config.llm.model = fast;
-          swappedModel = true;
           window.hexTaskBus?.push(`Simple query (${(complexity * 100).toFixed(0)}%) → fast model: ${fast}`);
         }
       }
@@ -80,34 +78,68 @@ class HexAI {
         window.hexTaskBus?.push('Delegating visual payload to Gemini Vision API...');
       }
 
-      switch (routeProvider) {
-        case 'ollama': text = await this._ollama(sysPrompt, visionData); break;
-        case 'openai': text = await this._openai(sysPrompt); break;
-        case 'anthropic': text = await this._anthropic(sysPrompt); break;
-        case 'gemini': {
-          if (routeProvider === 'gemini' && p === 'ollama') {
-            const oldKey = this.config.llm.apiKey;
-            this.config.llm.apiKey = fallbackKey;
-            try { text = await this._gemini(sysPrompt, visionData, 'gemini-2.5-flash'); }
-            finally { this.config.llm.apiKey = oldKey; }
-          } else {
-            text = await this._gemini(sysPrompt, visionData);
+      // ── Multi-Provider Auto Fallback Queue ────────────────────
+      const apiKeys = this.config?.llm?.apiKeys || {};
+      const backupProviders = Object.keys(apiKeys).filter(k => k !== routeProvider && apiKeys[k]);
+      const providerQueue = [routeProvider, ...backupProviders];
+
+      let success = false;
+      let lastErr = null;
+
+      for (const currProvider of providerQueue) {
+        try {
+          if (currProvider !== routeProvider) {
+            window.hexTaskBus?.push(`Fallback: Auto-routing to ${currProvider}...`);
+            this.config.llm.apiKey = apiKeys[currProvider];
+            this.config.llm.model = this.FAST_MODELS[currProvider] || '';
           }
-          break;
+
+          switch (currProvider) {
+            case 'ollama': text = await this._ollama(sysPrompt, visionData); break;
+            case 'openai': text = await this._openai(sysPrompt); break;
+            case 'anthropic': text = await this._anthropic(sysPrompt); break;
+            case 'gemini': {
+              if (currProvider === 'gemini' && p === 'ollama') {
+                const tempKey = this.config.llm.apiKey;
+                this.config.llm.apiKey = fallbackKey || apiKeys['gemini'] || tempKey;
+                try { text = await this._gemini(sysPrompt, visionData, 'gemini-2.5-flash'); }
+                finally { this.config.llm.apiKey = tempKey; }
+              } else {
+                text = await this._gemini(sysPrompt, visionData);
+              }
+              break;
+            }
+            case 'grok': text = await this._grok(sysPrompt); break;
+            case 'openrouter': text = await this._openrouter(sysPrompt); break;
+            case 'mistral': text = await this._mistral(sysPrompt); break;
+            case 'groq': text = await this._groq(sysPrompt); break;
+            case 'together': text = await this._together(sysPrompt); break;
+            case 'cohere': text = await this._cohere(sysPrompt); break;
+            default: text = this._offline(); break;
+          }
+
+          if (text && typeof text === 'string') {
+            success = true;
+            break;
+          }
+        } catch (err) {
+          lastErr = err;
+          console.warn(`Softcurse LLM: ${currProvider} failed:`, err.message);
         }
-        case 'grok': text = await this._grok(sysPrompt); break;
-        case 'openrouter': text = await this._openrouter(sysPrompt); break;
-        case 'mistral': text = await this._mistral(sysPrompt); break;
-        case 'groq': text = await this._groq(sysPrompt); break;
-        case 'together': text = await this._together(sysPrompt); break;
-        case 'cohere': text = await this._cohere(sysPrompt); break;
-        default: text = this._offline();
       }
-      // Guard: some providers return null content (empty/tool-only responses)
+
+      if (!success) {
+        throw lastErr || new Error('All configured LLM providers failed.');
+      }
+
+      // Guard: some providers return null content
       if (!text || typeof text !== 'string') text = '…';
 
-      // Restore original model if swapped
-      if (swappedModel && originalModel) this.config.llm.model = originalModel;
+      // Restore original config parameters
+      if (this.config && this.config.llm) {
+        this.config.llm.apiKey = origKey;
+        this.config.llm.model = origModel;
+      }
     } catch (e) {
       console.error('AI error:', e);
       text = 'Neural link disrupted: ' + (e?.message || String(e));
