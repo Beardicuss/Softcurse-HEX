@@ -165,11 +165,28 @@ function applySystemSettings() {
     tray = null;
   }
 }
-
 app.whenReady().then(() => {
   createWindow();
   applySystemSettings();
+  if (config.llm && config.llm.autoOllama) {
+    try {
+      exec(`wscript.exe "D:\\Dev\\Artificial intelligence\\run-ollama.vbs"`, (err) => {
+        if (err) console.warn('Softcurse: Failed to auto-start local Ollama', err);
+      });
+    } catch (_) { }
+  }
 });
+
+app.on('will-quit', () => {
+  if (config.llm && config.llm.autoOllama) {
+    try {
+      require('child_process').execSync(`wscript.exe "D:\\Dev\\Artificial intelligence\\stop-ollama.vbs"`, { timeout: 4000 });
+    } catch (err) {
+      console.warn('Softcurse: Failed to auto-stop local Ollama', err);
+    }
+  }
+});
+
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (!mainWindow) createWindow(); });
 
@@ -1072,16 +1089,8 @@ ipcMain.handle('butler:run-js', async (event, { code }) => {
   }
 });
 
-// ─── USER-SPECIFIC LOCAL OLLAMA AUTOMATION ────────────────────────────────────
-// Explicitly checks for D: drive paths to prevent breaks on generic environments
+// ─── SECONDARY LIFECYCLE HOOKS ─────────────────────────────────────────────
 app.whenReady().then(() => {
-  const ollamaRunVbs = "D:\\Dev\\Artificial intelligence\\run-ollama.vbs";
-  if (fs.existsSync(ollamaRunVbs)) {
-    exec(`cscript.exe //nologo "${ollamaRunVbs}"`, (err) => {
-      if (err) console.error("Auto-start Ollama failed:", err);
-      else console.log("Ollama local process started via VBS.");
-    });
-  }
 
   // ── Load persisted reminders ────────────────────────────────────────────────
   loadPersistedReminders();
@@ -1101,11 +1110,6 @@ app.whenReady().then(() => {
 app.on('will-quit', () => {
   // ── Unregister global shortcuts ──────────────────────────────────────────
   globalShortcut.unregisterAll();
-
-  const ollamaStopVbs = "D:\\Dev\\Artificial intelligence\\stop-ollama.vbs";
-  if (fs.existsSync(ollamaStopVbs)) {
-    exec(`cscript.exe //nologo "${ollamaStopVbs}"`);
-  }
 });
 
 // ─── IPC: OLLAMA MODEL DISCOVERY ─────────────────────────────────────────────

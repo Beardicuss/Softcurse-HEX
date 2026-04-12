@@ -88,7 +88,7 @@ class HexAI {
           if (routeProvider === 'gemini' && p === 'ollama') {
             const oldKey = this.config.llm.apiKey;
             this.config.llm.apiKey = fallbackKey;
-            try { text = await this._gemini(sysPrompt, visionData, 'gemini-2.0-flash'); }
+            try { text = await this._gemini(sysPrompt, visionData, 'gemini-2.5-flash'); }
             finally { this.config.llm.apiKey = oldKey; }
           } else {
             text = await this._gemini(sysPrompt, visionData);
@@ -194,8 +194,8 @@ class HexAI {
   // ── Google Gemini ─────────────────────────────────────────
   async _gemini(system, visionData = null, overrideModel = null) {
     const rawModel = overrideModel || this.config.llm.model || '';
-    let model = (rawModel && rawModel !== 'gemini') ? rawModel.trim().split(/\s+/)[0] : 'gemini-1.5-flash-latest';
-    if (model === 'gemini-1.5-flash') model = 'gemini-1.5-flash-latest'; // Avoid regional v1beta 404s
+    let model = (rawModel && rawModel !== 'gemini') ? rawModel.trim().split(/\s+/)[0] : 'gemini-2.5-flash';
+    if (model.includes('gemini-1.5')) model = 'gemini-2.5-flash'; // Avoid unsupported 1.5 versions
     const apiKey = this.config.llm.apiKey;
 
     // Map history and inject visionData into the very last user message if present
@@ -224,9 +224,9 @@ class HexAI {
     let res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, payload);
     if (!res.ok) {
       let e = await res.json().catch(() => ({}));
-      if ((res.status === 404 || res.status === 429 || res.status === 400) && model !== 'gemini-1.5-flash-latest') {
-        window.hexTaskBus?.push(`Gemini ${res.status} on ${model}. Rerouting to gemini-1.5-flash-latest...`);
-        res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, payload);
+      if ((res.status === 404 || res.status === 429 || res.status === 400) && model !== 'gemini-2.5-flash') {
+        window.hexTaskBus?.push(`Gemini ${res.status} on ${model}. Rerouting to gemini-2.5-flash...`);
+        res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, payload);
         if (!res.ok) e = await res.json().catch(() => ({}));
       }
       if (!res.ok) throw new Error(`Gemini ${res.status}: ${e.error?.message || e.error?.status || JSON.stringify(e.error) || res.statusText}`);

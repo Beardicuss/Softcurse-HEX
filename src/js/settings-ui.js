@@ -86,6 +86,8 @@ async function openSettings() {
   document.getElementById('cfg-username').value = cfg.userName || '';
   document.getElementById('cfg-language').value = cfg.language || 'ka';
   document.getElementById('cfg-provider').value = cfg.llm?.provider || 'none';
+  const autoEl = document.getElementById('cfg-autoollama');
+  if (autoEl) autoEl.value = String(cfg.llm?.autoOllama === true);
   document.getElementById('cfg-baseurl').value = cfg.llm?.baseUrl || 'http://localhost:11434';
   document.getElementById('cfg-model').value = cfg.llm?.model || '';
   document.getElementById('cfg-apikey').value = cfg.llm?.apiKey || '';
@@ -288,6 +290,8 @@ function updateProviderUI() {
   const hints = PROVIDER_HINTS[p] || PROVIDER_HINTS.none;
 
   document.getElementById('cfg-baseurl-group').style.display = p === 'ollama' ? '' : 'none';
+  const autoGrp = document.getElementById('cfg-autoollama-group');
+  if (autoGrp) autoGrp.style.display = p === 'ollama' ? '' : 'none';
   document.getElementById('cfg-apikey-group').style.display = p !== 'none' && p !== 'ollama' ? '' : 'none';
 
   const mh = document.getElementById('model-hint');
@@ -399,6 +403,7 @@ async function saveSettings() {
     language: newLang,
     llm: {
       provider: document.getElementById('cfg-provider').value,
+      autoOllama: document.getElementById('cfg-autoollama')?.value === 'true',
       baseUrl: document.getElementById('cfg-baseurl').value,
       model: document.getElementById('cfg-model').value,
       apiKey: document.getElementById('cfg-apikey').value,
