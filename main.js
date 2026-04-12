@@ -393,6 +393,32 @@ ipcMain.on('window:minimize', () => mainWindow?.minimize());
 ipcMain.on('window:maximize', () => mainWindow?.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize());
 ipcMain.on('window:close', () => mainWindow?.close());
 
+const { screen } = require('electron');
+let dragStartWindowPos = null;
+let dragStartMousePos = null;
+
+ipcMain.on('window:drag-start', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isDestroyed() || win.isMaximized()) return;
+  dragStartWindowPos = win.getPosition();
+  dragStartMousePos = screen.getCursorScreenPoint();
+});
+
+ipcMain.on('window:drag-move', (event) => {
+  if (!dragStartWindowPos || !dragStartMousePos) return;
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isDestroyed() || win.isMaximized()) return;
+  const currentMousePos = screen.getCursorScreenPoint();
+  const dx = currentMousePos.x - dragStartMousePos.x;
+  const dy = currentMousePos.y - dragStartMousePos.y;
+  win.setPosition(dragStartWindowPos[0] + dx, dragStartWindowPos[1] + dy);
+});
+
+ipcMain.on('window:drag-stop', () => {
+  dragStartWindowPos = null;
+  dragStartMousePos = null;
+});
+
 // ─── IPC: SYSTEM INFO ────────────────────────────────────────────────────────
 ipcMain.handle('system:get-info', async () => {
   const [cpu, mem, osInfo, uptime] = await Promise.allSettled([

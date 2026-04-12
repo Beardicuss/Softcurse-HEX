@@ -1061,28 +1061,55 @@
   <script src="js/orb.js"></script>
   <script src="js/actions.js"></script>
   <script src="js/renderer.js"></script>
-  <!-- ── V3 Custom Cursor Tracking ──────────────────── -->
+  <!-- ── V3 Custom Cursor Tracking & Drag Hooks ──────────── -->
+  <div class="cyber-cursor"></div>
   <script>
     (function () {
-      const cursor = document.querySelector('.pulsar-cursor');
-      if (!cursor) return;
+      // 1. Cursor Tracking
+      const cursor = document.querySelector('.cyber-cursor');
+      if (cursor) {
+        document.addEventListener('mousemove', e => {
+          cursor.style.left = e.clientX + 'px';
+          cursor.style.top = e.clientY + 'px';
+        });
 
-      document.addEventListener('mousemove', e => {
-        cursor.style.left = e.clientX + 'px';
-        cursor.style.top = e.clientY + 'px';
-      });
+        document.addEventListener('mouseover', e => {
+          if (e.target.closest('a, button, input, textarea, select, [role="button"], .task-card, .lang-btn, .win-btn, .toast-btn, .btn-primary, .btn-secondary, #mic-status, .task-run-btn, .stab')) {
+            cursor.classList.add('hovering');
+          }
+        });
+        document.addEventListener('mouseout', e => {
+          if (e.target.closest('a, button, input, textarea, select, [role="button"], .task-card, .lang-btn, .win-btn, .toast-btn, .btn-primary, .btn-secondary, #mic-status, .task-run-btn, .stab')) {
+            cursor.classList.remove('hovering');
+          }
+        });
+      }
 
-      // Expand crosshairs & boost glow on interactive hover
-      document.addEventListener('mouseover', e => {
-        if (e.target.closest('a, button, input, textarea, select, [role="button"], .task-card, .lang-btn, .win-btn, .toast-btn, .btn-primary, .btn-secondary, #mic-status, .task-run-btn')) {
-          cursor.classList.add('hovering');
-        }
-      });
-      document.addEventListener('mouseout', e => {
-        if (e.target.closest('a, button, input, textarea, select, [role="button"], .task-card, .lang-btn, .win-btn, .toast-btn, .btn-primary, .btn-secondary, #mic-status, .task-run-btn')) {
-          cursor.classList.remove('hovering');
-        }
-      });
+      // 2. Custom JS Topbar Drag
+      const topbar = document.getElementById('topbar');
+      if (topbar) {
+        let isDragging = false;
+        topbar.addEventListener('mousedown', (e) => {
+          if (e.target.tagName === 'BUTTON' || e.target.closest('button') || e.target.tagName === 'INPUT') return;
+          if (window.hexAPI && window.hexAPI.windowDragStart) {
+            isDragging = true;
+            window.hexAPI.windowDragStart();
+          }
+        });
+        document.addEventListener('mousemove', (e) => {
+          if (isDragging && window.hexAPI && window.hexAPI.windowDragMove) {
+            window.hexAPI.windowDragMove();
+          }
+        });
+        document.addEventListener('mouseup', () => {
+          if (isDragging) {
+            isDragging = false;
+            if (window.hexAPI && window.hexAPI.windowDragStop) {
+              window.hexAPI.windowDragStop();
+            }
+          }
+        });
+      }
     })();
   </script>
 </body>

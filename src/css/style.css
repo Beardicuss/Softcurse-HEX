@@ -881,7 +881,6 @@ body {
   border-width: 0 1px 1px 0;
 }
 
-/* ── TOP BAR ───────────────────────────────────────────────── */
 #topbar {
   grid-area: topbar;
   display: grid;
@@ -891,7 +890,7 @@ body {
   background: rgba(2, 2, 2, 0.9);
   border-bottom: 1px solid rgba(0, 255, 255, 0.08);
   backdrop-filter: blur(30px) saturate(200%);
-  -webkit-app-region: drag;
+  cursor: none !important;
   z-index: 100;
 }
 
@@ -2773,4 +2772,78 @@ input[type="range"]::-webkit-slider-thumb {
   flex: 1;
   margin: 0 8px;
   color: rgba(255, 255, 255, 0.8);
+}
+
+/* ── GLOBAL CURSOR OVERRIDE ────────────────── */
+* {
+  cursor: none !important;
+}
+
+.cyber-cursor {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999999;
+  width: 32px;
+  height: 32px;
+  background-image: url('../assets/cursor/01.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  transform: translate(-30%, -20%);
+  animation: cyber-cursor-anim 0.5s steps(11, end) infinite;
+}
+
+.cyber-cursor.hovering {
+  filter: drop-shadow(0 0 8px var(--cyan)) brightness(1.5) hue-rotate(-15deg);
+  transform: translate(-30%, -20%) scale(1.1);
+}
+
+@keyframes cyber-cursor-anim {
+  0% {
+    background-image: url('../assets/cursor/01.png');
+  }
+
+  9.09% {
+    background-image: url('../assets/cursor/02.png');
+  }
+
+  18.18% {
+    background-image: url('../assets/cursor/03.png');
+  }
+
+  27.27% {
+    background-image: url('../assets/cursor/04.png');
+  }
+
+  36.36% {
+    background-image: url('../assets/cursor/05.png');
+  }
+
+  45.45% {
+    background-image: url('../assets/cursor/06.png');
+  }
+
+  54.54% {
+    background-image: url('../assets/cursor/07.png');
+  }
+
+  63.64% {
+    background-image: url('../assets/cursor/08.png');
+  }
+
+  72.73% {
+    background-image: url('../assets/cursor/09.png');
+  }
+
+  81.82% {
+    background-image: url('../assets/cursor/10.png');
+  }
+
+  90.91% {
+    background-image: url('../assets/cursor/11.png');
+  }
+
+  100% {
+    background-image: url('../assets/cursor/01.png');
+  }
 }

@@ -15,6 +15,9 @@ contextBridge.exposeInMainWorld('hexAPI', {
   minimize: () => ipcRenderer.send('window:minimize'),
   maximize: () => ipcRenderer.send('window:maximize'),
   close: () => ipcRenderer.send('window:close'),
+  windowDragStart: () => ipcRenderer.send('window:drag-start'),
+  windowDragMove: () => ipcRenderer.send('window:drag-move'),
+  windowDragStop: () => ipcRenderer.send('window:drag-stop'),
 
   // ── System info ───────────────────────────────
   getSystemInfo: () => ipcRenderer.invoke('system:get-info'),
