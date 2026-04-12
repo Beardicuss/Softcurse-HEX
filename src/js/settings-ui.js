@@ -417,6 +417,7 @@ function selectModel(name) {
 }
 
 async function saveSettings() {
+  if (window.hexAudio) window.hexAudio.play('action', 0.8);
   if (window._currentProvider) {
     const keyInput = document.getElementById('cfg-apikey');
     if (keyInput) window._tempApiKeys[window._currentProvider] = keyInput.value.trim();

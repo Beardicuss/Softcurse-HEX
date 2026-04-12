@@ -80,7 +80,20 @@ class HexAI {
 
       // ── Multi-Provider Auto Fallback Queue ────────────────────
       const apiKeys = this.config?.llm?.apiKeys || {};
+
+      // Strict fallback priority: fast/cheaper providers first
+      const PRIORITY = ['gemini', 'groq', 'openrouter', 'grok', 'mistral', 'cohere', 'together', 'anthropic', 'openai'];
+
       const backupProviders = Object.keys(apiKeys).filter(k => k !== routeProvider && apiKeys[k]);
+      backupProviders.sort((a, b) => {
+        const ia = PRIORITY.indexOf(a);
+        const ib = PRIORITY.indexOf(b);
+        if (ia !== -1 && ib !== -1) return ia - ib;
+        if (ia !== -1) return -1;
+        if (ib !== -1) return 1;
+        return 0;
+      });
+
       const providerQueue = [routeProvider, ...backupProviders];
 
       let success = false;
@@ -90,6 +103,7 @@ class HexAI {
         try {
           if (currProvider !== routeProvider) {
             window.hexTaskBus?.push(`Fallback: Auto-routing to ${currProvider}...`);
+            if (window.hexAudio) window.hexAudio.play('reroute', 0.9);
             this.config.llm.apiKey = apiKeys[currProvider];
             this.config.llm.model = this.FAST_MODELS[currProvider] || '';
           }

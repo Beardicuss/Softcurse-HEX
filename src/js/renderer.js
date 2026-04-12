@@ -8,9 +8,52 @@ let sysStats = { cpu: 0, ram: 0, disk: 0 };
 let taskState = {}; // taskId → { status, startTime }
 let prevAlerts = {}; // prevent duplicate proactive alerts
 
+// ── AUDIO SYSTEM ──────────────────────────────────────────────
+window.hexAudio = {
+  _sounds: {},
+  init() {
+    const sfx = {
+      processing: 'assets/sounds/processing.wav',
+      toast: 'assets/sounds/toast_notify.wav',
+      threat: 'assets/sounds/threat_detect.wav',
+      mic_on: 'assets/sounds/mic_on.wav',
+      action: 'assets/sounds/action_exec.wav',
+      reroute: 'assets/sounds/network_reroute.wav',
+      hover: 'assets/sounds/ui_hover.wav'
+    };
+    for (const [key, path] of Object.entries(sfx)) {
+      const a = new Audio(path);
+      if (key === 'processing') a.loop = true;
+      this._sounds[key] = a;
+    }
+
+    document.addEventListener('mouseover', (e) => {
+      if (e.target.tagName === 'BUTTON' || e.target.classList.contains('stab') || e.target.closest('.stab') || e.target.closest('button')) {
+        this.play('hover', 0.05);
+      }
+    });
+  },
+  play(key, vol = 1.0) {
+    if (!this._sounds[key]) return;
+    try {
+      this._sounds[key].volume = vol;
+      this._sounds[key].currentTime = 0;
+      this._sounds[key].play().catch(() => { });
+    } catch (e) { }
+  },
+  stop(key) {
+    if (!this._sounds[key]) return;
+    try {
+      this._sounds[key].pause();
+      this._sounds[key].currentTime = 0;
+    } catch (e) { }
+  }
+};
+
 // ── Init ──────────────────────────────────────────────────────
 async function init() {
   config = await window.hexAPI.getConfig();
+  window.hexAudio.init();
 
   // Load i18n — Georgian default
   const lang = config.language || 'ka';
@@ -331,6 +374,7 @@ async function sendMessage() {
 
   addUserMessage(text);
   addLog('VOICE', `User: ${text}`);
+  window.hexAudio.play('action', 0.6);
 
   // Check for reminder intent first
   const ri = window.reminders.parseReminderIntent(text);
@@ -366,6 +410,7 @@ async function sendMessage() {
 
   showTyping();
   window.hexTaskBus?.push('Sending message to AI...');
+  window.hexAudio.play('processing', 0.5);
 
   try {
     let visionData = null;
@@ -377,6 +422,7 @@ async function sendMessage() {
 
     const result = await window.hexAI.chat(text, systemState, config.language || 'en', visionData);
     hideTyping();
+    window.hexAudio.stop('processing');
     const hexText = result.text || '…';
     addHexMessage(hexText);
     addLog('HEX', `→ ${String(hexText).substring(0, 100)}${hexText.length > 100 ? '…' : ''}`);
@@ -461,6 +507,7 @@ async function sendMessage() {
     }
   } catch (e) {
     hideTyping();
+    window.hexAudio.stop('processing');
     const errMsg = `Neural link disrupted: ${e?.message || String(e)}`;
     addHexMessage(errMsg);
     addLog('ERROR', errMsg);
@@ -573,6 +620,11 @@ function updateHealthStats() {
   const bar = document.getElementById('integrity-bar');
   if (bar) bar.style.width = health + '%';
 
+  if (health < 80 && (!window._threatPlayed || Date.now() - window._threatPlayed > 60000)) {
+    if (window.hexAudio) window.hexAudio.play('threat', 1.0);
+    window._threatPlayed = Date.now();
+  }
+
   // Update task run log on right panel
   const logEl = document.getElementById('task-run-log');
   if (logEl && s.tasksRun && Object.keys(s.tasksRun).length > 0) {
@@ -671,6 +723,8 @@ function showToast(title, body, type = '', duration = 5000, actions = []) {
   `;
 
   container.appendChild(toast);
+  if (type === 'alert') window.hexAudio.play('threat', 0.6);
+  else window.hexAudio.play('toast', 0.6);
   const timer = setTimeout(() => dismissToast(toast), duration);
   toast._timer = timer;
 }
@@ -736,7 +790,10 @@ function updateMicUI(listening) {
     : (window.i18n.t('microphone_off') || 'MIC OFF');
   statusEl?.classList.toggle('active', listening);
   micBtn?.classList.toggle('active', listening);
-  if (listening) addLog('VOICE', 'Voice input active. Listening...');
+  if (listening) {
+    addLog('VOICE', 'Voice input active. Listening...');
+    window.hexAudio.play('mic_on', 0.8);
+  }
 }
 
 // ── LANGUAGE ──────────────────────────────────────────────────
