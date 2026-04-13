@@ -11,6 +11,11 @@ contextBridge.exposeInMainWorld('hexAPI', {
   getMemory: () => ipcRenderer.invoke('memory:get'),
   setMemory: (data) => ipcRenderer.invoke('memory:set', data),
 
+  // ── Fine-tune data ────────────────────────────
+  appendFinetune: (lines) => ipcRenderer.invoke('finetune:append', { lines }),
+  getFinetunePath: () => ipcRenderer.invoke('finetune:get-path'),
+  clearFinetune: () => ipcRenderer.invoke('finetune:clear'),
+
   // ── Window controls ───────────────────────────
   minimize: () => ipcRenderer.send('window:minimize'),
   maximize: () => ipcRenderer.send('window:maximize'),

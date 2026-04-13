@@ -74,6 +74,16 @@ window.buildHexSystemPrompt = function (state, lang, userMsg) {
     '\n=== END MEMORY ==='
     : '';
 
+  // ── Learned topics index ──────────────────────────────────────────────────────────────────
+  const learnedTopics = (window.hexLearn) ? window.hexLearn.getLearnedTopics() : [];
+  const learnedBlock = learnedTopics.length > 0
+    ? '\n=== STUDIED KNOWLEDGE DOMAINS ===\n' +
+      'You have actively studied these topics and retain structured knowledge nodes about them.\n' +
+      'When the user asks about any of these, draw from your LONG-TERM MEMORY nodes.\n' +
+      learnedTopics.map(t => '• ' + t).join('\n') +
+      '\n=== END STUDIED DOMAINS ==='
+    : '';
+
   // ── System state ───────────────────────────────────────────────────────────
   const systemStateBlock = [
     '=== LIVE SYSTEM SNAPSHOT ===',
@@ -125,6 +135,9 @@ window.buildHexSystemPrompt = function (state, lang, userMsg) {
     '                    Opinion, recommendation, or analysis.',
     '    [REMEMBER]    - "Remember that I...", "Next time...", "Always..."',
     '                    User wants to store a preference or fact.',
+    '    [LEARN]       - "Hex learn X", "Study X", "Learn about X"',
+    '                    User wants HEX to actively study and permanently retain a topic.',
+    '                    Handled by the learn engine — acknowledge and confirm readiness.',
     '    [CHAT]        - Casual conversation, jokes, small talk.',
     '    [AMBIGUOUS]   - Cannot determine intent without more info.',
     '',
@@ -679,6 +692,7 @@ window.buildHexSystemPrompt = function (state, lang, userMsg) {
     '',
     systemStateBlock,
     memoryBlock,
+    learnedBlock,
     '',
     brainBlock,
     '',

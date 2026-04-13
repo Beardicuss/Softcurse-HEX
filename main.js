@@ -388,6 +388,30 @@ ipcMain.handle('memory:clear', () => {
   catch (e) { return { success: false, error: e.message }; }
 });
 
+// ─── IPC: FINE-TUNE DATA ─────────────────────────────────────────────────────
+const FINETUNE_PATH = path.join(__dirname, 'hex-finetune.jsonl');
+
+ipcMain.handle('finetune:append', (_, { lines }) => {
+  try {
+    const text = lines.join('\n') + '\n';
+    fs.appendFileSync(FINETUNE_PATH, text, 'utf8');
+    return { success: true, path: FINETUNE_PATH };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('finetune:get-path', () => {
+  return { path: FINETUNE_PATH, exists: fs.existsSync(FINETUNE_PATH) };
+});
+
+ipcMain.handle('finetune:clear', () => {
+  try {
+    if (fs.existsSync(FINETUNE_PATH)) fs.unlinkSync(FINETUNE_PATH);
+    return { success: true };
+  } catch (e) { return { success: false, error: e.message }; }
+});
+
 // ─── IPC: WINDOW CONTROLS ────────────────────────────────────────────────────
 ipcMain.on('window:minimize', () => mainWindow?.minimize());
 ipcMain.on('window:maximize', () => mainWindow?.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize());

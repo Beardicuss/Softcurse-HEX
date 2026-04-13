@@ -15,6 +15,38 @@ async function tryDirectCommand(text) {
     return { handled: true };
   };
 
+  // ── Learn ─────────────────────────────────────────────────────────────────
+  // Syntax: "hex learn [topic]"  |  "learn [topic]"  |  "study [topic]"
+  const learnM = t.match(/^(?:hex\s+)?(?:learn|study)\s+(.+)$/);
+  if (learnM) {
+    const topic = learnM[1].trim();
+    if (topic.length > 1 && !/^(nothing|me|more|better|faster)$/i.test(topic)) {
+      // Fire and forget the async learn flow — it will add its own messages
+      (async () => {
+        addHexMessage(`**Initiating knowledge acquisition sequence...**\nScanning data lattice for: **${topic}**\nThis will take a moment — stand by.`);
+        try {
+          if (!window.hexLearn) throw new Error('Learn module not loaded.');
+          const result = await window.hexLearn.learnTopic(topic);
+          const pathLine = result.finetunePath
+            ? `\nTraining data: \`${result.finetunePath}\` (+${result.pairs} pairs)`
+            : '';
+          const provLine = result.provider ? ` via **${result.provider}**` : '';
+          addHexMessage(
+            `**Knowledge acquisition complete.**\n` +
+            `Topic: **${result.topic}**${provLine}\n` +
+            `Memory nodes retained: **${result.stored}**\n` +
+            `Fine-tune pairs written: **${result.pairs}**${pathLine}\n\n` +
+            (result.summary ? `> ${result.summary}\n\n` : '') +
+            `All data written to long-term memory and fine-tune dataset. I will apply this knowledge automatically in future exchanges.`
+          );
+        } catch (err) {
+          addHexMessage(`**Learning sequence failed.**\nFault: ${err.message}`);
+        }
+      })();
+      return { handled: true };
+    }
+  }
+
   // ── Websites ──────────────────────────────────────────────────────────────
   const SITES = {
     'facebook': 'https://facebook.com', 'fb': 'https://facebook.com',
