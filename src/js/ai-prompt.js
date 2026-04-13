@@ -78,10 +78,10 @@ window.buildHexSystemPrompt = function (state, lang, userMsg) {
   const learnedTopics = (window.hexLearn) ? window.hexLearn.getLearnedTopics() : [];
   const learnedBlock = learnedTopics.length > 0
     ? '\n=== STUDIED KNOWLEDGE DOMAINS ===\n' +
-      'You have actively studied these topics and retain structured knowledge nodes about them.\n' +
-      'When the user asks about any of these, draw from your LONG-TERM MEMORY nodes.\n' +
-      learnedTopics.map(t => '• ' + t).join('\n') +
-      '\n=== END STUDIED DOMAINS ==='
+    'You have actively studied these topics and retain structured knowledge nodes about them.\n' +
+    'When the user asks about any of these, draw from your LONG-TERM MEMORY nodes.\n' +
+    learnedTopics.map(t => '• ' + t).join('\n') +
+    '\n=== END STUDIED DOMAINS ==='
     : '';
 
   // ── System state ───────────────────────────────────────────────────────────
