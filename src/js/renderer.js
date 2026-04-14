@@ -146,6 +146,18 @@ async function init() {
     addLog('SYSTEM', data.line, data.isErr ? 'error' : 'info');
   });
 
+  // Wire recurring schedules
+  window.hexAPI.on('recurring:fire', (evt) => {
+    addLog('HEX', `Recurring task triggered: ${evt.label}`);
+    showToast(`Task: ${evt.label}`, 'success');
+    window.hexAudio.play('action');
+
+    // Visually drop the command into chat and fire it
+    const inp = document.getElementById('chat-input');
+    inp.value = evt.command;
+    sendMessage();
+  });
+
   // Reminder fires
   window.reminders.onFire = (data) => {
     const label = window.i18n.t('reminder_fire', { label: data.label });
@@ -253,6 +265,8 @@ function updateStats(data) {
   setVitalValue('v-cpu', `${data.cpu}%`, data.cpu > 80 ? (data.cpu > 95 ? 'crit' : 'warn') : '');
   setVitalValue('v-ram', `${data.ram}%`, data.ram > 80 ? (data.ram > 95 ? 'crit' : 'warn') : '');
   setVitalValue('v-disk', `${data.disk}%`, data.disk > 90 ? 'warn' : '');
+  setVitalValue('v-gpu', data.gpu != null ? `${data.gpu}%` : '—', data.gpu > 80 ? (data.gpu > 95 ? 'crit' : 'warn') : '');
+  setVitalValue('v-gputemp', data.gpuTemp || '—', '');
   setVitalValue('v-netrx', data.netRx || '—', 'net');
   setVitalValue('v-nettx', data.netTx || '—', 'net');
   setVitalValue('v-temp', data.temp || '—', '');

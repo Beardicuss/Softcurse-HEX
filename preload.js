@@ -224,12 +224,23 @@ contextBridge.exposeInMainWorld('hexAPI', {
     transcribe: (samples, lang) => ipcRenderer.invoke('voice:transcribe', { samples, lang }),
     transcribeRaw: (bytes, lang) => ipcRenderer.invoke('voice:transcribeRaw', { bytes, lang }),
     synthesize: (text, lang, speed) => ipcRenderer.invoke('voice:synthesize', { text, lang, speed }),
-    downloadModels: (targets) => ipcRenderer.invoke('voice:download-models', targets),
+    downloadModels: (targets, whisperSize) => ipcRenderer.invoke('voice:download-models', { targets, whisperSize }),
     onDownloadProgress: (cb) => ipcRenderer.on('voice:download-progress', (_, d) => cb(d)),
     openModelsDir: () => ipcRenderer.invoke('voice:open-models-dir'),
     setModelsDir: (dir) => ipcRenderer.invoke('voice:set-models-dir', dir),
     browseDir: () => ipcRenderer.invoke('voice:browse-dir'),
   },
+
+  // ── Plugins Marketplace ───────────────────────
+  plugins: {
+    fetchIndex: () => ipcRenderer.invoke('plugins:fetch-index'),
+    install: (id, downloadUrl) => ipcRenderer.invoke('plugins:install', { id, downloadUrl }),
+    remove: (id) => ipcRenderer.invoke('plugins:remove', { id })
+  },
+
+  // ── Generic Events ────────────────────────────
+  on: (channel, cb) => ipcRenderer.on(channel, (event, ...args) => cb(...args)),
+  receive: (channel, cb) => ipcRenderer.on(channel, (event, ...args) => cb(...args)),
 
   // ── Cleanup ───────────────────────────────────
   removeAllListeners: (ch) => ipcRenderer.removeAllListeners(ch)

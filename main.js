@@ -10,7 +10,7 @@ console.error = (...args) => {
   _origConsoleError.apply(console, args);
 };
 
-const { app, BrowserWindow, ipcMain, powerMonitor, shell, dialog, session, Tray, Menu, nativeImage, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, powerMonitor, shell, dialog, session, Tray, Menu, nativeImage, globalShortcut, safeStorage } = require('electron');
 
 // Audio safety flags
 app.commandLine.appendSwitch('disable-features', 'AudioServiceOutOfProcess');
@@ -34,15 +34,86 @@ try {
   if (savedCfg.voice && savedCfg.voice.modelsDir) {
     localVoice.setModelsDir(savedCfg.voice.modelsDir);
   }
+  // Restore saved whisper model size
+  if (savedCfg.voice && savedCfg.voice.whisperSize) {
+    localVoice.setWhisperSize(savedCfg.voice.whisperSize);
+  }
 } catch (e) { console.warn('Local voice not loaded:', e.message); }
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
 const MEMORY_PATH = path.join(app.getPath('userData'), 'memory.json');
+const REMINDERS_PATH = path.join(app.getPath('userData'), 'reminders.json');
+const SCHEDULES_PATH = path.join(app.getPath('userData'), 'schedules.json');
+
+// ─── API KEY ENCRYPTION (Electron safeStorage → OS credential store) ─────────
+const ENC_PREFIX = 'enc::';
+
+function encryptKey(plaintext) {
+  if (!plaintext || plaintext.startsWith(ENC_PREFIX)) return plaintext;
+  try {
+    if (safeStorage.isEncryptionAvailable()) {
+      const buf = safeStorage.encryptString(plaintext);
+      return ENC_PREFIX + buf.toString('base64');
+    }
+  } catch (_) { }
+  return plaintext; // fallback: store plaintext if encryption unavailable
+}
+
+function decryptKey(stored) {
+  if (!stored || !stored.startsWith(ENC_PREFIX)) return stored;
+  try {
+    const buf = Buffer.from(stored.slice(ENC_PREFIX.length), 'base64');
+    return safeStorage.decryptString(buf);
+  } catch (_) { }
+  return ''; // corrupted → return empty
+}
+
+function encryptApiKeys(cfg) {
+  const c = JSON.parse(JSON.stringify(cfg)); // deep clone
+  if (c.llm?.apiKey) c.llm.apiKey = encryptKey(c.llm.apiKey);
+  if (c.llm?.apiKeys) {
+    for (const [k, v] of Object.entries(c.llm.apiKeys)) {
+      c.llm.apiKeys[k] = encryptKey(v);
+    }
+  }
+  if (c.llm?.geminiVisionKey) c.llm.geminiVisionKey = encryptKey(c.llm.geminiVisionKey);
+  if (c.voice?.gcloudTtsKey) c.voice.gcloudTtsKey = encryptKey(c.voice.gcloudTtsKey);
+  return c;
+}
+
+function decryptApiKeys(cfg) {
+  const c = JSON.parse(JSON.stringify(cfg));
+  if (c.llm?.apiKey) c.llm.apiKey = decryptKey(c.llm.apiKey);
+  if (c.llm?.apiKeys) {
+    for (const [k, v] of Object.entries(c.llm.apiKeys)) {
+      c.llm.apiKeys[k] = decryptKey(v);
+    }
+  }
+  if (c.llm?.geminiVisionKey) c.llm.geminiVisionKey = decryptKey(c.llm.geminiVisionKey);
+  if (c.voice?.gcloudTtsKey) c.voice.gcloudTtsKey = decryptKey(c.voice.gcloudTtsKey);
+  return c;
+}
 
 function loadConfig() {
   try {
-    if (fs.existsSync(CONFIG_PATH)) return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+    if (fs.existsSync(CONFIG_PATH)) {
+      const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+      let hasConfigChange = false;
+      // Auto-migrate old AppData voice models path to the new local-voice default
+      if (raw.voice && raw.voice.modelsDir && raw.voice.modelsDir.includes('AppData')) {
+        raw.voice.modelsDir = path.join(app.getAppPath(), 'local-voice', 'models');
+        hasConfigChange = true;
+      }
+
+      const hasPlainKeys = (raw.llm?.apiKey && !raw.llm.apiKey.startsWith(ENC_PREFIX))
+        || (raw.llm?.apiKeys && Object.values(raw.llm.apiKeys).some(v => v && !v.startsWith(ENC_PREFIX)));
+
+      if ((hasPlainKeys && safeStorage.isEncryptionAvailable()) || hasConfigChange) {
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify(encryptApiKeys(raw), null, 2));
+      }
+      return decryptApiKeys(raw); // always return decrypted to runtime
+    }
   } catch (_) { }
   return {
     language: 'ka',
@@ -55,7 +126,7 @@ function loadConfig() {
 }
 
 function saveConfig(cfg) {
-  try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2)); } catch (e) { console.error(e); }
+  try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(encryptApiKeys(cfg), null, 2)); } catch (e) { console.error(e); }
 }
 
 let config = loadConfig();
@@ -170,8 +241,10 @@ app.whenReady().then(() => {
   applySystemSettings();
   if (config.llm && config.llm.autoOllama) {
     try {
-      exec(`wscript.exe "D:\\Dev\\Artificial intelligence\\run-ollama.vbs"`, (err) => {
+      const vbsPath = path.join(__dirname, 'scripts', 'ollama', 'run-ollama.vbs');
+      exec(`wscript.exe "${vbsPath}"`, (err) => {
         if (err) console.warn('Softcurse: Failed to auto-start local Ollama', err);
+        else console.log('Softcurse: Ollama auto-started via bundled script');
       });
     } catch (_) { }
   }
@@ -180,7 +253,8 @@ app.whenReady().then(() => {
 app.on('will-quit', () => {
   if (config.llm && config.llm.autoOllama) {
     try {
-      require('child_process').execSync(`wscript.exe "D:\\Dev\\Artificial intelligence\\stop-ollama.vbs"`, { timeout: 4000 });
+      const stopVbs = path.join(__dirname, 'scripts', 'ollama', 'stop-ollama.vbs');
+      require('child_process').execSync(`wscript.exe "${stopVbs}"`, { timeout: 4000 });
     } catch (err) {
       console.warn('Softcurse: Failed to auto-stop local Ollama', err);
     }
@@ -236,12 +310,13 @@ async function startPolling() {
       return;
     }
     try {
-      const [cpuLoad, mem, disks, nets, temp] = await Promise.allSettled([
+      const [cpuLoad, mem, disks, nets, temp, gfx] = await Promise.allSettled([
         si.currentLoad(),
         si.mem(),
         si.fsSize(),
         si.networkStats(),
-        si.cpuTemperature()
+        si.cpuTemperature(),
+        si.graphics()
       ]);
 
       const cpu = cpuLoad.status === 'fulfilled' ? cpuLoad.value : null;
@@ -249,9 +324,11 @@ async function startPolling() {
       const d = disks.status === 'fulfilled' ? disks.value : [];
       const n = nets.status === 'fulfilled' ? nets.value : [];
       const t = temp.status === 'fulfilled' ? temp.value : null;
+      const g = gfx.status === 'fulfilled' ? gfx.value : null;
 
       const primaryDisk = d.find(x => x.mount === '/' || x.mount === 'C:') || d[0] || {};
       const primaryNet = n[0] || {};
+      const gpuCtrl = g && g.controllers ? g.controllers[0] : null;
 
       const payload = {
         cpu: cpu ? Math.round(cpu.currentLoad) : 0,
@@ -264,6 +341,11 @@ async function startPolling() {
         netRx: primaryNet.rx_sec != null ? formatBytes(primaryNet.rx_sec) + '/s' : '—',
         netTx: primaryNet.tx_sec != null ? formatBytes(primaryNet.tx_sec) + '/s' : '—',
         temp: t && t.main ? Math.round(t.main) + '°C' : '—',
+        gpu: gpuCtrl && gpuCtrl.utilizationGpu != null ? Math.round(gpuCtrl.utilizationGpu) : null,
+        gpuTemp: gpuCtrl && gpuCtrl.temperatureGpu != null ? Math.round(gpuCtrl.temperatureGpu) + '°C' : '—',
+        gpuVram: gpuCtrl && gpuCtrl.memoryUsed && gpuCtrl.memoryTotal
+          ? Math.round((gpuCtrl.memoryUsed / gpuCtrl.memoryTotal) * 100) : null,
+        gpuName: gpuCtrl ? gpuCtrl.model : '',
         ts: Date.now()
       };
 
@@ -472,7 +554,6 @@ ipcMain.handle('browser:open-url', (_, url) => {
 const { buildAppFinderPS } = require('./src/js/ipc-butler')({ sendLog, dialog, shell, mainWindow, runCmd, butlerExec });
 require('./src/js/ipc-games')({ sendLog, shell, butlerExec, buildAppFinderPS });
 // ─── IPC: REMINDERS (PERSISTENT) ─────────────────────────────────────────────
-const REMINDERS_PATH = path.join(app.getPath('userData'), 'reminders.json');
 const activeReminders = new Map();
 
 function loadPersistedReminders() {
@@ -526,8 +607,78 @@ ipcMain.handle('reminders:set', (_, { id, label, delayMs }) => {
 });
 
 ipcMain.handle('reminders:cancel', (_, id) => {
-  if (activeReminders.has(id)) { activeReminders.get(id).job.cancel(); activeReminders.delete(id); savePersistedReminders(); }
-  return { success: true };
+  if (activeReminders.has(id)) {
+    activeReminders.get(id).job.cancel();
+    activeReminders.delete(id);
+    savePersistedReminders();
+    return { success: true };
+  }
+  return { success: false, error: 'Not found' };
+});
+
+// ─── RECURRING SCHEDULES ─────────────────────────────────────────────────────
+const activeSchedules = new Map();
+
+function loadPersistedSchedules() {
+  try {
+    if (!fs.existsSync(SCHEDULES_PATH)) return;
+    const saved = JSON.parse(fs.readFileSync(SCHEDULES_PATH, 'utf8'));
+    for (const s of saved) {
+      if (!s.id || !s.cron || !s.command) continue;
+      const job = schedule.scheduleJob(s.cron, () => {
+        safeSend('recurring:fire', { id: s.id, label: s.label, command: s.command });
+        sendLog('HEX', `Schedule fired: ${s.label}`, 'info');
+      });
+      activeSchedules.set(s.id, { job, cron: s.cron, label: s.label, command: s.command });
+    }
+    if (activeSchedules.size > 0) sendLog('HEX', `Restored ${activeSchedules.size} persisted schedule(s).`, 'info');
+  } catch (e) { console.warn('Failed to load schedules:', e.message); }
+}
+
+function savePersistedSchedules() {
+  try {
+    const arr = [];
+    for (const [id, data] of activeSchedules) {
+      arr.push({ id, cron: data.cron, label: data.label, command: data.command });
+    }
+    fs.writeFileSync(SCHEDULES_PATH, JSON.stringify(arr, null, 2));
+  } catch (e) { console.warn('Failed to save schedules:', e.message); }
+}
+
+ipcMain.handle('schedule:add-recurring', (_, { cron, label, command }) => {
+  const id = 'sch_' + Date.now();
+  try {
+    const job = schedule.scheduleJob(cron, () => {
+      safeSend('recurring:fire', { id, label, command });
+      sendLog('HEX', `Schedule fired: ${label}`, 'info');
+    });
+    if (!job) throw new Error('Invalid CRON expression');
+    activeSchedules.set(id, { job, cron, label, command });
+    savePersistedSchedules();
+    sendLog('HEX', `Recurring schedule created: "${label}" (${cron})`, 'info');
+    return { success: true, id };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('schedule:cancel-recurring', (_, { id }) => {
+  if (activeSchedules.has(id)) {
+    activeSchedules.get(id).job.cancel();
+    activeSchedules.delete(id);
+    savePersistedSchedules();
+    sendLog('HEX', `Recurring schedule canceled: ${id}`, 'info');
+    return { success: true };
+  }
+  return { success: false, error: 'Not found' };
+});
+
+ipcMain.handle('schedule:list-recurring', () => {
+  const arr = [];
+  for (const [id, data] of activeSchedules) {
+    arr.push({ id, cron: data.cron, label: data.label, command: data.command });
+  }
+  return arr;
 });
 
 // ─── IPC: EXEC SAFE COMMAND ──────────────────────────────────────────────────
@@ -632,15 +783,20 @@ ipcMain.handle('voice:synthesize', async (_, { text, lang, speed }) => {
   };
 });
 
-ipcMain.handle('voice:download-models', async (_, targets) => {
+ipcMain.handle('voice:download-models', async (_, { targets, whisperSize }) => {
   if (!localVoice) throw new Error('Local voice engine not available');
   // Ensure the engine uses the user-configured models dir before downloading
   if (config.voice && config.voice.modelsDir) {
     localVoice.setModelsDir(config.voice.modelsDir);
   }
+  // Save the selected whisper size to config for persistence
+  if (whisperSize) {
+    config.voice = { ...(config.voice || {}), whisperSize };
+    saveConfig(config);
+  }
   await localVoice.downloadModels(targets || ['stt', 'tts-en', 'tts-ru', 'tts-ka'], (progress) => {
     safeSend('voice:download-progress', progress);
-  });
+  }, whisperSize || 'tiny');
   return { success: true };
 });
 
@@ -1144,6 +1300,7 @@ app.whenReady().then(() => {
 
   // ── Load persisted reminders ────────────────────────────────────────────────
   loadPersistedReminders();
+  loadPersistedSchedules();
 
   // ── Global Hotkey: Ctrl+Shift+H to summon H.E.X. ───────────────────────────
   try {
@@ -1498,6 +1655,57 @@ ipcMain.handle('plugins:discover', () => {
   return { success: true, plugins: pluginLoader.discover().map(m => ({ id: m.id, name: m.name, version: m.version, description: m.description, actions: m.actions })) };
 });
 
+const PLUGINS_INDEX_URL = 'https://raw.githubusercontent.com/Beardicuss/hex-plugins/main/plugins-index.json';
+
+ipcMain.handle('plugins:fetch-index', async () => {
+  try {
+    const res = await fetch(PLUGINS_INDEX_URL);
+    if (!res.ok) throw new Error('Fetch failed: ' + res.statusText);
+    const index = await res.json();
+    return { success: true, index };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('plugins:install', async (_, { id, downloadUrl }) => {
+  try {
+    sendLog('PLUGINS', `Downloading plugin: ${id}`);
+    const res = await fetch(downloadUrl);
+    if (!res.ok) throw new Error('Failed to download plugin zip.');
+
+    const zipPath = path.join(app.getPath('temp'), `${id}.zip`);
+    const buffer = Buffer.from(await res.arrayBuffer());
+    fs.writeFileSync(zipPath, buffer);
+
+    const destDir = path.join(pluginsDir, id);
+    if (fs.existsSync(destDir)) fs.rmSync(destDir, { recursive: true, force: true });
+
+    // Extract using powershell Expand-Archive
+    sendLog('PLUGINS', `Extracting plugin: ${id}`);
+    await windowCmd(`powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${destDir}' -Force"`);
+
+    fs.unlinkSync(zipPath); // cleanup
+
+    pluginLoader.loadPlugin(id); // Hot load
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('plugins:remove', async (_, { id }) => {
+  try {
+    pluginLoader.unloadPlugin(id); // Hot unload
+    const destDir = path.join(pluginsDir, id);
+    if (fs.existsSync(destDir)) fs.rmSync(destDir, { recursive: true, force: true });
+    sendLog('PLUGINS', `Removed plugin: ${id}`);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
 ipcMain.handle('plugins:load', (_, { id }) => {
   const manifests = pluginLoader.discover();
   const manifest = manifests.find(m => m.id === id);
@@ -1558,63 +1766,6 @@ ipcMain.handle('butler:browser-scrape', async (_, { url }) => {
   } catch (e) {
     return { success: false, error: e.message };
   }
-});
-
-// ─── IPC: RECURRING SCHEDULES ────────────────────────────────────────────────
-const RECURRING_PATH = path.join(app.getPath('userData'), 'recurring.json');
-const activeRecurring = new Map();
-
-function loadRecurringSchedules() {
-  try {
-    if (!fs.existsSync(RECURRING_PATH)) return;
-    const data = JSON.parse(fs.readFileSync(RECURRING_PATH, 'utf8'));
-    for (const entry of (data || [])) {
-      armRecurring(entry);
-    }
-    if (data?.length) sendLog('SCHEDULER', `${data.length} recurring schedule(s) loaded.`);
-  } catch (_) { }
-}
-
-function armRecurring(entry) {
-  if (activeRecurring.has(entry.id)) return;
-  try {
-    const job = schedule.scheduleJob(entry.cron, async () => {
-      sendLog('SCHEDULER', `Recurring fire: ${entry.label}`);
-      if (mainWindow) mainWindow.webContents.send('reminder-fire', { label: `[Recurring] ${entry.label}`, id: entry.id });
-    });
-    if (job) activeRecurring.set(entry.id, { ...entry, job });
-  } catch (e) {
-    sendLog('SCHEDULER', `Bad cron "${entry.cron}": ${e.message}`);
-  }
-}
-
-function saveRecurring() {
-  const data = [...activeRecurring.values()].map(({ id, cron, label, command }) => ({ id, cron, label, command }));
-  fs.writeFileSync(RECURRING_PATH, JSON.stringify(data, null, 2));
-}
-
-app.whenReady().then(() => loadRecurringSchedules());
-
-ipcMain.handle('schedule:add-recurring', (_, { cron, label, command }) => {
-  const id = 'rec_' + Date.now().toString(36);
-  const entry = { id, cron, label: label || cron, command: command || '' };
-  armRecurring(entry);
-  if (!activeRecurring.has(id)) return { success: false, error: 'Invalid cron expression' };
-  saveRecurring();
-  return { success: true, id, cron, label: entry.label };
-});
-
-ipcMain.handle('schedule:cancel-recurring', (_, { id }) => {
-  const entry = activeRecurring.get(id);
-  if (!entry) return { success: false, error: 'Not found' };
-  entry.job?.cancel();
-  activeRecurring.delete(id);
-  saveRecurring();
-  return { success: true };
-});
-
-ipcMain.handle('schedule:list-recurring', () => {
-  return { success: true, schedules: [...activeRecurring.values()].map(({ id, cron, label }) => ({ id, cron, label })) };
 });
 
 // ─── IPC: CLIPBOARD HISTORY ─────────────────────────────────────────────────

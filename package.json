@@ -30,7 +30,8 @@
       "main.js",
       "preload.js",
       "src/**/*",
-      "local-voice/**/*"
+      "local-voice/**/*",
+      "scripts/**/*"
     ],
     "win": {
       "target": "nsis",

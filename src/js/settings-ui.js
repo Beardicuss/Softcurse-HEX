@@ -52,9 +52,13 @@ async function downloadVoiceModels() {
 
   if (!targets.length) { alert('Select at least one model to download.'); return; }
 
+  // Get selected Whisper model size
+  const sizeEl = document.getElementById('dl-stt-size');
+  const whisperSize = sizeEl ? sizeEl.value : 'tiny';
+
   btn.disabled = true; btn.textContent = '⏳ Downloading...';
   progress.style.display = 'block'; fill.style.width = '0%';
-  label.textContent = 'Starting download...';
+  label.textContent = 'Starting download...' + (targets.includes('stt') ? ` (Whisper ${whisperSize})` : '');
 
   // Wire progress events
   window.hexAPI.voice.onDownloadProgress((p) => {
@@ -68,7 +72,7 @@ async function downloadVoiceModels() {
   });
 
   try {
-    await window.hexAPI.voice.downloadModels(targets);
+    await window.hexAPI.voice.downloadModels(targets, whisperSize);
     label.textContent = '✅ All models downloaded! Restart HEX to activate.';
     fill.style.width = '100%';
     await refreshVoiceStatus();
@@ -494,4 +498,85 @@ async function saveSettings() {
   closeSettings();
   addLog('SYSTEM', 'Configuration saved.');
   showToast('◆ CONFIG SAVED', 'Settings updated and applied.', '', 3000);
+}
+
+// ─── PLUGIN MARKETPLACE UI ───────────────────────────────────────────────────
+
+function switchPluginSubTab(tabName) {
+  document.getElementById('subtab-plugins-installed').classList.toggle('active', tabName === 'installed');
+  document.getElementById('subtab-plugins-market').classList.toggle('active', tabName === 'market');
+
+  document.getElementById('panel-plugins-installed').style.display = tabName === 'installed' ? 'block' : 'none';
+  document.getElementById('panel-plugins-market').style.display = tabName === 'market' ? 'block' : 'none';
+
+  if (tabName === 'market') loadMarketplaceList();
+  else loadPluginsList();
+}
+
+async function loadMarketplaceList() {
+  const listEl = document.getElementById('plugin-marketplace-list');
+  const btn = document.getElementById('btn-refresh-market');
+  listEl.innerHTML = '<div class="form-hint">Fetching plugin index...</div>';
+  btn.disabled = true;
+
+  try {
+    const res = await window.hexAPI.plugins.fetchIndex();
+    if (!res.success) {
+      listEl.innerHTML = `<div class="form-hint" style="color:var(--orange);">Error: ${res.error}</div>`;
+      return;
+    }
+
+    const marketPlugins = res.index;
+
+    // Get locally installed to show status
+    const localRes = await window.hexAPI.plugins.list();
+    const installedIds = localRes.success ? (localRes.plugins || []).map(p => p.id) : [];
+
+    if (marketPlugins.length === 0) {
+      listEl.innerHTML = '<div class="form-hint">Marketplace is empty right now.</div>';
+      return;
+    }
+
+    listEl.innerHTML = marketPlugins.map(p => {
+      const isInstalled = installedIds.includes(p.id);
+      return `
+        <div class="plugin-card">
+          <div class="plugin-card-header">
+            <div class="plugin-name">${p.name} <span style="color:var(--muted);font-size:10px;">v${p.version}</span></div>
+            ${isInstalled
+          ? `<button class="btn btn-secondary" onclick="removeMarketplacePlugin('${p.id}')" style="font-size:9px;padding:2px 6px;border-color:var(--orange);color:var(--orange);">✕ REMOVE</button>`
+          : `<button class="btn btn-primary" onclick="installMarketplacePlugin('${p.id}', '${p.downloadUrl}')" style="font-size:9px;padding:2px 6px;">⬇ INSTALL</button>`
+        }
+          </div>
+          <div class="plugin-desc">${p.description}</div>
+          <div class="plugin-path">By: ${p.author || 'Unknown'} | Tags: ${(p.tags || []).join(', ')}</div>
+        </div>
+      `;
+    }).join('');
+  } catch (err) {
+    listEl.innerHTML = `<div class="form-hint" style="color:var(--orange);">Failed to fetch marketplace.</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function installMarketplacePlugin(id, downloadUrl) {
+  showToast('PLUGINS', `Downloading ${id}...`, '');
+  const res = await window.hexAPI.plugins.install(id, downloadUrl);
+  if (res.success) {
+    showToast('PLUGINS', `${id} installed.`, 'success');
+    loadMarketplaceList();
+  } else {
+    showToast('INSTALL ERROR', res.error, '', 5000);
+  }
+}
+
+async function removeMarketplacePlugin(id) {
+  const res = await window.hexAPI.plugins.remove(id);
+  if (res.success) {
+    showToast('PLUGINS', `${id} removed.`, '');
+    loadMarketplaceList();
+  } else {
+    showToast('REMOVE ERROR', res.error, '', 5000);
+  }
 }

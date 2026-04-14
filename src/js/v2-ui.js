@@ -164,7 +164,10 @@ async function loadPluginsList() {
       <div class="plugin-card">
         <div class="plugin-card-header">
           <div class="plugin-name">${p.name} <span style="color:${p.status === 'loaded' ? '#0f9' : '#ff6b35'};font-size:10px;">${(p.status || 'unknown').toUpperCase()}</span></div>
-          <button class="btn btn-secondary" onclick="reloadPlugin('${p.id}')" style="font-size:9px;padding:2px 6px;">↻ RELOAD</button>
+          <div style="display:flex;gap:4px;">
+            <button class="btn btn-secondary" onclick="reloadPlugin('${p.id}')" style="font-size:9px;padding:2px 6px;">↻ RELOAD</button>
+            <button class="btn btn-secondary" onclick="removeMarketplacePlugin('${p.id}')" style="font-size:9px;padding:2px 6px;border-color:var(--orange);color:var(--orange);">✕ REMOVE</button>
+          </div>
         </div>
         <div class="plugin-desc">${p.description || 'No description provided.'}</div>
         <div class="plugin-path">${p.id}</div>

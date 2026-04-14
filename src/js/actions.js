@@ -848,6 +848,59 @@ async function handleAIAction(action) {
       await window.hexAPI.butler.sleep(ms);
       break;
     }
+    case 'set_reminder': {
+      let delayMs = parseInt(action.args[0], 10);
+      let label = action.args.slice(1).join(' ').trim();
+
+      // Ensure reasonable boundary delays
+      if (!delayMs || isNaN(delayMs) || delayMs < 1000) delayMs = 60000;
+      if (!label) label = 'Unknown reminder';
+
+      addLog('BUTLER', `Setting reminder: "${label}" for ${delayMs}ms`);
+      const r = await window.hexAPI.setReminder({ id: 'rem_' + Date.now(), label, delayMs });
+      if (r?.success) {
+        // Show human friendly time: e.g. "in 30 minutes"
+        const friendlyMin = Math.round(delayMs / 60000);
+        const tf = friendlyMin > 0 ? `in ${friendlyMin} min` : `in ${Math.round(delayMs / 1000)} sec`;
+        addHexMessage(`**Reminder set:** "${label}" (${tf})`);
+      } else {
+        addHexMessage(`**Failed to set reminder:** ${r?.error}`);
+      }
+      break;
+    }
+
+    case 'schedule_recurring': {
+      // Args: [CRON, LABEL, COMMAND]
+      const cron = action.args[0];
+      const label = action.args[1];
+      const command = action.args.slice(2).join(':').trim(); // command could have colons
+
+      if (!cron || !label || !command) {
+        addHexMessage(`**Failed to schedule:** Missing parameters for recurring task.`);
+        break;
+      }
+
+      addLog('BUTLER', `Setting recurring schedule: "${label}" (${cron}) -> ${command}`);
+      const r = await window.hexAPI.recurring.add(cron, label, command);
+      if (r?.success) {
+        addHexMessage(`**Recurring task set:** "${label}"
+        Schedule: \`${cron}\`
+        Action: \`${command}\``);
+      } else {
+        addHexMessage(`**Failed to schedule:** ${r?.error}`);
+      }
+      break;
+    }
+
+    case 'clear_memory': {
+      const act = action.args[0] || '';
+      const cmd = action.args[1] || '';
+      const name = action.args[2] || '';
+      const r = await window.hexAPI.butler.startup(act, cmd, name);
+      if (r.success) addHexMessage(`Startup item updated successfully.`);
+      else addHexMessage(`Startup modification failed: ${r.error}`);
+      break;
+    }
     case 'schedule_once': {
       const time = action.args[0];
       const cmd = action.args.slice(1).join(':');
@@ -858,7 +911,7 @@ async function handleAIAction(action) {
     }
     case 'cancel_task': {
       const taskName = action.args.join(':');
-      const r = await window.hexAPI.butler.cancelTask(taskName);
+      const r = await window.hexAPI.cancelTask(taskName);
       if (r.success) addHexMessage(`Cancelled task: ${taskName}`);
       else addHexMessage(`Cancellation failed: ${r.error}`);
       break;

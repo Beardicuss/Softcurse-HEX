@@ -230,8 +230,20 @@
           <div id="local-voice-status" class="form-hint" style="margin-bottom:8px;">Checking...</div>
           <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
             <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">
-              <input type="checkbox" id="dl-stt" value="stt" checked> Whisper STT (~40MB)
+              <input type="checkbox" id="dl-stt" value="stt" checked> Whisper STT
             </label>
+            <select id="dl-stt-size"
+              style="font-size:10px;background:var(--surface2);color:var(--text);border:1px solid var(--surface3);padding:2px 6px;cursor:pointer;"
+              onchange="document.getElementById('dl-stt-size-hint').textContent = this.options[this.selectedIndex].dataset.hint">
+              <option value="tiny" data-hint="~40MB • Fast, lower accuracy" selected>Tiny (~40MB)</option>
+              <option value="small" data-hint="~250MB • Balanced">Small (~250MB)</option>
+              <option value="medium" data-hint="~750MB • High accuracy">Medium (~750MB)</option>
+              <option value="large" data-hint="~1.5GB • Best accuracy, slower">Large (~1.5GB)</option>
+            </select>
+            <span id="dl-stt-size-hint" class="form-hint" style="font-size:9px;align-self:center;">~40MB • Fast, lower
+              accuracy</span>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
             <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">
               <input type="checkbox" id="dl-en" value="tts-en" checked> TTS English (~65MB)
             </label>
@@ -276,7 +288,7 @@
           <label class="form-label">MODELS PATH</label>
           <div style="display:flex;gap:6px;">
             <input type="text" id="cfg-models-dir" class="form-control" style="flex:1;font-size:11px;"
-              placeholder="e.g. D:\Dev\Assets\voices">
+              placeholder="(Leave blank for default project-local voice models path)">
             <button class="btn btn-secondary" onclick="browseModelsDir()"
               style="padding:4px 10px;font-size:9px;white-space:nowrap;">&#128193; BROWSE</button>
             <button class="btn btn-secondary" onclick="applyModelsDir()"
@@ -563,23 +575,42 @@
 
       <!-- ══ TAB: PLUGINS ═══════════════════════════════════ -->
       <div class="stab-panel" id="tab-plugins">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <div class="settings-section-label" style="margin:0;">◆ INSTALLED PLUGINS</div>
-          <button class="btn btn-secondary" onclick="loadPluginsList()" style="font-size:9px;padding:4px 10px;">↻
-            REFRESH</button>
+        <div style="display:flex;gap:10px;margin-bottom:15px;border-bottom:1px solid var(--border);">
+          <button class="stab active" id="subtab-plugins-installed" onclick="switchPluginSubTab('installed')"
+            style="flex:1;text-align:center;">INSTALLED</button>
+          <button class="stab" id="subtab-plugins-market" onclick="switchPluginSubTab('market')"
+            style="flex:1;text-align:center;">MARKETPLACE</button>
         </div>
 
-        <div id="plugins-list"
-          style="display:flex;flex-direction:column;gap:10px;min-height:200px;max-height:400px;overflow-y:auto;padding-right:6px;">
-          <!-- Dynamically populated -->
+        <!-- Installed Plugins Sub-Panel -->
+        <div id="panel-plugins-installed">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div class="settings-section-label" style="margin:0;">◆ INSTALLED PLUGINS</div>
+            <button class="btn btn-secondary" onclick="loadPluginsList()" style="font-size:9px;padding:4px 10px;">↻
+              REFRESH</button>
+          </div>
+          <div id="plugins-list"
+            style="display:flex;flex-direction:column;gap:10px;min-height:200px;max-height:350px;overflow-y:auto;padding-right:6px;">
+            <!-- Dynamically populated -->
+          </div>
+          <div class="form-hint" style="margin-top:15px;padding-top:10px;border-top:1px solid var(--border);">
+            Place local plugins in <code class="mono" style="color:var(--magenta);">plugins/</code>.
+            <button class="btn btn-secondary" style="margin-left:10px;font-size:9px;" onclick="openPluginsFolder()">📂
+              OPEN FOLDER</button>
+          </div>
         </div>
 
-        <div class="form-hint" style="margin-top:15px;padding-top:10px;border-top:1px solid var(--border);">
-          Plugins extend H.E.X.'s capabilities. Place valid JavaScript plugins inside the <code class="mono"
-            style="color:var(--magenta);">plugins/</code> directory in the application data folder.
-          <br><br>
-          <button class="btn btn-secondary" style="width:100%; border-color:var(--cyan); color:var(--cyan);"
-            onclick="openPluginsFolder()">📂 OPEN PLUGINS FOLDER</button>
+        <!-- Marketplace Plugins Sub-Panel -->
+        <div id="panel-plugins-market" style="display:none;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div class="settings-section-label" style="margin:0;">◆ PLUGIN DIRECTORY</div>
+            <button class="btn btn-secondary" id="btn-refresh-market" onclick="loadMarketplaceList()"
+              style="font-size:9px;padding:4px 10px;">↻ FETCH</button>
+          </div>
+          <div id="plugin-marketplace-list"
+            style="display:flex;flex-direction:column;gap:10px;min-height:200px;max-height:380px;overflow-y:auto;padding-right:6px;">
+            <!-- Fetched from GitHub -->
+          </div>
         </div>
       </div>
 
@@ -668,7 +699,7 @@
             <div class="orb-inner">
               <div class="orb-icon">
                 <svg width="22" height="22" viewBox="0 0 42 42" fill="none">
-                  <rect x="10" y="20" width="22" height="3" rx="1.5" fill="currentColor"/>
+                  <rect x="10" y="20" width="22" height="3" rx="1.5" fill="currentColor" />
                 </svg>
               </div>
             </div>
@@ -678,7 +709,8 @@
             <div class="orb-inner">
               <div class="orb-icon">
                 <svg width="22" height="22" viewBox="0 0 42 42" fill="none">
-                  <rect x="10" y="10" width="22" height="22" rx="2" stroke="currentColor" stroke-width="3" fill="none"/>
+                  <rect x="10" y="10" width="22" height="22" rx="2" stroke="currentColor" stroke-width="3"
+                    fill="none" />
                 </svg>
               </div>
             </div>
@@ -688,8 +720,10 @@
             <div class="orb-inner">
               <div class="orb-icon">
                 <svg width="22" height="22" viewBox="0 0 42 42" fill="none">
-                  <line x1="12" y1="12" x2="30" y2="30" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
-                  <line x1="30" y1="12" x2="12" y2="30" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
+                  <line x1="12" y1="12" x2="30" y2="30" stroke="currentColor" stroke-width="3.5"
+                    stroke-linecap="round" />
+                  <line x1="30" y1="12" x2="12" y2="30" stroke="currentColor" stroke-width="3.5"
+                    stroke-linecap="round" />
                 </svg>
               </div>
             </div>
@@ -962,6 +996,15 @@
         <div class="vital-item">
           <span class="vital-label" data-i18n="disk">DISK</span>
           <span class="vital-value mono" id="v-disk">—%</span>
+        </div>
+        <div class="vital-sep"></div>
+        <div class="vital-item">
+          <span class="vital-label">GPU</span>
+          <span class="vital-value mono" id="v-gpu">—</span>
+        </div>
+        <div class="vital-item">
+          <span class="vital-label">G°</span>
+          <span class="vital-value mono" id="v-gputemp">—</span>
         </div>
         <div class="vital-sep"></div>
         <div class="vital-item">

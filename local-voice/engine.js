@@ -11,29 +11,23 @@
 //   recognizer.getResult(stream) → { text }
 //   stream.free()
 
-const path     = require('path');
-const fs       = require('fs');
-const https    = require('https');
-const http     = require('http');
+const path = require('path');
+const fs = require('fs');
+const https = require('https');
+const http = require('http');
 const { execFile } = require('child_process');
-const os       = require('os');
+const os = require('os');
 
-// ── Model directory — configurable via env or falls back to userData ──────────
-// User can override with SHERPA_MODELS_DIR environment variable
-// Default: D:\Dev\Assets\voices  (matches user's existing setup)
+// ── Model directory — configurable via env or falls back to local-voice/models ─
 let MODELS_DIR = process.env.SHERPA_MODELS_DIR
   || (process.env.HEX_MODELS_DIR)
   || null;
 
-// If not set via env, we try to read from electron userData on first access
+// Default to project-local local-voice/models directory
 function getModelsDir() {
   if (MODELS_DIR) return MODELS_DIR;
-  try {
-    const { app } = require('electron');
-    MODELS_DIR = path.join(app.getPath('userData'), 'voice-models');
-  } catch (_) {
-    MODELS_DIR = path.join(os.homedir(), 'hex-voice-models');
-  }
+  // Default: <project>/local-voice/models (ships with the app)
+  MODELS_DIR = path.join(__dirname, 'models');
   return MODELS_DIR;
 }
 
@@ -42,70 +36,88 @@ function setModelsDir(dir) {
   MODELS_DIR = dir;
 }
 
-const PIPER_BIN_WIN  = () => path.join(getModelsDir(), 'piper', 'piper.exe');
+const PIPER_BIN_WIN = () => path.join(getModelsDir(), 'piper', 'piper.exe');
 const PIPER_BIN_UNIX = () => path.join(getModelsDir(), 'piper', 'piper');
 const getPiperBin = () => process.platform === 'win32' ? PIPER_BIN_WIN() : PIPER_BIN_UNIX();
 
+// ── Whisper model size — configurable from settings ──────────────────────────
+let _whisperSize = 'tiny'; // tiny | small | medium | large
+function setWhisperSize(size) { _whisperSize = size || 'tiny'; }
+function getWhisperSize() { return _whisperSize; }
+
+const WHISPER_SIZES = {
+  tiny: { prefix: 'tiny', dir: 'whisper-tiny', approxMB: 40 },
+  small: { prefix: 'small', dir: 'whisper-small', approxMB: 250 },
+  medium: { prefix: 'medium', dir: 'whisper-medium', approxMB: 750 },
+  large: { prefix: 'large', dir: 'whisper-large', approxMB: 1500 },
+};
+
 // ── Expected file paths ───────────────────────────────────────────────────────
-// The names EXACTLY match what sherpa-onnx-whisper-tiny ships on HuggingFace:
-//   tiny-encoder.int8.onnx  /  tiny-decoder.int8.onnx  /  tiny-tokens.txt
 function getPATHS() {
   const d = getModelsDir();
+  const ws = WHISPER_SIZES[_whisperSize] || WHISPER_SIZES.tiny;
   return {
     stt: {
-      encoder: path.join(d, 'whisper-tiny', 'tiny-encoder.int8.onnx'),
-      decoder: path.join(d, 'whisper-tiny', 'tiny-decoder.int8.onnx'),
-      tokens:  path.join(d, 'whisper-tiny', 'tiny-tokens.txt'),
+      encoder: path.join(d, ws.dir, `${ws.prefix}-encoder.int8.onnx`),
+      decoder: path.join(d, ws.dir, `${ws.prefix}-decoder.int8.onnx`),
+      tokens: path.join(d, ws.dir, `${ws.prefix}-tokens.txt`),
     },
     tts: {
-      en: { model: path.join(d, 'tts-en', 'en_US-lessac-medium.onnx'),     config: path.join(d, 'tts-en', 'en_US-lessac-medium.onnx.json') },
-      ru: { model: path.join(d, 'tts-ru', 'ru_RU-ruslan-medium.onnx'),     config: path.join(d, 'tts-ru', 'ru_RU-ruslan-medium.onnx.json') },
-      ka: { model: path.join(d, 'tts-ka', 'ka_GE-natia-medium.onnx'),      config: path.join(d, 'tts-ka', 'ka_GE-natia-medium.onnx.json') },
+      en: { model: path.join(d, 'tts-en', 'en_US-lessac-medium.onnx'), config: path.join(d, 'tts-en', 'en_US-lessac-medium.onnx.json') },
+      ru: { model: path.join(d, 'tts-ru', 'ru_RU-ruslan-medium.onnx'), config: path.join(d, 'tts-ru', 'ru_RU-ruslan-medium.onnx.json') },
+      ka: { model: path.join(d, 'tts-ka', 'ka_GE-natia-medium.onnx'), config: path.join(d, 'tts-ka', 'ka_GE-natia-medium.onnx.json') },
     }
   };
 }
 
 const HF = 'https://huggingface.co';
-const DOWNLOADS = {
-  stt: {
-    getDir: () => path.join(getModelsDir(), 'whisper-tiny'),
+
+// Build STT download spec dynamically based on selected Whisper size
+function getSTTDownload(size) {
+  const s = WHISPER_SIZES[size] || WHISPER_SIZES.tiny;
+  const repo = `sherpa-onnx-whisper-${s.prefix}`;
+  return {
+    getDir: () => path.join(getModelsDir(), s.dir),
     files: [
-      { url: `${HF}/csukuangfj/sherpa-onnx-whisper-tiny/resolve/main/tiny-encoder.int8.onnx`, name: 'tiny-encoder.int8.onnx' },
-      { url: `${HF}/csukuangfj/sherpa-onnx-whisper-tiny/resolve/main/tiny-decoder.int8.onnx`, name: 'tiny-decoder.int8.onnx' },
-      { url: `${HF}/csukuangfj/sherpa-onnx-whisper-tiny/resolve/main/tiny-tokens.txt`,        name: 'tiny-tokens.txt' },
+      { url: `${HF}/csukuangfj/${repo}/resolve/main/${s.prefix}-encoder.int8.onnx`, name: `${s.prefix}-encoder.int8.onnx` },
+      { url: `${HF}/csukuangfj/${repo}/resolve/main/${s.prefix}-decoder.int8.onnx`, name: `${s.prefix}-decoder.int8.onnx` },
+      { url: `${HF}/csukuangfj/${repo}/resolve/main/${s.prefix}-tokens.txt`, name: `${s.prefix}-tokens.txt` },
     ]
-  },
+  };
+}
+
+const DOWNLOADS = {
   'tts-en': {
     getDir: () => path.join(getModelsDir(), 'tts-en'),
     files: [
-      { url: `${HF}/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx`,      name: 'en_US-lessac-medium.onnx' },
+      { url: `${HF}/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx`, name: 'en_US-lessac-medium.onnx' },
       { url: `${HF}/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json`, name: 'en_US-lessac-medium.onnx.json' },
     ]
   },
   'tts-ru': {
     getDir: () => path.join(getModelsDir(), 'tts-ru'),
     files: [
-      { url: `${HF}/rhasspy/piper-voices/resolve/main/ru/ru_RU/ruslan/medium/ru_RU-ruslan-medium.onnx`,      name: 'ru_RU-ruslan-medium.onnx' },
+      { url: `${HF}/rhasspy/piper-voices/resolve/main/ru/ru_RU/ruslan/medium/ru_RU-ruslan-medium.onnx`, name: 'ru_RU-ruslan-medium.onnx' },
       { url: `${HF}/rhasspy/piper-voices/resolve/main/ru/ru_RU/ruslan/medium/ru_RU-ruslan-medium.onnx.json`, name: 'ru_RU-ruslan-medium.onnx.json' },
     ]
   },
   'tts-ka': {
     getDir: () => path.join(getModelsDir(), 'tts-ka'),
     files: [
-      { url: `${HF}/rhasspy/piper-voices/resolve/main/ka/ka_GE/natia/medium/ka_GE-natia-medium.onnx`,        name: 'ka_GE-natia-medium.onnx' },
-      { url: `${HF}/rhasspy/piper-voices/resolve/main/ka/ka_GE/natia/medium/ka_GE-natia-medium.onnx.json`,   name: 'ka_GE-natia-medium.onnx.json' },
+      { url: `${HF}/rhasspy/piper-voices/resolve/main/ka/ka_GE/natia/medium/ka_GE-natia-medium.onnx`, name: 'ka_GE-natia-medium.onnx' },
+      { url: `${HF}/rhasspy/piper-voices/resolve/main/ka/ka_GE/natia/medium/ka_GE-natia-medium.onnx.json`, name: 'ka_GE-natia-medium.onnx.json' },
     ]
   },
 };
 
 class LocalVoiceEngine {
   constructor() {
-    this._sherpa    = null;
-    this._stt       = null;
-    this._tts       = {};
-    this._sttReady  = false;
-    this._ttsReady  = {};
-    this._log       = () => {};
+    this._sherpa = null;
+    this._stt = null;
+    this._tts = {};
+    this._sttReady = false;
+    this._ttsReady = {};
+    this._log = () => { };
   }
 
   setLogger(fn) { this._log = fn; }
@@ -115,9 +127,12 @@ class LocalVoiceEngine {
     // Reset cached instances so they're reinitialised with new paths
     this._sttReady = false;
     this._ttsReady = {};
-    this._stt      = null;
-    this._tts      = {};
+    this._stt = null;
+    this._tts = {};
   }
+
+  setWhisperSize(size) { setWhisperSize(size); this._sttReady = false; this._stt = null; }
+  getWhisperSize() { return getWhisperSize(); }
 
   _getSherpa() {
     if (this._sherpa) return this._sherpa;
@@ -138,8 +153,8 @@ class LocalVoiceEngine {
     const sh = this._getSherpa();
     // sherpa-onnx versions differ in capitalisation and export style
     return sh[name]              // e.g. sh.OfflineRecognizer
-        || sh['Sherpa' + name]   // e.g. sh.SherpaOfflineRecognizer
-        || null;
+      || sh['Sherpa' + name]   // e.g. sh.SherpaOfflineRecognizer
+      || null;
   }
 
   // ── Check file existence, logging what's missing ────────────────────────────
@@ -154,25 +169,25 @@ class LocalVoiceEngine {
   // ── Status ───────────────────────────────────────────────────────────────────
   getStatus() {
     const p = getPATHS();
-    const sttFiles  = [p.stt.encoder, p.stt.decoder, p.stt.tokens];
-    const sttReady  = sttFiles.every(f => fs.existsSync(f));
-    const ttsReady  = {
+    const sttFiles = [p.stt.encoder, p.stt.decoder, p.stt.tokens];
+    const sttReady = sttFiles.every(f => fs.existsSync(f));
+    const ttsReady = {
       en: fs.existsSync(p.tts.en.model),
       ru: fs.existsSync(p.tts.ru.model),
       ka: fs.existsSync(p.tts.ka.model),
     };
     let hasSherpa = false;
-    try { this._getSherpa(); hasSherpa = true; } catch(_) {}
+    try { this._getSherpa(); hasSherpa = true; } catch (_) { }
     const hasPiper = fs.existsSync(getPiperBin());
     return {
-      available:  true,
+      available: true,
       sttReady,
       ttsReady,
       hasSherpa,
       hasPiper,
-      modelsDir:  getModelsDir(),
-      sttFiles:   { encoder: p.stt.encoder, decoder: p.stt.decoder, tokens: p.stt.tokens },
-      voices:     this.listVoices(),
+      modelsDir: getModelsDir(),
+      sttFiles: { encoder: p.stt.encoder, decoder: p.stt.decoder, tokens: p.stt.tokens },
+      voices: this.listVoices(),
     };
   }
 
@@ -184,22 +199,22 @@ class LocalVoiceEngine {
         name.startsWith('tts-') && fs.statSync(path.join(d, name)).isDirectory()
       );
       for (const dir of dirs) {
-        const lang    = dir.replace('tts-', '');
+        const lang = dir.replace('tts-', '');
         const fullDir = path.join(d, dir);
         fs.readdirSync(fullDir)
           .filter(f => f.endsWith('.onnx') && !f.endsWith('.onnx.json'))
           .forEach(file => {
             voices.push({
-              id:       `${lang}:${file.replace('.onnx','')}`,
+              id: `${lang}:${file.replace('.onnx', '')}`,
               lang,
-              name:     file.replace('.onnx',''),
-              file:     path.join(fullDir, file),
-              ready:    true,
+              name: file.replace('.onnx', ''),
+              file: path.join(fullDir, file),
+              ready: true,
               isDefault: false,
             });
           });
       }
-    } catch (_) {}
+    } catch (_) { }
     return voices;
   }
 
@@ -221,7 +236,7 @@ class LocalVoiceEngine {
     const tok = fwd(p.tokens);
 
     this._log('STT files found:\n  encoder: ' + enc +
-              '\n  decoder: ' + dec + '\n  tokens: ' + tok);
+      '\n  decoder: ' + dec + '\n  tokens: ' + tok);
 
     const sh = this._getSherpa();
     this._log('sherpa-onnx exports: ' + Object.keys(sh).join(', '));
@@ -309,7 +324,7 @@ class LocalVoiceEngine {
     for (const { label, cfg } of variants) {
       try {
         const recognizer = tryCreate(cfg);
-        this._stt      = recognizer;
+        this._stt = recognizer;
         this._sttReady = true;
         this._log('STT ready.');
         return true;
@@ -343,7 +358,7 @@ class LocalVoiceEngine {
     } catch (e) {
       // If a runtime error occurs, reset so next call re-inits
       this._sttReady = false;
-      this._stt      = null;
+      this._stt = null;
       throw new Error('Transcription failed: ' + (e.message || e));
     }
   }
@@ -372,28 +387,28 @@ class LocalVoiceEngine {
       );
     }
 
-    const tmpWav      = path.join(os.tmpdir(), `hex-tts-${Date.now()}.wav`);
+    const tmpWav = path.join(os.tmpdir(), `hex-tts-${Date.now()}.wav`);
     const lengthScale = (1.0 / Math.max(0.5, Math.min(2.0, speed || 1.0))).toFixed(3);
 
     return new Promise((resolve, reject) => {
       const args = [
-        '--model',        modelPath,
-        '--output_file',  tmpWav,
+        '--model', modelPath,
+        '--output_file', tmpWav,
         '--length-scale', lengthScale,
       ];
 
       const proc = execFile(piperBin, args, { timeout: 30000 }, (err) => {
         if (err) {
-          try { fs.unlinkSync(tmpWav); } catch (_) {}
+          try { fs.unlinkSync(tmpWav); } catch (_) { }
           return reject(new Error('Piper failed: ' + (err.message || err)));
         }
         try {
-          const wavBuf   = fs.readFileSync(tmpWav);
+          const wavBuf = fs.readFileSync(tmpWav);
           fs.unlinkSync(tmpWav);
-          const header   = wavBuf.slice(0, 44);
-          const sr       = header.readUInt32LE(24);
-          const bps      = header.readUInt16LE(34);
-          const pcmData  = wavBuf.slice(44);
+          const header = wavBuf.slice(0, 44);
+          const sr = header.readUInt32LE(24);
+          const bps = header.readUInt16LE(34);
+          const pcmData = wavBuf.slice(44);
           let samples;
           if (bps === 16) {
             const i16 = new Int16Array(pcmData.buffer, pcmData.byteOffset, pcmData.length / 2);
@@ -411,13 +426,17 @@ class LocalVoiceEngine {
   }
 
   // ── Model downloader ────────────────────────────────────────────────────────
-  async downloadModels(targets, onProgress) {
+  async downloadModels(targets, onProgress, whisperSize) {
     const d = getModelsDir();
     fs.mkdirSync(d, { recursive: true });
 
+    // If a whisper size was specified, switch to it
+    if (whisperSize) setWhisperSize(whisperSize);
+
     const allFiles = [];
     for (const target of targets) {
-      const spec = DOWNLOADS[target];
+      // Handle STT dynamically based on selected Whisper size
+      const spec = (target === 'stt') ? getSTTDownload(_whisperSize) : DOWNLOADS[target];
       if (!spec) continue;
       const dir = spec.getDir();
       fs.mkdirSync(dir, { recursive: true });
@@ -439,8 +458,8 @@ class LocalVoiceEngine {
 
     this._sttReady = false;
     this._ttsReady = {};
-    this._stt      = null;
-    this._tts      = {};
+    this._stt = null;
+    this._tts = {};
   }
 
   _downloadFile(url, dest, onPct) {
@@ -448,13 +467,13 @@ class LocalVoiceEngine {
       const doGet = (u, hops = 0) => {
         if (hops > 15) { reject(new Error('Too many redirects')); return; }
         let parsed;
-        try { parsed = new URL(u); } catch(e) { reject(e); return; }
+        try { parsed = new URL(u); } catch (e) { reject(e); return; }
         const proto = parsed.protocol === 'https:' ? https : http;
         const req = proto.get({
           hostname: parsed.hostname,
-          port:     parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
-          path:     parsed.pathname + parsed.search,
-          headers:  { 'User-Agent': 'HEX-Voice-Downloader/1.0' }
+          port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+          path: parsed.pathname + parsed.search,
+          headers: { 'User-Agent': 'HEX-Voice-Downloader/1.0' }
         }, res => {
           if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
             res.resume();
@@ -468,8 +487,8 @@ class LocalVoiceEngine {
           res.on('data', chunk => { got += chunk.length; if (total && onPct) onPct(Math.round(got / total * 100)); });
           res.pipe(out);
           out.on('finish', () => { out.close(); resolve(); });
-          out.on('error', e => { fs.unlink(dest, ()=>{}); reject(e); });
-          res.on('error', e => { fs.unlink(dest, ()=>{}); reject(e); });
+          out.on('error', e => { fs.unlink(dest, () => { }); reject(e); });
+          res.on('error', e => { fs.unlink(dest, () => { }); reject(e); });
         });
         req.on('error', reject);
         req.setTimeout(30000, () => { req.destroy(); reject(new Error('Timeout: ' + path.basename(dest))); });
