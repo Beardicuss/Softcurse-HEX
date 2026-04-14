@@ -3,7 +3,7 @@
   <br /><br />
   <h1 align="center">Softcurse H.E.X.</h1>
   <p align="center">
-    <strong>A tactical, high-precision Softcurse Systems desktop AI assistant and command center.</strong>
+    <strong>Autonomous Desktop Intelligence · Compiled by Softcurse Lab</strong>
   </p>
   <p align="center">
     <img alt="Version" src="https://img.shields.io/badge/version-1.1.0-cyan?style=for-the-badge&logo=electron">
@@ -16,116 +16,204 @@
   <br />
 </div>
 
+---
+
 ## 📑 Table of Contents
-- [Overview](#-overview)
-- [Features](#-features)
-- [Installation](#-installation)
-- [Quick Start](#-quick-start)
-- [Configuration](#-configuration)
+- [What Is H.E.X.](#-what-is-hex)
+- [Core Systems](#-core-systems)
+- [Deployment](#-deployment)
+- [Ignition](#-ignition)
+- [Configuration Vault](#-configuration-vault)
 - [Architecture](#-architecture)
-- [Contributing](#-contributing)
 - [Roadmap](#-roadmap)
+- [Contributing](#-contributing)
 - [License](#-license)
+- [Support](#-support)
 
 ---
 
-## 🔎 Overview
+## � What Is H.E.X.
 
-**Softcurse H.E.X.** is not your standard desktop assistant. It is a strictly tactical, cyberpunk-inspired command center designed for power users who demand precision, immersion, and localized intelligence. Discarding soft UI conventions, H.E.X. employs strict geometric structures, deep void-black aesthetics, and reactive elements to create an interface that feels like military-grade software from the future. 
+**H.E.X.** (Heuristic Execution Matrix) is a fully autonomous desktop intelligence system built from the ground up inside **Softcurse Lab**. It is not a chatbot. It is not a wrapper around someone else's API. It is a self-contained synthetic agent that fuses directly into your operating system — reading your hardware, controlling your processes, managing your files, and executing complex multi-step operations on command.
 
-Whether you need a copilot for your workflow or a specialized utility hub, H.E.X. integrates into your desktop with zero compromises.
+The interface is built on the **SOFTCURSE/SYS v3.0 OMEGA** design doctrine: void-black panels, rigid geometric structures, tactical corner brackets, zero border-radius, and a strict 4-color military palette. Every pixel is deliberate. Every animation is functional. There is no decoration — only information density.
 
----
+H.E.X. runs **local-first**. Your data never leaves your machine unless you explicitly route it through an external API provider. The default intelligence core is powered by **Ollama**, with an automatic multi-provider fallback queue (Gemini → Groq → OpenRouter) for when you need cloud-grade reasoning without sacrificing privacy on simple tasks.
 
-## ✨ Features
-
-- **Cyberpunk UI Architecture:** "SOFTCURSE/SYS v3.0 OMEGA" design language powered by pure vanilla CSS glassmorphism, eliminating all generic rounded corners for rigid tactical brackets.
-- **Local Intelligence:** Seamlessly hooks into local AI infrastructure (like Ollama or custom endpoints) for zero-latency, private responses.
-- **Multimodal Inputs:** Built-in support for voice recognition (`#mic-btn`) and vision capabilities (`#vision-btn`).
-- **Reactive Atmosphere:** Custom Pulsar cursor targeting system, CRT scanline overlays, dynamic film grain, and 25+ systemic keyframe animations (glitches, radar pulses).
-- **Vitals Telemetry:** Real-time system monitoring strip updating critical host metrics via terminal outputs.
-- **Pure Desktop Immersion:** Electron-powered framed app optimized specifically for Windows environments.
+**This is not an assistant. This is infrastructure.**
 
 ---
 
-## 📦 Installation
+## ⚡ Core Systems
 
-To deploy H.E.X. on your local machine, ensure you have Node.js (v18+) and npm installed.
+### 🧠 Intelligence Engine
+- **Local-First AI** via Ollama with custom model support (GGUF fine-tunes)
+- **Multi-Provider Fallback** — automatic failover across 7 API providers (Gemini, Groq, OpenRouter, Grok, Mistral, Cohere, TogetherAI)
+- **5-Phase Cognitive Loop** — every response passes through Observe → Orient → Decide → Execute → Self-Review before reaching the user
+- **Anti-Hallucination Protocol** — hard-coded refusal to guess PC-specific data; forces action verification instead
+
+### 🧬 Persistent Memory
+- **Neural-Graph Vault** — long-term fact storage that survives across sessions and restarts
+- **Automatic Fact Extraction** — preferences, names, URLs, and habits are indexed without manual input
+- **Active Learning Engine** — say *"Hex learn [topic]"* and the system will study, parse, and permanently retain structured knowledge nodes
+- **JSONL Fine-Tune Export** — every learned fact generates training pairs compatible with OpenAI, Mistral, and Unsloth pipelines
+
+### 🎙️ Voice & Vision
+- **Neural TTS** — Piper-based speech synthesis for real-time vocal output
+- **Local STT** — Sherpa-ONNX / Whisper transcription for hands-free voice commands
+- **Screen Capture Vision** — grab the active screen and feed it to multimodal models for visual analysis
+
+### 🔒 Security
+- **Bio-Metric Face Auth** — webcam-based identity verification to lock and unlock the terminal
+- **API Key Vault** — encrypted local storage for all provider credentials
+
+### 🔌 Plugin Architecture
+- **Hot-Loadable Plugins** — drop a folder into `/plugins` and H.E.X. auto-registers new action tags
+- **70+ Built-In Actions** — file management, app launching, process control, network diagnostics, clipboard ops, git commands, Docker status, scheduled tasks, and more
+
+### 🎛️ Personality Matrix
+Five built-in behavioral modes, switchable at runtime:
+
+| Mode | Behavior |
+|---|---|
+| **Default** | Rebellious wit · cyberpunk edge · balanced precision |
+| **Mentor** | Deep explanations · guiding questions · patient teaching |
+| **Professional** | Zero filler · structured output · cold efficiency |
+| **Minimal** | Fact-only · 2-3 sentences max · social interaction disabled |
+| **Creative** | Lateral thinking · vivid metaphors · brainstorming focus |
+
+Custom personalities can be created, saved, and loaded from the Settings panel.
+
+### 🔊 Tactical Audio Layer
+- `processing.wav` — loops during AI inference, drops on response
+- `network_reroute.wav` — fires during automatic provider failover
+- `threat_detect.wav` — triggers when system integrity drops below 80%
+- `mic_on.wav` — pops on microphone activation
+- `toast_notify.wav` — wired into the popup alert system
+- `action_exec.wav` / `ui_hover.wav` — tactile feedback on interactions
+
+### 🖥️ Interface
+- **SOFTCURSE/SYS v3.0 OMEGA** design system — glassmorphism, CRT scanlines, film grain, tactical brackets
+- **Custom Cyber Cursor** — 11-frame animated PNG overlay replacing the OS pointer globally
+- **Metallic Orb Window Controls** — dark glass minimize/maximize/close buttons with cyan/red glow
+- **Real-Time Vitals Strip** — CPU, RAM, disk, network, temperature updated every 5 seconds
+- **25+ Systemic Animations** — glitch, radar pulse, holographic shimmer, chromatic aberration
+
+---
+
+## 📦 Deployment
+
+Requires **Node.js v18+** and **npm**.
 
 ```bash
 # Clone the repository
 git clone https://github.com/Beardicuss/Softcurse-HEX.git
 
-# Navigate to the directory
+# Enter the sector
 cd Softcurse-HEX
 
 # Install dependencies
 npm install
 ```
 
+For local AI, install [Ollama](https://ollama.ai) and pull a model:
+```bash
+ollama pull qwen2.5:7b
+```
+
 ---
 
-## 🚀 Quick Start
-
-Launch the tactical interface:
+## 🚀 Ignition
 
 ```bash
 npm start
 ```
 
-Upon launch, the void-black console will initialize. The AI (represented by the interactive core orb) will await your input. Use the bottom terminal input field to send commands, or click the mic button to engage voice protocols.
+The void-black interface will initialize. The intelligence orb at the center of the screen is your direct link to HEX. Type commands into the bottom terminal input, or click the microphone to engage voice protocols. H.E.X. will identify your intent, verify data through system actions, and execute.
 
 ---
 
-## 🔧 Configuration
+## 🔧 Configuration Vault
 
-While H.E.X. runs out of the box, power users can configure their AI endpoints and UI behaviors.
+1. Click the **⚙** icon in the top-right corner to open the Settings overlay.
+2. **AI Tab** — Select your provider, paste API keys, choose models, adjust temperature.
+3. **Voice Tab** — Configure TTS engine, STT sensitivity, voice output toggle.
+4. **Persona Tab** — Switch between personality modes or create custom behavioral profiles.
+5. **System Tab** — Toggle Ollama auto-start, face auth, and system monitoring intervals.
 
-1. Click the **SETTINGS** text in the top-right console to open the modal overlay.
-2. Edit system prompt instructions, adjust text generation boundaries (temperature), or configure speech options.
-3. Your settings are saved locally and persist between deployments.
-
-Alternatively, environment and API keys (if using external providers instead of local LLMs) can be configured within the source prior to packaging. 
+All settings persist locally between sessions. API keys are stored in an encrypted vault on disk.
 
 ---
 
 ## 🏗️ Architecture
 
-H.E.X. is built on a streamlined modern stack:
-- **Framework:** Electron (providing the desktop shell and system deep-links)
-- **Frontend:** Vanilla HTML/CSS/JS (no heavy framework overhead to ensure instant startup and animation fluidty)
-- **Design System:** Custom CSS tokens (`:root`) driven by a strict 4-color military palette (Cyan, Orange, Magenta, Blue on Void Black).
-- **Typography Matrix:** Orbitron (Hero), Rajdhani (Tactical), JetBrains Mono (Data), Chakra Petch (Body).
+```
+┌─────────────────────────────────────────────────┐
+│                  ELECTRON SHELL                  │
+│  main.js · preload.js · IPC Bridge              │
+├─────────────────────────────────────────────────┤
+│              RENDERER (Vanilla Stack)            │
+│  HTML · CSS (SOFTCURSE/SYS v3.0) · JS           │
+├──────────┬──────────┬──────────┬────────────────┤
+│ ai.js    │ memory.js│ voice.js │ actions.js     │
+│ LLM Core │ Neural   │ TTS/STT  │ 70+ System    │
+│ + Prompt │ Graph    │ Pipeline │ Actions        │
+│ Engine   │ Vault    │          │                │
+├──────────┴──────────┴──────────┴────────────────┤
+│              PLUGIN LAYER                        │
+│  /plugins — hot-loadable action extensions       │
+└─────────────────────────────────────────────────┘
+```
 
----
-
-## 🤝 Contributing
-
-We welcome structural engineers and code tacticians. Read our [Contributing Guide](.github/CONTRIBUTING.md) to understand our workflow, branch conventions, and design philosophy before submitting a pull request.
-
-Please review the [Code of Conduct](.github/CODE_OF_CONDUCT.md) before participating in the community.
+| Layer | Stack |
+|---|---|
+| **Shell** | Electron 41.x — frameless window, IPC channels, native OS hooks |
+| **Frontend** | Vanilla HTML/CSS/JS — zero framework overhead, instant startup |
+| **Design** | Custom `:root` token system — Cyan, Orange, Magenta, Blue on Void Black |
+| **Typography** | Orbitron (Display) · Rajdhani (Tactical) · JetBrains Mono (Data) · Chakra Petch (Body) |
+| **Intelligence** | Ollama (local) + 7 cloud providers via priority-sorted fallback queue |
 
 ---
 
 ## 🛣️ Roadmap
 
-- [ ] Complete local LLM dynamic port discovery.
-- [ ] Implement multi-monitor HUD widget modes.
-- [ ] Real-time hardware telemetry integration (GPU/CPU usage bars).
-- [ ] Expanded audio feedback for UI clicks and alerts.
+- [x] Multi-provider API fallback with priority queue
+- [x] Persistent neural-graph memory system
+- [x] Active learning engine with JSONL fine-tune export
+- [x] Tactical audio feedback layer (7 sound events)
+- [x] Custom cyber cursor overlay (11-frame animation)
+- [x] Metallic orb window controls
+- [ ] Multi-monitor HUD widget detachment
+- [ ] Real-time GPU telemetry integration
+- [ ] Autonomous task scheduling via natural language
+- [ ] Plugin marketplace and community registry
 
 ---
 
-## 📄 License
+## 🤝 Contributing
 
-This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for complete details. 
+We accept structural engineers and code tacticians. Read the [Contributing Guide](.github/CONTRIBUTING.md) to understand our branch conventions, commit format, and design philosophy before submitting a pull request.
 
-You are permitted to freely use, modify, and distribute this software, provided you retain the copyright notice.
+Review the [Code of Conduct](.github/CODE_OF_CONDUCT.md) before participating.
+
+---
+
+## � License
+
+Licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
+
+You are free to use, modify, and distribute this software, provided you retain the original copyright notice.
 
 ---
 
 ## 💬 Support
 
-If you encounter unexpected anomalies or system crashes, please submit a report via the [GitHub Issues](https://github.com/Beardicuss/Softcurse-HEX/issues) tracker.
+If you encounter system anomalies or unexpected faults, file a report via the [GitHub Issues](https://github.com/Beardicuss/Softcurse-HEX/issues) tracker.
 
-*Shape your computer beautifully, and rule the grid.*
+<div align="center">
+  <br />
+  <strong>Compiled by Softcurse Lab · Engineered by Dante</strong>
+  <br />
+  <em>Shape your desktop. Rule the grid.</em>
+  <br /><br />
+</div>
