@@ -20,6 +20,7 @@ class HexAI {
       groq: 'llama-3.1-8b-instant',
       together: 'meta-llama/Llama-3-8b-chat-hf',
       cohere: 'command-light',
+      hf: 'mistralai/Mixtral-8x7B-Instruct-v0.1',
     };
     this.COMPLEXITY_THRESHOLD = 0.4;  // below this → use fast model
   }
@@ -116,12 +117,17 @@ class HexAI {
 
       for (const currProvider of providerQueue) {
         try {
+          // Inject live key for EVERY provider (including the primary selected one)
+          if (currProvider !== 'ollama' && liveKeys[currProvider] && liveKeys[currProvider].length > 0) {
+            this.config.llm.apiKey = liveKeys[currProvider][0];
+          }
           if (currProvider !== routeProvider) {
             window.hexTaskBus?.push(`Fallback: Auto-routing to ${currProvider}...`);
             if (window.hexAudio) window.hexAudio.play('reroute', 0.9);
-            // Grab the FIRST valid key available from the live array pool
-            this.config.llm.apiKey = liveKeys[currProvider] ? liveKeys[currProvider][0] : '';
             this.config.llm.model = this.FAST_MODELS[currProvider] || '';
+          } else if (!this.config.llm.model && this.FAST_MODELS[currProvider]) {
+            // If user didn't set a specific model, use the fast default
+            this.config.llm.model = this.FAST_MODELS[currProvider];
           }
 
           switch (currProvider) {
