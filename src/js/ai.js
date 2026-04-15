@@ -86,14 +86,29 @@ class HexAI {
       // Strict cascade order per Phase 13 requirements:
       const PRIORITY = ['anthropic', 'openai', 'mistral', 'together', 'grok', 'gemini', 'cohere', 'hf', 'replicate'];
 
-      // Start with whichever provider the user explicitly asked for (or Ollama/Local)
-      const providerQueue = [routeProvider];
+      // Smart fallback: if the user's chosen provider has no live key AND isn't local (ollama),
+      // auto-route to the first provider in the cascade that HAS keys.
+      const providerQueue = [];
+
+      // Check if user's selected provider has a live key or is local
+      const selectedHasKey = routeProvider === 'ollama' || (liveKeys[routeProvider] && liveKeys[routeProvider].length > 0);
+
+      if (selectedHasKey) {
+        providerQueue.push(routeProvider);
+      } else if (routeProvider !== 'none') {
+        window.hexTaskBus?.push(`No key for ${routeProvider}. Smart fallback activating...`);
+      }
 
       // Build the backup pipeline by picking the highest priority providers that HAVE known valid keys
-      for (const p of PRIORITY) {
-        if (p !== routeProvider && liveKeys[p] && liveKeys[p].length > 0) {
-          providerQueue.push(p);
+      for (const pri of PRIORITY) {
+        if (!providerQueue.includes(pri) && liveKeys[pri] && liveKeys[pri].length > 0) {
+          providerQueue.push(pri);
         }
+      }
+
+      // If queue is completely empty, still try ollama as last resort
+      if (providerQueue.length === 0) {
+        providerQueue.push(routeProvider !== 'none' ? routeProvider : 'ollama');
       }
 
       let success = false;

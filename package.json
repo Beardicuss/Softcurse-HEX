@@ -30,6 +30,7 @@
       "main.js",
       "preload.js",
       "src/**/*",
+      "ai/**/*",
       "local-voice/**/*",
       "scripts/**/*"
     ],

@@ -307,8 +307,6 @@ function updateProviderUI() {
   const hints = PROVIDER_HINTS[p] || PROVIDER_HINTS.none;
 
   document.getElementById('cfg-baseurl-group').style.display = p === 'ollama' ? '' : 'none';
-  const autoGrp = document.getElementById('cfg-autoollama-group');
-  if (autoGrp) autoGrp.style.display = p === 'ollama' ? '' : 'none';
 
   const mh = document.getElementById('model-hint');
   if (mh) mh.textContent = hints.model ? `e.g. ${hints.model}` : '';
@@ -590,26 +588,60 @@ function renderLiveArsenal(keysMap) {
   const countEl = document.getElementById('ai-pool-count');
   if (!container || !countEl) return;
 
-  const providers = Object.keys(keysMap);
+  const PRIORITY = ['anthropic', 'openai', 'mistral', 'together', 'grok', 'gemini', 'cohere', 'hf', 'replicate'];
+  const LABELS = { anthropic: 'ANTHROPIC', openai: 'OPENAI', mistral: 'MISTRAL', together: 'TOGETHER AI', grok: 'GROK (xAI)', gemini: 'GEMINI', cohere: 'COHERE', hf: 'HUGGING FACE', replicate: 'REPLICATE' };
+  const activeProvider = document.getElementById('cfg-provider')?.value || '';
+
+  // Sort by priority order, then append any extras
+  const sortedProviders = PRIORITY.filter(p => keysMap[p] && keysMap[p].length > 0);
+  // Add any other providers not in our list
+  for (const p of Object.keys(keysMap)) {
+    if (!sortedProviders.includes(p) && keysMap[p].length > 0) sortedProviders.push(p);
+  }
+
   let total = 0;
   let html = '';
 
-  if (providers.length === 0) {
-    html = '<div style="color:var(--orange);text-align:center;padding:20px;">No verified keys found in ai/leaked-api-keys.json.<br>Background hunter is running...</div>';
+  if (sortedProviders.length === 0) {
+    html = '<div style="color:var(--orange);text-align:center;padding:20px;">No verified keys found.<br>Background hunter is running...</div>';
   } else {
-    for (const p of providers) {
-      const activeKeysCount = keysMap[p].length;
-      total += activeKeysCount;
-      const activeColor = activeKeysCount > 0 ? '#00ffc8' : 'var(--muted)';
-      html += `<div style="display:flex;justify-content:space-between;padding:6px;border-bottom:1px solid var(--border);">
-                 <span>${p.toUpperCase()}</span>
-                 <span style="color:${activeColor};text-shadow:0 0 5px ${activeColor};">${activeKeysCount} valid key${activeKeysCount !== 1 ? 's' : ''}</span>
+    for (const p of sortedProviders) {
+      const n = keysMap[p].length;
+      total += n;
+      const isActive = p === activeProvider;
+      const activeColor = n > 0 ? '#00ffc8' : 'var(--muted)';
+      const borderLeft = isActive ? 'border-left:3px solid var(--cyan);' : 'border-left:3px solid transparent;';
+      const bg = isActive ? 'background:rgba(0,255,200,0.06);' : '';
+      html += `<div onclick="selectLiveProvider('${p}')" style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer;${borderLeft}${bg}transition:background .15s;" onmouseover="this.style.background='rgba(0,255,200,0.1)'" onmouseout="this.style.background='${isActive ? 'rgba(0,255,200,0.06)' : ''}'">
+                 <span>${LABELS[p] || p.toUpperCase()}${isActive ? ' <span style=\"color:var(--cyan);font-size:9px;\">● ACTIVE</span>' : ''}</span>
+                 <span style="color:${activeColor};text-shadow:0 0 5px ${activeColor};">${n} valid key${n !== 1 ? 's' : ''}</span>
                </div>`;
     }
   }
 
   container.innerHTML = html;
   countEl.textContent = total;
+}
+
+function selectLiveProvider(providerName) {
+  const sel = document.getElementById('cfg-provider');
+  if (sel) {
+    // Check if the option exists in the dropdown
+    const option = [...sel.options].find(o => o.value === providerName);
+    if (option) {
+      sel.value = providerName;
+    } else {
+      // Add it dynamically
+      const opt = document.createElement('option');
+      opt.value = providerName;
+      opt.textContent = providerName.toUpperCase();
+      sel.appendChild(opt);
+      sel.value = providerName;
+    }
+    updateProviderUI();
+  }
+  // Re-render to update the active highlight
+  loadLiveArsenal();
 }
 
 // Hook IPC continuous updater for hot-reloads
