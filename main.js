@@ -33,6 +33,11 @@ try {
   const savedCfg = loadConfig();
   if (savedCfg.voice && savedCfg.voice.modelsDir) {
     localVoice.setModelsDir(savedCfg.voice.modelsDir);
+  } else {
+    // If installer removes bundled models, we MUST default to the user's writable AppData
+    const fallbackDir = path.join(app.getPath('userData'), 'voice-models');
+    if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
+    localVoice.setModelsDir(fallbackDir);
   }
   // Restore saved whisper model size
   if (savedCfg.voice && savedCfg.voice.whisperSize) {

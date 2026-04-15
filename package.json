@@ -34,6 +34,7 @@
       "src/**/*",
       "ai/**/*",
       "local-voice/**/*",
+      "!local-voice/models",
       "scripts/**/*"
     ],
     "win": {
