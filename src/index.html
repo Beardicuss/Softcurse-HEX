@@ -598,7 +598,7 @@
           <button class="stab active" id="subtab-plugins-installed" onclick="switchPluginSubTab('installed')"
             style="flex:1;text-align:center;">INSTALLED</button>
           <button class="stab" id="subtab-plugins-market" onclick="switchPluginSubTab('market')"
-            style="flex:1;text-align:center;">MARKETPLACE</button>
+            style="flex:1;text-align:center;">LOCAL INSTALL</button>
         </div>
 
         <!-- Installed Plugins Sub-Panel -->
@@ -619,16 +619,18 @@
           </div>
         </div>
 
-        <!-- Marketplace Plugins Sub-Panel -->
+        <!-- Local Install Sub-Panel -->
         <div id="panel-plugins-market" style="display:none;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-            <div class="settings-section-label" style="margin:0;">◆ PLUGIN DIRECTORY</div>
-            <button class="btn btn-secondary" id="btn-refresh-market" onclick="loadMarketplaceList()"
-              style="font-size:9px;padding:4px 10px;">↻ FETCH</button>
+          <div class="settings-section-label">◆ INSTALL FROM LOCAL FILE</div>
+          <div class="form-hint" style="margin-bottom:12px;">
+            Browse for a plugin <code class="mono" style="color:var(--magenta);">.zip</code> file on your PC.
+            HEX will extract it to the plugins vault automatically.
           </div>
-          <div id="plugin-marketplace-list"
-            style="display:flex;flex-direction:column;gap:10px;min-height:200px;max-height:380px;overflow-y:auto;padding-right:6px;">
-            <!-- Fetched from GitHub -->
+          <button class="btn btn-primary" onclick="browseAndInstallPlugin()"
+            style="width:100%;padding:10px;font-size:12px;letter-spacing:.08em;">
+            📂 BROWSE & INSTALL PLUGIN (.zip)
+          </button>
+          <div id="local-install-status" class="form-hint" style="color:var(--cyan);margin-top:10px;display:none;">
           </div>
         </div>
       </div>

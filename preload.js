@@ -231,13 +231,18 @@ contextBridge.exposeInMainWorld('hexAPI', {
     browseDir: () => ipcRenderer.invoke('voice:browse-dir'),
   },
 
-  // ── Plugins Marketplace ───────────────────────
+  // ── Plugins (Local Install) ────────────────────
   plugins: {
     list: () => ipcRenderer.invoke('plugins:list'),
     discover: () => ipcRenderer.invoke('plugins:discover'),
-    fetchIndex: () => ipcRenderer.invoke('plugins:fetch-index'),
-    install: (id, downloadUrl) => ipcRenderer.invoke('plugins:install', { id, downloadUrl }),
+    installLocal: () => ipcRenderer.invoke('plugins:install-local'),
     remove: (id) => ipcRenderer.invoke('plugins:remove', { id })
+  },
+
+  // ── Web Sub-Agent ──────────────────────────────
+  web: {
+    scrape: (url) => ipcRenderer.invoke('web:scrape', url),
+    search: (query) => ipcRenderer.invoke('web:search', query),
   },
 
   // ── Generic Events ────────────────────────────

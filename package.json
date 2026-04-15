@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "node-schedule": "^2.1.1",
+    "playwright-core": "^1.59.1",
     "sherpa-onnx": "^1.10.30",
     "systeminformation": "^5.21.0"
   },

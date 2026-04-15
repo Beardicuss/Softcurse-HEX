@@ -480,6 +480,28 @@ try {
   }
 } catch (e) { console.warn('Softcurse: Could not watch leaked-api-keys.json', e.message); }
 
+// ─── WEB SUB-AGENT (Phase 14) ────────────────────────────────────────────────
+const webAgent = require('./src/js/web-agent');
+
+ipcMain.handle('web:scrape', async (_, url) => {
+  sendLog('WEB', `Scraping: ${url}`, 'info');
+  const result = await webAgent.scrapeUrl(url);
+  if (result.success) sendLog('WEB', `Scraped "${result.title}" (${result.charCount} chars)`, 'info');
+  else sendLog('WEB', `Scrape failed: ${result.error}`, 'warn');
+  return result;
+});
+
+ipcMain.handle('web:search', async (_, query) => {
+  sendLog('WEB', `Searching: "${query}"`, 'info');
+  const result = await webAgent.searchWeb(query);
+  if (result.success) sendLog('WEB', `Found ${result.count} results for "${query}"`, 'info');
+  else sendLog('WEB', `Search failed: ${result.error}`, 'warn');
+  return result;
+});
+
+// Clean up browser on quit
+app.on('will-quit', () => { webAgent.closeBrowser().catch(() => { }); });
+
 ipcMain.handle('butler:screenshot', async () => {
   try {
     const { desktopCapturer } = require('electron');
@@ -1725,57 +1747,34 @@ ipcMain.handle('plugins:discover', () => {
   return { success: true, plugins: pluginLoader.discover().map(m => ({ id: m.id, name: m.name, version: m.version, description: m.description, actions: m.actions })) };
 });
 
-const PLUGINS_INDEX_URL = 'https://raw.githubusercontent.com/Beardicuss/hex-plugins/main/plugins-index.json';
-
-ipcMain.handle('plugins:fetch-index', async () => {
+ipcMain.handle('plugins:install-local', async () => {
   try {
-    const res = await fetch(PLUGINS_INDEX_URL);
-    if (!res.ok) throw new Error('Fetch failed: ' + res.statusText);
-    const index = await res.json();
-    return { success: true, index };
-  } catch (e) {
-    // FALLBACK for testing: Return a dummy package so user can test the UI functionality Native
-    return {
-      success: true, index: [
-        {
-          id: 'test-plugin',
-          name: 'Console Logger Test',
-          version: '1.0.0',
-          description: 'A mock plugin installed locally to test the marketplace functionality. It logs a dummy payload into the terminal when installed.',
-          author: 'Softcurse',
-          downloadUrl: 'LOCAL:' + path.resolve(__dirname, 'plugins_test_repo', 'test-plugin.zip'),
-          tags: ['test', 'mock']
-        }
-      ]
-    };
-  }
-});
+    const { dialog } = require('electron');
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Select Plugin ZIP File',
+      filters: [{ name: 'Plugin Archives', extensions: ['zip'] }],
+      properties: ['openFile']
+    });
 
-ipcMain.handle('plugins:install', async (_, { id, downloadUrl }) => {
-  try {
-    sendLog('PLUGINS', `Downloading plugin: ${id}`);
-    const zipPath = path.join(app.getPath('temp'), `${id}.zip`);
+    if (result.canceled || result.filePaths.length === 0) return null;
 
-    if (downloadUrl.startsWith('LOCAL:')) {
-      fs.copyFileSync(downloadUrl.substring(6), zipPath);
-    } else {
-      const res = await fetch(downloadUrl);
-      if (!res.ok) throw new Error('Failed to download plugin zip.');
-      const buffer = Buffer.from(await res.arrayBuffer());
-      fs.writeFileSync(zipPath, buffer);
-    }
+    const zipPath = result.filePaths[0];
+    const zipName = path.basename(zipPath, '.zip');
+    const pluginId = zipName.replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase();
+    const destDir = path.join(pluginsDir, pluginId);
 
-    const destDir = path.join(pluginsDir, id);
+    sendLog('PLUGINS', `Installing local plugin: ${pluginId} from ${zipPath}`);
+
     if (fs.existsSync(destDir)) fs.rmSync(destDir, { recursive: true, force: true });
 
     // Extract using powershell Expand-Archive
-    sendLog('PLUGINS', `Extracting plugin: ${id}`);
     await windowCmd(`powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${destDir}' -Force"`);
 
-    fs.unlinkSync(zipPath); // cleanup
+    // Try hot-load
+    try { pluginLoader.loadPlugin(pluginId); } catch (_) { }
 
-    pluginLoader.loadPlugin(id); // Hot load
-    return { success: true };
+    sendLog('PLUGINS', `Plugin "${pluginId}" installed successfully from local file.`);
+    return { success: true, pluginId };
   } catch (e) {
     return { success: false, error: e.message };
   }

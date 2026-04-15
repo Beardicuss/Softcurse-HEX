@@ -508,20 +508,44 @@ async function handleAIAction(action) {
 
     case 'browser_search': {
       const query = action.args.join(' ');
-      const r = await window.hexAPI.browser.search(query);
-      if (r.success) addHexMessage(`🔍 Searching: "${r.query}"`);
-      else addHexMessage(`Search failed: ${r.error}`);
+      addHexMessage(`🔍 Searching the web for: "${query}"...`);
+      try {
+        const r = await window.hexAPI.web.search(query);
+        if (r.success && r.results.length > 0) {
+          let msg = `**Web Results for "${query}":**\n\n`;
+          if (r.featured) msg += `> ${r.featured}\n\n`;
+          for (const item of r.results) {
+            msg += `• **${item.title}**\n  ${item.snippet}\n  [${item.url}](${item.url})\n\n`;
+          }
+          addHexMessage(msg);
+          // Feed results back to AI for reasoning
+          const context = r.results.map(i => `${i.title}: ${i.snippet}`).join('\n');
+          return { data: `Web search results for "${query}":\n${r.featured ? 'Featured: ' + r.featured + '\n' : ''}${context}` };
+        } else {
+          addHexMessage(`No results found for "${query}".`);
+        }
+      } catch (e) {
+        // Fallback: open in default browser
+        const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+        await window.hexAPI.openUrl(searchUrl);
+        addHexMessage(`**Opened Google in browser:** ${query}`);
+      }
       break;
     }
 
     case 'browser_scrape': {
-      const scrapeUrl = action.args.join(':');
-      addHexMessage(`🕷 Scraping \`${scrapeUrl}\`...`);
-      const r = await window.hexAPI.browser.scrape(scrapeUrl);
-      if (r.success) {
-        return { data: r.text };  // Feed into follow-up AI call
-      } else {
-        addHexMessage(`Scrape failed: ${r.error}`);
+      const targetUrl = action.args.join(':');
+      addHexMessage(`🕷 Scraping \`${targetUrl}\`...`);
+      try {
+        const r = await window.hexAPI.web.scrape(targetUrl);
+        if (r.success) {
+          addHexMessage(`✅ Scraped **"${r.title}"** (${r.charCount} chars)`);
+          return { data: `Scraped content from ${r.title} (${r.url}):\n\n${r.text}` };
+        } else {
+          addHexMessage(`Scrape failed: ${r.error}`);
+        }
+      } catch (e) {
+        addHexMessage(`Scrape error: ${e.message}`);
       }
       break;
     }
