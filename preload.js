@@ -233,12 +233,15 @@ contextBridge.exposeInMainWorld('hexAPI', {
 
   // ── Plugins Marketplace ───────────────────────
   plugins: {
+    list: () => ipcRenderer.invoke('plugins:list'),
+    discover: () => ipcRenderer.invoke('plugins:discover'),
     fetchIndex: () => ipcRenderer.invoke('plugins:fetch-index'),
     install: (id, downloadUrl) => ipcRenderer.invoke('plugins:install', { id, downloadUrl }),
     remove: (id) => ipcRenderer.invoke('plugins:remove', { id })
   },
 
   // ── Generic Events ────────────────────────────
+  getLiveKeys: () => ipcRenderer.invoke('ai:get-live-keys'),
   on: (channel, cb) => ipcRenderer.on(channel, (event, ...args) => cb(...args)),
   receive: (channel, cb) => ipcRenderer.on(channel, (event, ...args) => cb(...args)),
 

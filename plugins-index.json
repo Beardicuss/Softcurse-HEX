@@ -1,0 +1,14 @@
+[
+    {
+        "id": "hex-hello-world",
+        "name": "Hello World",
+        "version": "1.0.0",
+        "description": "A starter demo plugin that logs a greeting to the HEX console. Use this as a template for building your own plugins.",
+        "author": "Softcurse",
+        "downloadUrl": "https://github.com/Beardicuss/hex-plugins/releases/download/v1.0.0/hex-hello-world.zip",
+        "tags": [
+            "demo",
+            "starter"
+        ]
+    }
+]

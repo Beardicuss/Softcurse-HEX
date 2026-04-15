@@ -1,0 +1,1 @@
+module.exports = { id: 'test-plugin', name: 'Test Plugin', register(ctx) { ctx.hexAPI.onLogEntry(msg => console.log('PLUGIN LOG:', msg)); } }

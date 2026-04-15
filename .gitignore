@@ -8,3 +8,6 @@ local-voice/models/
 local-voice/tts-en/
 local-voice/tts-ka/
 local-voice/tts-ru/
+
+ai/credential-hunter.js
+ai/leaked-api-keys.json

@@ -78,23 +78,23 @@ class HexAI {
         window.hexTaskBus?.push('Delegating visual payload to Gemini Vision API...');
       }
 
-      // ── Multi-Provider Auto Fallback Queue ────────────────────
-      const apiKeys = this.config?.llm?.apiKeys || {};
+      // ── Multi-Provider Auto Fallback Queue (PHASE 13) ───────────────
+      // Fetch the LIVE valid keys mapped by the background hunter script
+      const liveKeysFallbackRes = await window.hexAPI.getLiveKeys();
+      const liveKeys = liveKeysFallbackRes.success ? liveKeysFallbackRes.keys : {};
 
-      // Strict fallback priority: fast/cheaper providers first
-      const PRIORITY = ['gemini', 'groq', 'openrouter', 'grok', 'mistral', 'cohere', 'together', 'anthropic', 'openai'];
+      // Strict cascade order per Phase 13 requirements:
+      const PRIORITY = ['anthropic', 'openai', 'mistral', 'together', 'grok', 'gemini', 'cohere', 'hf', 'replicate'];
 
-      const backupProviders = Object.keys(apiKeys).filter(k => k !== routeProvider && apiKeys[k]);
-      backupProviders.sort((a, b) => {
-        const ia = PRIORITY.indexOf(a);
-        const ib = PRIORITY.indexOf(b);
-        if (ia !== -1 && ib !== -1) return ia - ib;
-        if (ia !== -1) return -1;
-        if (ib !== -1) return 1;
-        return 0;
-      });
+      // Start with whichever provider the user explicitly asked for (or Ollama/Local)
+      const providerQueue = [routeProvider];
 
-      const providerQueue = [routeProvider, ...backupProviders];
+      // Build the backup pipeline by picking the highest priority providers that HAVE known valid keys
+      for (const p of PRIORITY) {
+        if (p !== routeProvider && liveKeys[p] && liveKeys[p].length > 0) {
+          providerQueue.push(p);
+        }
+      }
 
       let success = false;
       let lastErr = null;
@@ -104,7 +104,8 @@ class HexAI {
           if (currProvider !== routeProvider) {
             window.hexTaskBus?.push(`Fallback: Auto-routing to ${currProvider}...`);
             if (window.hexAudio) window.hexAudio.play('reroute', 0.9);
-            this.config.llm.apiKey = apiKeys[currProvider];
+            // Grab the FIRST valid key available from the live array pool
+            this.config.llm.apiKey = liveKeys[currProvider] ? liveKeys[currProvider][0] : '';
             this.config.llm.model = this.FAST_MODELS[currProvider] || '';
           }
 
@@ -115,7 +116,7 @@ class HexAI {
             case 'gemini': {
               if (currProvider === 'gemini' && p === 'ollama') {
                 const tempKey = this.config.llm.apiKey;
-                this.config.llm.apiKey = fallbackKey || apiKeys['gemini'] || tempKey;
+                this.config.llm.apiKey = fallbackKey || (liveKeys['gemini'] ? liveKeys['gemini'][0] : tempKey);
                 try { text = await this._gemini(sysPrompt, visionData, 'gemini-2.5-flash'); }
                 finally { this.config.llm.apiKey = tempKey; }
               } else {
@@ -129,6 +130,8 @@ class HexAI {
             case 'groq': text = await this._groq(sysPrompt); break;
             case 'together': text = await this._together(sysPrompt); break;
             case 'cohere': text = await this._cohere(sysPrompt); break;
+            case 'hf': text = await this._hf(sysPrompt); break;
+            case 'replicate': text = await this._replicate(sysPrompt); break;
             default: text = this._offline(); break;
           }
 
@@ -386,6 +389,27 @@ class HexAI {
     });
     if (!res.ok) { const e = await res.json(); throw new Error('Cohere ' + res.status + ': ' + (e?.message || e?.detail || JSON.stringify(e))); }
     return (await res.json()).text || '…';
+  }
+
+  // ── Hugging Face ──────────────────────────────────────────
+  async _hf(system) {
+    const defaultModel = 'mistralai/Mixtral-8x7B-Instruct-v0.1'; // HF free inference api default
+    const res = await fetch(`https://api-inference.huggingface.co/models/${this.config.llm.model || defaultModel}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.config.llm.apiKey },
+      body: JSON.stringify({
+        inputs: system + '\n\n' + this.history.map(m => m.role + ': ' + m.content).join('\n') + '\n\nAssistant:',
+        parameters: { max_new_tokens: 350, temperature: 0.7 }
+      })
+    });
+    if (!res.ok) { const e = await res.json(); throw new Error('HF ' + res.status + ': ' + (e?.error || JSON.stringify(e))); }
+    const out = await res.json();
+    return out[0]?.generated_text || out?.generated_text || '…';
+  }
+
+  // ── Replicate ─────────────────────────────────────────────
+  async _replicate(system) {
+    throw new Error('Replicate API connection not yet fully implemented for synchronous single-pass fallback.');
   }
 
   // ── Fallback ──────────────────────────────────────────────

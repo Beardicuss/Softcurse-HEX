@@ -266,7 +266,7 @@ function updateStats(data) {
   setVitalValue('v-ram', `${data.ram}%`, data.ram > 80 ? (data.ram > 95 ? 'crit' : 'warn') : '');
   setVitalValue('v-disk', `${data.disk}%`, data.disk > 90 ? 'warn' : '');
   setVitalValue('v-gpu', data.gpu != null ? `${data.gpu}%` : '—', data.gpu > 80 ? (data.gpu > 95 ? 'crit' : 'warn') : '');
-  setVitalValue('v-gputemp', data.gpuTemp || '—', '');
+  setVitalValue('v-gpu-temp', data.gpuTemp || '—', '');
   setVitalValue('v-netrx', data.netRx || '—', 'net');
   setVitalValue('v-nettx', data.netTx || '—', 'net');
   setVitalValue('v-temp', data.temp || '—', '');

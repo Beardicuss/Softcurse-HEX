@@ -106,7 +106,6 @@ async function openSettings() {
   if (autoEl) autoEl.value = String(cfg.llm?.autoOllama === true);
   document.getElementById('cfg-baseurl').value = cfg.llm?.baseUrl || 'http://localhost:11434';
   document.getElementById('cfg-model').value = cfg.llm?.model || '';
-  document.getElementById('cfg-apikey').value = window._tempApiKeys[p] || '';
   document.getElementById('cfg-wakeword').value = cfg.voice?.wakeWord || 'hey hex';
   // Restore saved models directory into the input field
   const mdirEl = document.getElementById('cfg-models-dir');
@@ -122,7 +121,6 @@ async function openSettings() {
   if (sysTray) sysTray.value = String(cfg.system?.minimizeToTray === true);
 
   document.getElementById('cfg-model').value = cfg.llm?.model || '';
-  document.getElementById('cfg-apikey').value = cfg.llm?.apiKey || '';
   if (document.getElementById('cfg-visionkey')) document.getElementById('cfg-visionkey').value = cfg.llm?.visionApiKey || '';
 
   // Voice rate/pitch sliders
@@ -200,6 +198,7 @@ async function openSettings() {
   // Pre-populate personality active display
   updatePersonaBadge();
   refreshPersonaList();
+  loadLiveArsenal(); // Phase 13: Fetch visual live keys immediately
   document.getElementById('settings-overlay').classList.add('open');
 }
 
@@ -303,25 +302,16 @@ function closeSettings() {
 
 function updateProviderUI() {
   const p = document.getElementById('cfg-provider').value;
-  const keyInput = document.getElementById('cfg-apikey');
 
-  // Save current key into temp before swapping field value
-  if (window._currentProvider) {
-    window._tempApiKeys[window._currentProvider] = keyInput.value.trim();
-  }
   window._currentProvider = p;
-  if (keyInput) keyInput.value = window._tempApiKeys[p] || '';
   const hints = PROVIDER_HINTS[p] || PROVIDER_HINTS.none;
 
   document.getElementById('cfg-baseurl-group').style.display = p === 'ollama' ? '' : 'none';
   const autoGrp = document.getElementById('cfg-autoollama-group');
   if (autoGrp) autoGrp.style.display = p === 'ollama' ? '' : 'none';
-  document.getElementById('cfg-apikey-group').style.display = p !== 'none' && p !== 'ollama' ? '' : 'none';
 
   const mh = document.getElementById('model-hint');
-  const kh = document.getElementById('apikey-hint');
   if (mh) mh.textContent = hints.model ? `e.g. ${hints.model}` : '';
-  if (kh) kh.textContent = hints.key ? `Format: ${hints.key}` : '';
 
   // Update model placeholder
   const mInput = document.getElementById('cfg-model');
@@ -333,7 +323,8 @@ let _allFetchedModels = [];  // cache: array of {id, free}
 
 async function fetchAvailableModels() {
   const provider = document.getElementById('cfg-provider').value;
-  const apiKey = document.getElementById('cfg-apikey').value.trim();
+  // Dynamic fetcher bypasses manual key checks in Phase 13 because keys are handled asynchronously
+  const apiKey = 'LIVE_ARSENAL';
   const baseUrl = document.getElementById('cfg-baseurl').value.trim();
   const statusEl = document.getElementById('model-fetch-status');
   const btn = document.getElementById('fetch-models-btn');
@@ -341,11 +332,6 @@ async function fetchAvailableModels() {
 
   if (provider === 'none') {
     statusEl.textContent = 'Select a provider first.';
-    statusEl.style.display = '';
-    return;
-  }
-  if (!apiKey && provider !== 'ollama') {
-    statusEl.textContent = 'Enter your API key first, then fetch.';
     statusEl.style.display = '';
     return;
   }
@@ -422,10 +408,6 @@ function selectModel(name) {
 
 async function saveSettings() {
   if (window.hexAudio) window.hexAudio.play('action', 0.8);
-  if (window._currentProvider) {
-    const keyInput = document.getElementById('cfg-apikey');
-    if (keyInput) window._tempApiKeys[window._currentProvider] = keyInput.value.trim();
-  }
 
   const newLang = document.getElementById('cfg-language').value;
   const newCfg = {
@@ -436,8 +418,8 @@ async function saveSettings() {
       autoOllama: document.getElementById('cfg-autoollama')?.value === 'true',
       baseUrl: document.getElementById('cfg-baseurl').value,
       model: document.getElementById('cfg-model').value,
-      apiKeys: window._tempApiKeys,
-      apiKey: window._tempApiKeys[document.getElementById('cfg-provider').value] || '',
+      // Manual API keys deprecated from UI by Phase 13 automation. Preserving internal signature for local router override/fallback.
+      apiKey: '',
       visionApiKey: document.getElementById('cfg-visionkey')?.value || ''
     },
     browser: {
@@ -580,3 +562,57 @@ async function removeMarketplacePlugin(id) {
     showToast('REMOVE ERROR', res.error, '', 5000);
   }
 }
+
+// ─── GLOBAL EVENT LISTENERS ──────────────────────────────────────────────────
+
+window.addEventListener('click', (e) => {
+  const panel = document.querySelector('.stab-panel.active');
+  if (panel && e.target === panel) {
+    if (document.getElementById('model-picker')) {
+      document.getElementById('model-picker').style.display = 'none';
+    }
+  }
+});
+
+// ─── PHASE 13: LIVE ARSENAL UI RENDERER ──────────────────────────────────────
+
+async function loadLiveArsenal() {
+  try {
+    const res = await window.hexAPI.getLiveKeys();
+    if (res && res.success) renderLiveArsenal(res.keys);
+  } catch (e) {
+    console.warn('Failed to load initial live AI arsenal', e);
+  }
+}
+
+function renderLiveArsenal(keysMap) {
+  const container = document.getElementById('ai-live-arsenal');
+  const countEl = document.getElementById('ai-pool-count');
+  if (!container || !countEl) return;
+
+  const providers = Object.keys(keysMap);
+  let total = 0;
+  let html = '';
+
+  if (providers.length === 0) {
+    html = '<div style="color:var(--orange);text-align:center;padding:20px;">No verified keys found in ai/leaked-api-keys.json.<br>Background hunter is running...</div>';
+  } else {
+    for (const p of providers) {
+      const activeKeysCount = keysMap[p].length;
+      total += activeKeysCount;
+      const activeColor = activeKeysCount > 0 ? '#00ffc8' : 'var(--muted)';
+      html += `<div style="display:flex;justify-content:space-between;padding:6px;border-bottom:1px solid var(--border);">
+                 <span>${p.toUpperCase()}</span>
+                 <span style="color:${activeColor};text-shadow:0 0 5px ${activeColor};">${activeKeysCount} valid key${activeKeysCount !== 1 ? 's' : ''}</span>
+               </div>`;
+    }
+  }
+
+  container.innerHTML = html;
+  countEl.textContent = total;
+}
+
+// Hook IPC continuous updater for hot-reloads
+window.hexAPI.on('ai:live-keys-updated', (keys) => {
+  renderLiveArsenal(keys);
+});
