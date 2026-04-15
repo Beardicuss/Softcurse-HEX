@@ -11,6 +11,7 @@
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
+    "cheerio": "^1.2.0",
     "node-schedule": "^2.1.1",
     "playwright-core": "^1.59.1",
     "sherpa-onnx": "^1.10.30",
