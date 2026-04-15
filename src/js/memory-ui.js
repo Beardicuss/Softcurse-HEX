@@ -63,7 +63,7 @@ function filterMemoryFacts(query) {
     row.innerHTML =
       '<span class="fact-cat">' + (f.type || f.category || 'general') + '</span>' +
       '<span class="fact-text">' + escapeHtml((f.content || '').substring(0, 140)) + '</span>' +
-      '<span style="font-size:9px;opacity:0.4;white-space:nowrap;margin:0 4px;">' + conf + '%' + implicitMark + ' ' + ageStr + '</span>' +
+      '<span style="font-size:13px;opacity:0.4;white-space:nowrap;margin:0 4px;">' + conf + '%' + implicitMark + ' ' + ageStr + '</span>' +
       '<button class="fact-del" onclick="deleteMemoryFact(' + f.id + ')">✕</button>';
     listEl.appendChild(row);
   });

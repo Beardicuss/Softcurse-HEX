@@ -122,6 +122,7 @@ async function openSettings() {
 
   document.getElementById('cfg-model').value = cfg.llm?.model || '';
   if (document.getElementById('cfg-visionkey')) document.getElementById('cfg-visionkey').value = cfg.llm?.visionApiKey || '';
+  if (document.getElementById('cfg-hunter-limit')) document.getElementById('cfg-hunter-limit').value = cfg.llm?.hunterLimitHours || 24;
 
   // Voice rate/pitch sliders
   const rate = cfg.voice?.rate ?? 0.95;
@@ -393,7 +394,7 @@ function renderModelPicker(freeOnly) {
   statusEl.style.display = '';
 
   if (list.length === 0) {
-    picker.innerHTML = '<div style="padding:10px;font-size:12px;color:var(--muted);">No free models found for this provider. Click "show all" above.</div>';
+    picker.innerHTML = '<div style="padding:10px;font-size:14px;color:var(--muted);">No free models found for this provider. Click "show all" above.</div>';
     picker.style.display = 'block';
     return;
   }
@@ -401,11 +402,11 @@ function renderModelPicker(freeOnly) {
   picker.innerHTML = list.map(m => {
     const isActive = m.id === mi.value;
     const freeBadge = m.free
-      ? '<span style="margin-left:6px;font-size:9px;padding:1px 5px;background:rgba(0,255,150,.2);color:#0f9;border-radius:3px;vertical-align:middle;">FREE</span>'
+      ? '<span style="margin-left:6px;font-size:13px;padding:1px 5px;background:rgba(0,255,150,.2);color:#0f9;border-radius:3px;vertical-align:middle;">FREE</span>'
       : '';
     return `<div data-model-id="${m.id}"
       onclick="selectModel(this.dataset.modelId)"
-      style="padding:7px 10px;cursor:pointer;font-size:12px;font-family:monospace;\n             border-bottom:1px solid rgba(255,255,255,.05);display:flex;align-items:center;\n             ${isActive ? 'background:var(--accent);color:#000;' : ''}">
+      style="padding:7px 10px;cursor:pointer;font-size:14px;font-family:monospace;\n             border-bottom:1px solid rgba(255,255,255,.05);display:flex;align-items:center;\n             ${isActive ? 'background:var(--accent);color:#000;' : ''}">
       <span style="flex:1;">${m.id}</span>${freeBadge}
     </div>`;
   }).join('');
@@ -436,7 +437,8 @@ async function saveSettings() {
       model: document.getElementById('cfg-model').value,
       // Manual API keys deprecated from UI by Phase 13 automation. Preserving internal signature for local router override/fallback.
       apiKey: '',
-      visionApiKey: document.getElementById('cfg-visionkey')?.value || ''
+      visionApiKey: document.getElementById('cfg-visionkey')?.value || '',
+      hunterLimitHours: parseInt(document.getElementById('cfg-hunter-limit')?.value, 10) || 24
     },
     browser: {
       searchEngine: document.getElementById('cfg-searchengine')?.value || 'google'
@@ -588,7 +590,7 @@ function renderLiveArsenal(keysMap) {
       const borderLeft = isActive ? 'border-left:3px solid var(--cyan);' : 'border-left:3px solid transparent;';
       const bg = isActive ? 'background:rgba(0,255,200,0.06);' : '';
       html += `<div onclick="selectLiveProvider('${p}')" style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer;${borderLeft}${bg}transition:background .15s;" onmouseover="this.style.background='rgba(0,255,200,0.1)'" onmouseout="this.style.background='${isActive ? 'rgba(0,255,200,0.06)' : ''}'">
-                 <span>${LABELS[p] || p.toUpperCase()}${isActive ? ' <span style=\"color:var(--cyan);font-size:9px;\">● ACTIVE</span>' : ''}</span>
+                 <span>${LABELS[p] || p.toUpperCase()}${isActive ? ' <span style=\"color:var(--cyan);font-size:13px;\">● ACTIVE</span>' : ''}</span>
                  <span style="color:${activeColor};text-shadow:0 0 5px ${activeColor};">${n} valid key${n !== 1 ? 's' : ''}</span>
                </div>`;
     }

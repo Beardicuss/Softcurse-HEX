@@ -886,7 +886,7 @@ function closeProcesses() {
 
 async function refreshProcesses() {
   const list = document.getElementById('process-list');
-  list.innerHTML = '<div style="font-family:var(--font-m);font-size:10px;opacity:0.4;padding:8px;">Loading...</div>';
+  list.innerHTML = '<div style="font-family:var(--font-m);font-size:14px;opacity:0.4;padding:8px;">Loading...</div>';
 
   try {
     const procs = await window.hexAPI.getProcesses();
@@ -904,7 +904,7 @@ async function refreshProcesses() {
       list.appendChild(row);
     });
   } catch (e) {
-    list.innerHTML = `<div style="font-family:var(--font-m);font-size:10px;color:var(--magenta);padding:8px;">${e?.message || String(e)}</div>`;
+    list.innerHTML = `<div style="font-family:var(--font-m);font-size:14px;color:var(--magenta);padding:8px;">${e?.message || String(e)}</div>`;
   }
 }
 

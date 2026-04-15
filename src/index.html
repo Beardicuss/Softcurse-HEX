@@ -80,7 +80,7 @@
       <button class="btn btn-primary" onclick="attemptFaceUnlock()" style="font-size:14px;padding:10px 30px;">SCAN
         FACE</button>
       <button class="btn btn-secondary" onclick="document.getElementById('lock-pin-area').style.display='flex'"
-        style="font-size:12px;">OVERRIDE</button>
+        style="font-size:14px;">OVERRIDE</button>
     </div>
     <div id="lock-pin-area" style="display:none;margin-top:20px;gap:10px;">
       <input type="password" id="lock-pin" class="form-control" placeholder="ACCESS CODE"
@@ -212,7 +212,7 @@
             <input type="text" id="cfg-model" class="form-control" placeholder="" style="flex:1;">
             <button type="button" id="fetch-models-btn" onclick="fetchAvailableModels()"
               title="Fetch available models from provider API"
-              style="flex-shrink:0;padding:0 10px;height:36px;background:var(--surface2);border:1px solid var(--accent);color:var(--accent);cursor:pointer;font-size:11px;letter-spacing:.05em;white-space:nowrap;">
+              style="flex-shrink:0;padding:0 10px;height:36px;background:var(--surface2);border:1px solid var(--accent);color:var(--accent);cursor:pointer;font-size:13px;letter-spacing:.05em;white-space:nowrap;">
               ⬇ FETCH
             </button>
           </div>
@@ -227,7 +227,7 @@
         <div class="settings-section-label" style="margin-top:14px;">◆ LIVE CAPABILITIES POOL (<span id="ai-pool-count"
             style="color:var(--cyan);">0</span>)</div>
         <div id="ai-live-arsenal"
-          style="border:1px solid var(--accent);background:var(--surface2);min-height:60px;max-height:220px;overflow-y:auto;padding:0;font-size:11px;font-family:var(--font-m);border-radius:3px;margin-bottom:10px;">
+          style="border:1px solid var(--accent);background:var(--surface2);min-height:60px;max-height:220px;overflow-y:auto;padding:0;font-size:13px;font-family:var(--font-m);border-radius:3px;margin-bottom:10px;">
           <div style="color:var(--muted);text-align:center;padding:20px;">Fetching live key arsenal...</div>
         </div>
         <div class="form-hint" style="margin-bottom:10px;">Click a provider row to set it as your active provider. Smart
@@ -240,6 +240,13 @@
           <div class="form-hint" style="margin-top:4px;">Paste your free Google Gemini API key here if you want to use
             it for Vision while keeping Ollama as your primary chat engine.</div>
         </div>
+
+        <div class="settings-section-label" style="margin-top:14px;">◆ BACKGROUND INTELLIGENCE</div>
+        <div class="form-group">
+          <label class="form-label">CREDENTIAL HUNTER LIMIT (HOURS)</label>
+          <input type="number" id="cfg-hunter-limit" class="form-control" value="24" min="1" max="168">
+          <div class="form-hint" style="margin-top:4px;">How often HEX sweeps for leaked keys in the background (Default: 24h).</div>
+        </div>
       </div>
 
       <!-- ══ TAB: VOICE ═════════════════════════════════════ -->
@@ -248,28 +255,28 @@
         <div class="form-group">
           <div id="local-voice-status" class="form-hint" style="margin-bottom:8px;">Checking...</div>
           <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
-            <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
               <input type="checkbox" id="dl-stt" value="stt" checked> Whisper STT
             </label>
             <select id="dl-stt-size"
-              style="font-size:10px;background:var(--surface2);color:var(--text);border:1px solid var(--surface3);padding:2px 6px;cursor:pointer;"
+              style="font-size:14px;background:var(--surface2);color:var(--text);border:1px solid var(--surface3);padding:2px 6px;cursor:pointer;"
               onchange="document.getElementById('dl-stt-size-hint').textContent = this.options[this.selectedIndex].dataset.hint">
               <option value="tiny" data-hint="~40MB • Fast, lower accuracy" selected>Tiny (~40MB)</option>
               <option value="small" data-hint="~250MB • Balanced">Small (~250MB)</option>
               <option value="medium" data-hint="~750MB • High accuracy">Medium (~750MB)</option>
               <option value="large" data-hint="~1.5GB • Best accuracy, slower">Large (~1.5GB)</option>
             </select>
-            <span id="dl-stt-size-hint" class="form-hint" style="font-size:9px;align-self:center;">~40MB • Fast, lower
+            <span id="dl-stt-size-hint" class="form-hint" style="font-size:13px;align-self:center;">~40MB • Fast, lower
               accuracy</span>
           </div>
           <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
-            <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
               <input type="checkbox" id="dl-en" value="tts-en" checked> TTS English (~65MB)
             </label>
-            <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
               <input type="checkbox" id="dl-ru" value="tts-ru" checked> TTS Russian (~65MB)
             </label>
-            <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
               <input type="checkbox" id="dl-ka" value="tts-ka" checked> TTS Georgian (~65MB)
             </label>
           </div>
@@ -278,7 +285,7 @@
               style="border-color:var(--cyan);color:var(--cyan);">
               ⬇ DOWNLOAD SELECTED
             </button>
-            <button class="btn btn-secondary" onclick="refreshVoiceStatus()" style="font-size:10px;">↻</button>
+            <button class="btn btn-secondary" onclick="refreshVoiceStatus()" style="font-size:14px;">↻</button>
           </div>
           <div id="download-progress" style="display:none;margin-top:8px;">
             <div id="download-progress-bar"
@@ -291,9 +298,9 @@
           <div class="form-hint" style="margin-top:6px;">Models stored locally — one-time download. After download,
             voice works completely offline.</div>
           <div style="display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap;">
-            <code id="models-dir-path" style="font-size:10px;color:var(--muted);flex:1;word-break:break-all;">...</code>
+            <code id="models-dir-path" style="font-size:14px;color:var(--muted);flex:1;word-break:break-all;">...</code>
             <button class="btn btn-secondary" onclick="openModelsDir()"
-              style="font-size:10px;white-space:nowrap;flex-shrink:0;">📂 OPEN FOLDER</button>
+              style="font-size:14px;white-space:nowrap;flex-shrink:0;">📂 OPEN FOLDER</button>
           </div>
           <div class="form-hint" style="margin-top:4px;">
             To add custom Piper voices: place <code>.onnx</code> + <code>.onnx.json</code> files in the
@@ -306,14 +313,14 @@
         <div class="form-group">
           <label class="form-label">MODELS PATH</label>
           <div style="display:flex;gap:6px;">
-            <input type="text" id="cfg-models-dir" class="form-control" style="flex:1;font-size:11px;"
+            <input type="text" id="cfg-models-dir" class="form-control" style="flex:1;font-size:13px;"
               placeholder="(Leave blank for default project-local voice models path)">
             <button class="btn btn-secondary" onclick="browseModelsDir()"
-              style="padding:4px 10px;font-size:9px;white-space:nowrap;">&#128193; BROWSE</button>
+              style="padding:4px 10px;font-size:13px;white-space:nowrap;">&#128193; BROWSE</button>
             <button class="btn btn-secondary" onclick="applyModelsDir()"
-              style="padding:4px 10px;font-size:9px;white-space:nowrap;">APPLY</button>
+              style="padding:4px 10px;font-size:13px;white-space:nowrap;">APPLY</button>
             <button class="btn btn-secondary" onclick="checkVoiceStatus()"
-              style="padding:4px 10px;font-size:9px;white-space:nowrap;">✓ CHECK</button>
+              style="padding:4px 10px;font-size:13px;white-space:nowrap;">✓ CHECK</button>
           </div>
           <div class="form-hint">Folder containing: <code>whisper-tiny/</code> and <code>tts-en/</code>
             <code>tts-ka/</code> etc.
@@ -329,11 +336,11 @@
         <div class="form-group">
           <label class="form-label">TTS ENGINE</label>
           <div style="display:flex;gap:6px;margin-bottom:6px;">
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;">
               <input type="radio" name="tts-engine" id="tts-engine-local" value="local" onchange="updateTtsEngineUI()">
               🖥 Local Piper (offline)
             </label>
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;">
               <input type="radio" name="tts-engine" id="tts-engine-os" value="os" onchange="updateTtsEngineUI()">
               🔊 OS / Web Speech
             </label>
@@ -349,9 +356,9 @@
               <input type="range" id="cfg-local-speed" min="0.5" max="2" step="0.05" value="1.0"
                 oninput="document.getElementById('local-speed-val').textContent=parseFloat(this.value).toFixed(2)"
                 style="flex:1;accent-color:var(--cyan);">
-              <span id="local-speed-val" class="mono" style="font-size:11px;width:34px;">1.00</span>
+              <span id="local-speed-val" class="mono" style="font-size:13px;width:34px;">1.00</span>
               <button class="btn btn-secondary" onclick="previewLocalVoice()"
-                style="padding:4px 10px;font-size:9px;white-space:nowrap;">▶ TEST</button>
+                style="padding:4px 10px;font-size:13px;white-space:nowrap;">▶ TEST</button>
             </div>
             <div id="local-voice-unavail" class="form-hint" style="color:var(--magenta);display:none;">
               ⚠ Model not downloaded. Go to LOCAL VOICE MODELS above and download it first.
@@ -365,7 +372,7 @@
                 <option value="">— Auto (best match for language) —</option>
               </select>
               <button class="btn btn-secondary" onclick="previewSelectedVoice()"
-                style="padding:4px 10px;font-size:9px;white-space:nowrap;">▶ TEST</button>
+                style="padding:4px 10px;font-size:13px;white-space:nowrap;">▶ TEST</button>
             </div>
             <div class="form-hint">Voices depend on your OS. Georgian requires a language pack.</div>
           </div>
@@ -376,7 +383,7 @@
             <input type="range" id="cfg-rate" min="0.5" max="2" step="0.05" value="0.95"
               oninput="document.getElementById('rate-val').textContent=this.value"
               style="flex:1;accent-color:var(--cyan);">
-            <span id="rate-val" class="mono" style="font-size:11px;width:34px;">0.95</span>
+            <span id="rate-val" class="mono" style="font-size:13px;width:34px;">0.95</span>
           </div>
         </div>
         <div class="form-group">
@@ -385,7 +392,7 @@
             <input type="range" id="cfg-pitch" min="0.5" max="2" step="0.05" value="0.85"
               oninput="document.getElementById('pitch-val').textContent=this.value"
               style="flex:1;accent-color:var(--cyan);">
-            <span id="pitch-val" class="mono" style="font-size:11px;width:34px;">0.85</span>
+            <span id="pitch-val" class="mono" style="font-size:13px;width:34px;">0.85</span>
           </div>
         </div>
         <div class="form-group">
@@ -394,7 +401,7 @@
             <input type="range" id="cfg-volume" min="0" max="1" step="0.05" value="0.9"
               oninput="document.getElementById('volume-val').textContent=parseFloat(this.value).toFixed(2)"
               style="flex:1;accent-color:var(--orange);">
-            <span id="volume-val" class="mono" style="font-size:11px;width:34px;">0.90</span>
+            <span id="volume-val" class="mono" style="font-size:13px;width:34px;">0.90</span>
           </div>
         </div>
         <div class="form-hint" style="margin-top:2px;">Rate and Pitch apply to OS/Web Speech. Volume applies to all
@@ -458,12 +465,12 @@
           </div>
           <div class="mem-stat-card">
             <span class="label-tag">OLDEST MEMORY</span>
-            <span class="mem-stat-val" id="mem-stat-oldest" style="font-size:11px;">—</span>
+            <span class="mem-stat-val" id="mem-stat-oldest" style="font-size:13px;">—</span>
           </div>
         </div>
 
         <!-- Tier breakdown -->
-        <div id="mem-tier-bar" style="display:flex;gap:4px;margin:10px 0;font-family:var(--font-m);font-size:9px;">
+        <div id="mem-tier-bar" style="display:flex;gap:4px;margin:10px 0;font-family:var(--font-m);font-size:13px;">
           <div style="display:flex;align-items:center;gap:3px;"><span
               style="width:8px;height:8px;background:#00ffc8;display:inline-block;border-radius:2px;"></span><span
               id="mem-tier-0">0</span> PROTECTED</div>
@@ -488,8 +495,8 @@
             class="form-hint" style="display:inline;margin-left:8px;"></span></div>
         <div style="display:flex;gap:6px;margin-bottom:6px;">
           <input type="text" id="mem-search" class="form-control" placeholder="filter facts..."
-            style="flex:1;font-size:11px;" oninput="filterMemoryFacts(this.value)">
-          <select id="mem-type-filter" class="form-control" style="width:120px;font-size:11px;"
+            style="flex:1;font-size:13px;" oninput="filterMemoryFacts(this.value)">
+          <select id="mem-type-filter" class="form-control" style="width:120px;font-size:13px;"
             onchange="filterMemoryFacts(document.getElementById('mem-search').value)">
             <option value="">All types</option>
             <option value="user">User</option>
@@ -506,10 +513,10 @@
         <!-- Actions -->
         <div class="settings-section-label" style="margin-top:12px;">◆ ACTIONS</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-          <button class="btn btn-secondary" onclick="compressSession()" style="font-size:9px;">
+          <button class="btn btn-secondary" onclick="compressSession()" style="font-size:13px;">
             💾 COMPRESS SESSION
           </button>
-          <button class="btn btn-secondary" onclick="showMemoryReport()" style="font-size:9px;">
+          <button class="btn btn-secondary" onclick="showMemoryReport()" style="font-size:13px;">
             📊 HEALTH REPORT
           </button>
         </div>
@@ -559,7 +566,7 @@
             <input type="range" id="cfg-face-threshold" min="0.5" max="0.99" step="0.01" value="0.85"
               oninput="document.getElementById('face-thresh-val').textContent=Math.round(this.value*100)+'%'"
               onchange="setFaceThreshold(this.value)" style="flex:1;accent-color:var(--cyan);">
-            <span id="face-thresh-val" class="mono" style="font-size:11px;width:34px;">85%</span>
+            <span id="face-thresh-val" class="mono" style="font-size:13px;width:34px;">85%</span>
           </div>
           <div class="form-hint">Higher values require exact lighting/angle. 85% is recommended.</div>
         </div>
@@ -570,7 +577,7 @@
             style="border:1px solid var(--accent);background:var(--bg);height:180px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;">
             <video id="enroll-video" width="240" height="180" style="display:none;object-fit:cover;"></video>
             <canvas id="enroll-canvas" width="240" height="180" style="display:none;"></canvas>
-            <div id="enroll-placeholder" class="mono" style="color:var(--muted);font-size:11px;text-align:center;">
+            <div id="enroll-placeholder" class="mono" style="color:var(--muted);font-size:13px;text-align:center;">
               [ WEBCAM INACTIVE ]<br>Click Start Scanner to begin
             </div>
           </div>
@@ -605,7 +612,7 @@
         <div id="panel-plugins-installed">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
             <div class="settings-section-label" style="margin:0;">◆ INSTALLED PLUGINS</div>
-            <button class="btn btn-secondary" onclick="loadPluginsList()" style="font-size:9px;padding:4px 10px;">↻
+            <button class="btn btn-secondary" onclick="loadPluginsList()" style="font-size:13px;padding:4px 10px;">↻
               REFRESH</button>
           </div>
           <div id="plugins-list"
@@ -614,7 +621,7 @@
           </div>
           <div class="form-hint" style="margin-top:15px;padding-top:10px;border-top:1px solid var(--border);">
             Place local plugins in <code class="mono" style="color:var(--magenta);">plugins/</code>.
-            <button class="btn btn-secondary" style="margin-left:10px;font-size:9px;" onclick="openPluginsFolder()">📂
+            <button class="btn btn-secondary" style="margin-left:10px;font-size:13px;" onclick="openPluginsFolder()">📂
               OPEN FOLDER</button>
           </div>
         </div>
@@ -627,7 +634,7 @@
             HEX will extract it to the plugins vault automatically.
           </div>
           <button class="btn btn-primary" onclick="browseAndInstallPlugin()"
-            style="width:100%;padding:10px;font-size:12px;letter-spacing:.08em;">
+            style="width:100%;padding:10px;font-size:14px;letter-spacing:.08em;">
             📂 BROWSE & INSTALL PLUGIN (.zip)
           </button>
           <div id="local-install-status" class="form-hint" style="color:var(--cyan);margin-top:10px;display:none;">
@@ -649,9 +656,9 @@
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div class="section-title" data-i18n="processes_title">ACTIVE PROCESSES</div>
         <div style="display:flex;gap:8px;">
-          <button class="btn btn-secondary" onclick="refreshProcesses()" style="padding:4px 12px;font-size:9px;">↻
+          <button class="btn btn-secondary" onclick="refreshProcesses()" style="padding:4px 12px;font-size:13px;">↻
             REFRESH</button>
-          <button class="btn btn-secondary" onclick="closeProcesses()" style="padding:4px 12px;font-size:9px;">✕
+          <button class="btn btn-secondary" onclick="closeProcesses()" style="padding:4px 12px;font-size:13px;">✕
             CLOSE</button>
         </div>
       </div>
@@ -671,7 +678,7 @@
       style="width:500px;max-height:80vh;background:var(--surface);border:1px solid var(--accent);box-shadow:var(--glow);padding:20px;display:flex;flex-direction:column;gap:15px;position:relative;">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div class="section-title">CLIPBOARD HISTORY</div>
-        <button class="btn btn-secondary" onclick="closeClipboard()" style="padding:4px 12px;font-size:9px;">✕
+        <button class="btn btn-secondary" onclick="closeClipboard()" style="padding:4px 12px;font-size:13px;">✕
           CLOSE</button>
       </div>
       <input type="text" id="clipboard-search" class="form-control" placeholder="Search clipboard..."
@@ -1045,7 +1052,7 @@
         <div class="vital-sep"></div>
         <div class="vital-item">
           <span class="vital-label" data-i18n="uptime">UPTIME</span>
-          <span class="vital-value mono" id="v-uptime" style="font-size:11px;">00:00:00</span>
+          <span class="vital-value mono" id="v-uptime" style="font-size:13px;">00:00:00</span>
         </div>
       </div>
     </main>
@@ -1082,7 +1089,7 @@
         <div class="form-hint" style="margin-top:4px;">Tasks run this session ÷ total tasks</div>
       </div>
       <div class="divider"></div>
-      <div class="section-title" style="font-size:12px;">◆ TASKS RUN THIS SESSION</div>
+      <div class="section-title" style="font-size:14px;">◆ TASKS RUN THIS SESSION</div>
       <div id="task-run-log" class="task-run-log">
         <div class="form-hint" style="padding:4px 0;">No tasks run yet.</div>
       </div>
@@ -1108,8 +1115,8 @@
 
       <div class="divider"></div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <div class="section-title" style="font-size:12px;">◆ RECURRING COMMS</div>
-        <button class="btn btn-secondary" onclick="refreshRecurring()" style="font-size:9px;padding:2px 6px;">↻</button>
+        <div class="section-title" style="font-size:14px;">◆ RECURRING COMMS</div>
+        <button class="btn btn-secondary" onclick="refreshRecurring()" style="font-size:13px;padding:2px 6px;">↻</button>
       </div>
       <div id="recurring-list" style="display:flex;flex-direction:column;gap:6px;max-height:150px;overflow-y:auto;">
         <!-- Dynamically populated -->
@@ -1124,7 +1131,7 @@
         <div style="display:flex;gap:8px;align-items:center;">
           <button id="terminal-clear" onclick="clearTerminal()" data-i18n="clear_terminal">CLEAR</button>
           <button id="terminal-toggle" onclick="toggleTerminal()" title="Hide/Show terminal"
-            style="font-family:var(--font-m);font-size:9px;letter-spacing:2px;color:rgba(0,255,200,0.35);cursor:pointer;background:none;border:none;transition:color 0.15s;"
+            style="font-family:var(--font-m);font-size:13px;letter-spacing:2px;color:rgba(0,255,200,0.35);cursor:pointer;background:none;border:none;transition:color 0.15s;"
             onmouseenter="this.style.color='var(--cyan)'" onmouseleave="this.style.color='rgba(0,255,200,0.35)'">▼
             HIDE</button>
         </div>

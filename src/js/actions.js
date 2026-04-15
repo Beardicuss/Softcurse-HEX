@@ -504,6 +504,33 @@ async function handleAIAction(action) {
       break;
     }
 
+    case 'play_media': {
+      const query = action.args.join(' ').trim();
+      if (!query) break;
+      addLog('BUTLER', `Playing media: ${query}`);
+      addHexMessage(`*Searching for and playing "**${query}**"...* 🎵`);
+      const rMusic = await window.hexAPI.butler.findFiles(query, 'music');
+      let foundFile = null;
+      if (rMusic && rMusic.files && rMusic.files.length > 0) {
+        foundFile = rMusic.files[0];
+      } else {
+        const rVideo = await window.hexAPI.butler.findFiles(query, 'video');
+        if (rVideo && rVideo.files && rVideo.files.length > 0) foundFile = rVideo.files[0];
+      }
+
+      if (foundFile) {
+        addHexMessage(`**Playing:** ${foundFile.name}`);
+        window.hexAPI.butler.openFile(foundFile.path);
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`play_media:${query}`, true);
+        if (window.hexBrain) window.hexBrain.recordOutcome(`play_media:${query}`, true);
+      } else {
+        addHexMessage(`I couldn't find any playable media matching "**${query}**" on your PC.`);
+        if (window.hexMemory) window.hexMemory.recordActionOutcome(`play_media:${query}`, false, 'not found');
+        if (window.hexBrain) window.hexBrain.recordOutcome(`play_media:${query}`, false, 'not found');
+      }
+      break;
+    }
+
     case 'browser_open': {
       const url = action.args.join(':');
       const r = await window.hexAPI.browser.open(url);

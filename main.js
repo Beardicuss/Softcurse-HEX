@@ -2178,9 +2178,10 @@ app.whenReady().then(() => {
   try {
     const hunterScript = path.join(__dirname, 'ai', 'credential-hunter.js');
     const hunterTimestampFile = path.join(app.getPath('userData'), 'hunter-last-run.json');
-    const HUNTER_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
+    const userLimitHours = config.llm?.hunterLimitHours || 24;
+    const HUNTER_COOLDOWN_MS = userLimitHours * 60 * 60 * 1000;
 
-    // Check if 24h have passed since last run
+    // Check if cooldown period has passed since last run
     let shouldRun = true;
     try {
       if (fs.existsSync(hunterTimestampFile)) {
@@ -2200,7 +2201,11 @@ app.whenReady().then(() => {
 
       const hunterProc = spawn('node', [hunterScript], {
         cwd: __dirname,
-        env: { ...process.env, HEX_USER_DATA: app.getPath('userData') },
+        env: {
+          ...process.env,
+          HEX_USER_DATA: app.getPath('userData'),
+          HEX_HUNTER_LIMIT: userLimitHours
+        },
         stdio: ['ignore', 'pipe', 'pipe']
       });
 
