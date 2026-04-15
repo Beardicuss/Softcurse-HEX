@@ -619,6 +619,29 @@ class HexAI {
         url = (baseUrl || 'http://localhost:11434') + '/api/tags';
         transform = d => (d.models || []).map(m => ({ id: m.name, free: true }));
         break;
+      case 'cohere':
+        url = 'https://api.cohere.com/v2/models';
+        headers['Authorization'] = 'Bearer ' + apiKey;
+        transform = d => (d.models || [])
+          .filter(m => m.endpoints && m.endpoints.includes('chat'))
+          .map(m => ({ id: m.name, free: false }))
+          .sort((a, b) => a.id.localeCompare(b.id));
+        break;
+      case 'hf':
+        // HF Inference API — list recommended models
+        url = 'https://api-inference.huggingface.co/framework/text-generation-inference';
+        headers['Authorization'] = 'Bearer ' + apiKey;
+        transform = d => {
+          // HF returns an array of model objects
+          if (Array.isArray(d)) return d.map(m => ({ id: m.id || m.modelId || m, free: true })).slice(0, 50);
+          return [
+            { id: 'mistralai/Mixtral-8x7B-Instruct-v0.1', free: true },
+            { id: 'meta-llama/Meta-Llama-3-8B-Instruct', free: true },
+            { id: 'microsoft/Phi-3-mini-4k-instruct', free: true },
+            { id: 'google/gemma-2-2b-it', free: true },
+          ];
+        };
+        break;
       default:
         throw new Error('Model listing not supported for provider: ' + provider);
     }

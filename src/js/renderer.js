@@ -72,6 +72,26 @@ async function init() {
   // Configure subsystems
   window.hexAI.configure(config);
 
+  // ── Auto-select best provider from live key pool ──
+  try {
+    const liveRes = await window.hexAPI.getLiveKeys();
+    if (liveRes && liveRes.success) {
+      const PRIORITY = ['anthropic', 'openai', 'mistral', 'together', 'grok', 'gemini', 'cohere', 'hf', 'replicate'];
+      const currentP = config.llm?.provider || 'none';
+      const hasKey = currentP === 'ollama' || (liveRes.keys[currentP] && liveRes.keys[currentP].length > 0);
+      if (!hasKey && currentP !== 'ollama') {
+        // Find the first provider with valid keys
+        const bestProvider = PRIORITY.find(p => liveRes.keys[p] && liveRes.keys[p].length > 0);
+        if (bestProvider) {
+          config.llm = config.llm || {};
+          config.llm.provider = bestProvider;
+          window.hexAI.configure(config);
+          addLog('AI', `Auto-selected provider: ${bestProvider.toUpperCase()} (${liveRes.keys[bestProvider].length} valid keys)`);
+        }
+      }
+    }
+  } catch (_) { }
+
   // ── Load plugin action tags for AI prompt injection ──
   try {
     const res = await window.hexAPI.plugins.getActionTags();

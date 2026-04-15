@@ -199,6 +199,8 @@ async function openSettings() {
   updatePersonaBadge();
   refreshPersonaList();
   loadLiveArsenal(); // Phase 13: Fetch visual live keys immediately
+  // Auto-sync provider dropdown to best available from live pool
+  autoSyncProvider();
   document.getElementById('settings-overlay').classList.add('open');
 }
 
@@ -321,8 +323,6 @@ let _allFetchedModels = [];  // cache: array of {id, free}
 
 async function fetchAvailableModels() {
   const provider = document.getElementById('cfg-provider').value;
-  // Dynamic fetcher bypasses manual key checks in Phase 13 because keys are handled asynchronously
-  const apiKey = 'LIVE_ARSENAL';
   const baseUrl = document.getElementById('cfg-baseurl').value.trim();
   const statusEl = document.getElementById('model-fetch-status');
   const btn = document.getElementById('fetch-models-btn');
@@ -338,6 +338,24 @@ async function fetchAvailableModels() {
   btn.disabled = true;
   statusEl.style.display = 'none';
   picker.style.display = 'none';
+
+  // Fetch the real API key from the live pool
+  let apiKey = '';
+  if (provider !== 'ollama') {
+    try {
+      const res = await window.hexAPI.getLiveKeys();
+      if (res && res.success && res.keys[provider] && res.keys[provider].length > 0) {
+        apiKey = res.keys[provider][0];
+      }
+    } catch (_) { }
+    if (!apiKey) {
+      statusEl.textContent = `⚠ No valid key for ${provider}. Waiting for background hunter...`;
+      statusEl.style.display = '';
+      btn.textContent = '⬇ FETCH';
+      btn.disabled = false;
+      return;
+    }
+  }
 
   try {
     _allFetchedModels = await window.hexAI.fetchModels(provider, apiKey, baseUrl);
@@ -642,6 +660,35 @@ function selectLiveProvider(providerName) {
   }
   // Re-render to update the active highlight
   loadLiveArsenal();
+}
+
+// Auto-sync provider dropdown to the best available provider and auto-fetch models
+async function autoSyncProvider() {
+  try {
+    const res = await window.hexAPI.getLiveKeys();
+    if (!res || !res.success) return;
+    const PRIORITY = ['anthropic', 'openai', 'mistral', 'together', 'grok', 'gemini', 'cohere', 'hf', 'replicate'];
+    const sel = document.getElementById('cfg-provider');
+    const current = sel?.value || 'none';
+
+    // If current provider has no key and isn't ollama, auto-switch
+    const hasKey = current === 'ollama' || (res.keys[current] && res.keys[current].length > 0);
+    if (!hasKey && current !== 'ollama') {
+      const best = PRIORITY.find(p => res.keys[p] && res.keys[p].length > 0);
+      if (best && sel) {
+        sel.value = best;
+        updateProviderUI();
+      }
+    }
+
+    // Auto-fetch models after a short delay (don't block UI)
+    setTimeout(() => {
+      const provider = document.getElementById('cfg-provider')?.value;
+      if (provider && provider !== 'none') {
+        fetchAvailableModels();
+      }
+    }, 300);
+  } catch (_) { }
 }
 
 // Hook IPC continuous updater for hot-reloads
