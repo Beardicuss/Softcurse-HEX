@@ -413,7 +413,7 @@ ipcMain.handle('config:set', (_, newCfg) => {
 });
 
 // ─── AI LIVE KEYS: Parser, IPC Handler & File Watcher ────────────────────────
-const LEAKED_KEYS_PATH = path.join(__dirname, 'ai', 'leaked-api-keys.json');
+const LEAKED_KEYS_PATH = path.join(app.getPath('userData'), 'leaked-api-keys.json');
 
 // Map the title-case provider names from the JSON to the lowercase IDs used in ai.js
 const PROVIDER_NORM = {
@@ -432,6 +432,12 @@ let _liveApiKeys = {}; // { provider: [key1, key2, ...] }
 
 function parseLeakedKeys() {
   try {
+    const defaultKeysPath = path.join(__dirname, 'ai', 'leaked-api-keys.json');
+    if (!fs.existsSync(LEAKED_KEYS_PATH) && fs.existsSync(defaultKeysPath)) {
+      // Seed first run
+      fs.copyFileSync(defaultKeysPath, LEAKED_KEYS_PATH);
+    }
+
     if (!fs.existsSync(LEAKED_KEYS_PATH)) return {};
     const raw = fs.readFileSync(LEAKED_KEYS_PATH, 'utf8');
     const data = JSON.parse(raw);
@@ -501,6 +507,30 @@ ipcMain.handle('web:search', async (_, query) => {
 
 // Clean up browser on quit
 app.on('will-quit', () => { webAgent.closeBrowser().catch(() => { }); });
+
+// ─── ADAPTIVE INTELLIGENCE (Phase 15) ────────────────────────────────────────
+const BRAIN_PATH = path.join(app.getPath('userData'), 'hex-profile.json');
+
+ipcMain.handle('brain:load', async () => {
+  try {
+    if (fs.existsSync(BRAIN_PATH)) {
+      return JSON.parse(fs.readFileSync(BRAIN_PATH, 'utf-8'));
+    }
+    return null;
+  } catch (e) {
+    console.warn('Brain load failed:', e.message);
+    return null;
+  }
+});
+
+ipcMain.handle('brain:save', async (_, data) => {
+  try {
+    fs.writeFileSync(BRAIN_PATH, JSON.stringify(data, null, 2), 'utf-8');
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
 
 ipcMain.handle('butler:screenshot', async () => {
   try {
@@ -2170,6 +2200,7 @@ app.whenReady().then(() => {
 
       const hunterProc = spawn('node', [hunterScript], {
         cwd: __dirname,
+        env: { ...process.env, HEX_USER_DATA: app.getPath('userData') },
         stdio: ['ignore', 'pipe', 'pipe']
       });
 

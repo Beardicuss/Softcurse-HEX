@@ -64,6 +64,20 @@ async function init() {
   window.hexMemory.onLog = (msg) => addLog('HEX', msg);
   await window.hexMemory.load();
 
+  // ── Adaptive Intelligence: Load brain profile + daily reflection ──
+  if (window.hexBrain) {
+    window.hexBrain.onLog = (msg) => addLog('BRAIN', msg);
+    await window.hexBrain.load();
+    await window.hexBrain.reflect(); // Daily self-reflection (runs once per day)
+
+    // Summarize session when user closes HEX
+    window.addEventListener('beforeunload', () => {
+      if (window.hexBrain && window.hexAI && window.hexAI.history) {
+        window.hexBrain.summarizeSession(window.hexAI.history);
+      }
+    });
+  }
+
   // ── Load personalities from config ──
   window.hexPersonalities.load(config);
   window.hexPersonalities.onUpdate = () => refreshPersonaList();

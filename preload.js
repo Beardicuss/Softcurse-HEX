@@ -245,6 +245,12 @@ contextBridge.exposeInMainWorld('hexAPI', {
     search: (query) => ipcRenderer.invoke('web:search', query),
   },
 
+  // ── Adaptive Intelligence ─────────────────────
+  brain: {
+    load: () => ipcRenderer.invoke('brain:load'),
+    save: (data) => ipcRenderer.invoke('brain:save', data),
+  },
+
   // ── Generic Events ────────────────────────────
   getLiveKeys: () => ipcRenderer.invoke('ai:get-live-keys'),
   on: (channel, cb) => ipcRenderer.on(channel, (event, ...args) => cb(...args)),

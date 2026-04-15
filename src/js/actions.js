@@ -142,10 +142,12 @@ async function handleAIAction(action) {
           addHexMessage('**Opening** ' + found + (r.method ? ' (' + r.method + ')' : '') + '.');
           addLog('BUTLER', 'Launched: ' + found);
           if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_app:${appName}`, true);
+          if (window.hexBrain) window.hexBrain.recordOutcome(`open_app:${appName}`, true);
         } else {
           addHexMessage('**Could not open** "' + appName + '". ' + (r.error || '') + (r.hint ? ' ' + r.hint : ''));
           addLog('BUTLER', 'Launch failed: ' + appName + ' — ' + (r.error || ''), 'error');
           if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_app:${appName}`, false, r.error || '');
+          if (window.hexBrain) window.hexBrain.recordOutcome(`open_app:${appName}`, false, r.error || '');
 
           // ── Pillar 4: Self-learning — ask user for correct path ──
           addHexMessage(`I couldn't find "**${appName}**" on your system. Could you tell me the **exact app name** and **where the .exe file is located**? For example: \`VLC is at D:\\Programs\\VLC\\vlc.exe\`. I'll remember it for next time! 🧠`);
@@ -209,9 +211,11 @@ async function handleAIAction(action) {
         if (r?.success) {
           addHexMessage(`**Opened:** ${url}`);
           if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_url:${url}`, true);
+          if (window.hexBrain) window.hexBrain.recordOutcome(`open_url:${url}`, true);
         } else {
           addHexMessage(`**Failed to open:** ${url}`);
           if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_url:${url}`, false, r?.error || '');
+          if (window.hexBrain) window.hexBrain.recordOutcome(`open_url:${url}`, false, r?.error || '');
         }
       }
       break;
@@ -224,8 +228,10 @@ async function handleAIAction(action) {
         const r = await window.hexAPI.openUrl(bUrl);
         if (r?.success) {
           addHexMessage(`**Opened in browser:** ${bUrl}`);
+          if (window.hexBrain) window.hexBrain.recordOutcome(`browser_open:${bUrl}`, true);
         } else {
           addHexMessage(`**Failed:** ${bUrl} — ${r?.error || 'Unknown error'}`);
+          if (window.hexBrain) window.hexBrain.recordOutcome(`browser_open:${bUrl}`, false, r?.error || '');
         }
       }
       break;

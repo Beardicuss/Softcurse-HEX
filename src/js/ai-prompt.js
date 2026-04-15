@@ -74,6 +74,15 @@ window.buildHexSystemPrompt = function (state, lang, userMsg) {
     '\n=== END MEMORY ==='
     : '';
 
+  // ── Adaptive Intelligence Profile ─────────────────────────────────────────
+  const brainCtx = (window.hexBrain) ? window.hexBrain.getProfileContext() : '';
+  const adaptiveBlock = brainCtx
+    ? '\n=== ADAPTIVE INTELLIGENCE ===\n' +
+    'Your evolving self-knowledge. Use it to calibrate responses.\n' +
+    brainCtx +
+    '\n=== END ADAPTIVE INTELLIGENCE ==='
+    : '';
+
   // ── Learned topics index ──────────────────────────────────────────────────────────────────
   const learnedTopics = (window.hexLearn) ? window.hexLearn.getLearnedTopics() : [];
   const learnedBlock = learnedTopics.length > 0
@@ -693,6 +702,7 @@ window.buildHexSystemPrompt = function (state, lang, userMsg) {
     systemStateBlock,
     memoryBlock,
     learnedBlock,
+    adaptiveBlock,
     '',
     brainBlock,
     '',
