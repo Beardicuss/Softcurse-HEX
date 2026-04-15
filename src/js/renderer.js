@@ -1010,6 +1010,9 @@ function switchSettingsTab(tabId) {
   // Refresh dynamic content when switching
   if (tabId === 'tab-persona') refreshPersonaList();
   if (tabId === 'tab-memory') refreshMemoryTab();
+  if (tabId === 'tab-plugins') {
+    if (typeof loadPluginsList === 'function') loadPluginsList();
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════════

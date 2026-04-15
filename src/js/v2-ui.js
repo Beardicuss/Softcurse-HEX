@@ -189,6 +189,17 @@ async function reloadPlugin(name) {
     }
 }
 
+async function removeMarketplacePlugin(id) {
+    if (!confirm(`Are you sure you want to completely remove the plugin: ${id}?`)) return;
+    const res = await window.hexAPI.plugins.remove(id);
+    if (res.success) {
+        showToast('PLUGIN REMOVED', `${id} successfully uninstalled.`, '');
+        loadPluginsList();
+    } else {
+        showToast('REMOVE FAILED', res.error, '', 5000);
+    }
+}
+
 async function openPluginsFolder() {
     await window.hexAPI.plugins.openFolder();
 }

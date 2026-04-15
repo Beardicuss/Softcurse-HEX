@@ -1803,10 +1803,24 @@ ipcMain.handle('plugins:install-local', async () => {
     if (fs.existsSync(destDir)) fs.rmSync(destDir, { recursive: true, force: true });
 
     // Extract using powershell Expand-Archive
-    await windowCmd(`powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${destDir}' -Force"`);
+    await new Promise((resolve, reject) => {
+      exec(`powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${destDir}' -Force"`, (err) => {
+        if (err) reject(err); else resolve();
+      });
+    });
 
-    // Try hot-load
-    try { pluginLoader.loadPlugin(pluginId); } catch (_) { }
+    // Try hot-load by parsing the newly extracted manifest
+    try {
+      const manifestPath = path.join(destDir, 'manifest.json');
+      if (fs.existsSync(manifestPath)) {
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        manifest._dir = destDir;
+        manifest._mainPath = path.join(destDir, manifest.main);
+        pluginLoader.loadPlugin(manifest);
+      }
+    } catch (e) {
+      sendLog('PLUGINS', `Hot-load failed: ${e.message}`);
+    }
 
     sendLog('PLUGINS', `Plugin "${pluginId}" installed successfully from local file.`);
     return { success: true, pluginId };
