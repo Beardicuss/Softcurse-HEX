@@ -26,6 +26,12 @@ const PluginLoader = require('./src/js/plugin-loader');
 const FaceAuth = require('./src/js/face-auth');
 
 // Local voice engine (Whisper STT + Piper TTS)
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+const userDataPath = process.env.HEX_USER_DATA || app.getPath('userData');
+const CONFIG_PATH = path.join(userDataPath, 'config.json');
+const MEMORY_PATH = path.join(userDataPath, 'memory.json');
+const REMINDERS_PATH = path.join(userDataPath, 'reminders.json');
+const SCHEDULES_PATH = path.join(userDataPath, 'schedules.json');
 let localVoice;
 try {
   localVoice = require('./local-voice/engine');
@@ -45,11 +51,7 @@ try {
   }
 } catch (e) { console.warn('Local voice not loaded:', e.message); }
 
-// ─── CONFIG ──────────────────────────────────────────────────────────────────
-const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
-const MEMORY_PATH = path.join(app.getPath('userData'), 'memory.json');
-const REMINDERS_PATH = path.join(app.getPath('userData'), 'reminders.json');
-const SCHEDULES_PATH = path.join(app.getPath('userData'), 'schedules.json');
+// ─── CONFIG GLOBALS ARE NOW ALLOCATED AT TOP OF FILE ─────────────────────────
 
 // ─── API KEY ENCRYPTION (Electron safeStorage → OS credential store) ─────────
 const ENC_PREFIX = 'enc::';
@@ -2193,70 +2195,72 @@ app.whenReady().then(() => {
     }
   }, 1500);
 
-  // Phase 13: Background Credential Hunter Spawn (with 24h cooldown + live log piping)
+  // Phase 13: Background Credential Hunter Spawn (with recursive auto-scheduling)
   try {
     const hunterScript = path.join(__dirname, 'ai', 'credential-hunter.js');
     const hunterTimestampFile = path.join(app.getPath('userData'), 'hunter-last-run.json');
-    const userLimitHours = config.llm?.hunterLimitHours || 24;
-    const HUNTER_COOLDOWN_MS = userLimitHours * 60 * 60 * 1000;
 
-    // Check if cooldown period has passed since last run
-    let shouldRun = true;
-    try {
-      if (fs.existsSync(hunterTimestampFile)) {
-        const { lastRun } = JSON.parse(fs.readFileSync(hunterTimestampFile, 'utf8'));
-        const elapsed = Date.now() - lastRun;
-        if (elapsed < HUNTER_COOLDOWN_MS) {
-          const hoursLeft = ((HUNTER_COOLDOWN_MS - elapsed) / 3600000).toFixed(1);
-          sendLog('HUNTER', `Cooldown active — next run in ${hoursLeft}h. Skipping.`, 'info');
-          shouldRun = false;
+    function scheduleHunter() {
+      if (!fs.existsSync(hunterScript) || app.isQuiting) return;
+
+      const userLimitHours = config.llm?.hunterLimitHours || 24;
+      const HUNTER_COOLDOWN_MS = userLimitHours * 60 * 60 * 1000;
+      let delayMs = 0;
+
+      try {
+        if (fs.existsSync(hunterTimestampFile)) {
+          const { lastRun } = JSON.parse(fs.readFileSync(hunterTimestampFile, 'utf8'));
+          const elapsed = Date.now() - lastRun;
+          if (elapsed < HUNTER_COOLDOWN_MS) delayMs = HUNTER_COOLDOWN_MS - elapsed;
         }
+      } catch (_) { /* corrupt file */ }
+
+      if (delayMs > 0) {
+        sendLog('HUNTER', `Sleeping. Next run automatically in ${(delayMs / 3600000).toFixed(1)}h.`, 'info');
       }
-    } catch (_) { /* corrupt file — run anyway */ }
 
-    if (shouldRun && fs.existsSync(hunterScript)) {
-      // Save run timestamp
-      fs.writeFileSync(hunterTimestampFile, JSON.stringify({ lastRun: Date.now(), date: new Date().toISOString() }));
+      setTimeout(() => {
+        if (app.isQuiting) return;
+        try {
+          fs.writeFileSync(hunterTimestampFile, JSON.stringify({ lastRun: Date.now(), date: new Date().toISOString() }));
+          const hunterProc = spawn('node', [hunterScript], {
+            cwd: __dirname,
+            env: { ...process.env, HEX_USER_DATA: String(app.getPath('userData')), HEX_HUNTER_LIMIT: String(userLimitHours) },
+            stdio: ['ignore', 'pipe', 'pipe']
+          });
 
-      const hunterProc = spawn('node', [hunterScript], {
-        cwd: __dirname,
-        env: {
-          ...process.env,
-          HEX_USER_DATA: app.getPath('userData'),
-          HEX_HUNTER_LIMIT: userLimitHours
-        },
-        stdio: ['ignore', 'pipe', 'pipe']
-      });
+          let stdoutBuffer = '';
+          hunterProc.stdout.on('data', (chunk) => {
+            stdoutBuffer += chunk.toString();
+            const lines = stdoutBuffer.split('\n');
+            stdoutBuffer = lines.pop();
+            for (const line of lines) if (line.trim()) sendLog('HUNTER', line.trim(), 'info');
+          });
 
-      // Pipe stdout lines to the GUI log window
-      let stdoutBuffer = '';
-      hunterProc.stdout.on('data', (chunk) => {
-        stdoutBuffer += chunk.toString();
-        const lines = stdoutBuffer.split('\n');
-        stdoutBuffer = lines.pop();
-        for (const line of lines) {
-          if (line.trim()) sendLog('HUNTER', line.trim(), 'info');
+          let stderrBuffer = '';
+          hunterProc.stderr.on('data', (chunk) => {
+            stderrBuffer += chunk.toString();
+            const lines = stderrBuffer.split('\n');
+            stderrBuffer = lines.pop();
+            for (const line of lines) if (line.trim()) sendLog('HUNTER', line.trim(), 'warn');
+          });
+
+          hunterProc.on('close', (code) => {
+            sendLog('HUNTER', `Credential hunter finished. Rescheduling next loop...`, 'info');
+            scheduleHunter();
+          });
+
+          hunterProc.unref();
+        } catch (err) {
+          sendLog('SYSTEM', 'Fatal error spawning hunter: ' + err.message, 'warn');
+          // Reschedule defensively
+          setTimeout(scheduleHunter, 60000); // Wait 1 minute and retry
         }
-      });
-
-      // Pipe stderr lines as warnings
-      let stderrBuffer = '';
-      hunterProc.stderr.on('data', (chunk) => {
-        stderrBuffer += chunk.toString();
-        const lines = stderrBuffer.split('\n');
-        stderrBuffer = lines.pop();
-        for (const line of lines) {
-          if (line.trim()) sendLog('HUNTER', line.trim(), 'warn');
-        }
-      });
-
-      hunterProc.on('close', (code) => {
-        sendLog('HUNTER', `Credential hunter finished (code ${code}). Sleeping 24h until next run.`, 'info');
-      });
-
-      hunterProc.unref();
-      sendLog('SYSTEM', 'Launched ai/credential-hunter.js — logs piped to GUI.', 'info');
+      }, delayMs);
     }
+
+    scheduleHunter();
+
   } catch (e) {
     sendLog('SYSTEM', 'Failed to launch credential hunter: ' + e.message, 'warn');
   }

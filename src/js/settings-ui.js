@@ -73,6 +73,12 @@ async function downloadVoiceModels() {
 
   try {
     await window.hexAPI.voice.downloadModels(targets, whisperSize);
+
+    // Crucial: Update the frontend config cache so subsequent clicking of "APPLY & CLOSE"
+    // does not erase the newly saved whisperSize from the config with a stale cache state!
+    if (!config.voice) config.voice = {};
+    config.voice.whisperSize = whisperSize;
+
     label.textContent = '✅ All models downloaded! Restart HEX to activate.';
     fill.style.width = '100%';
     await refreshVoiceStatus();
