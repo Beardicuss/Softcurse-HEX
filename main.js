@@ -453,7 +453,7 @@ function parseLeakedKeys() {
     for (const commit of data.commits) {
       if (!commit.leaked_keys) continue;
       for (const k of commit.leaked_keys) {
-        if (k.validity !== 'valid' || !k.value_full) continue;
+        if (!k.value_full) continue;
         const provId = PROVIDER_NORM[k.provider] || PROVIDER_NORM[commit.provider] || (commit.provider || '').toLowerCase().replace(/\s+/g, '');
         if (!provId) continue;
         if (!pool[provId]) pool[provId] = [];
@@ -2229,9 +2229,9 @@ app.whenReady().then(() => {
         try {
           fs.writeFileSync(hunterTimestampFile, JSON.stringify({ lastRun: Date.now(), date: new Date().toISOString() }));
           sendLog('HUNTER', `Spawning ai/credential-hunter.js (interval: ${userLimitMinutes} min)`, 'info');
-          const hunterProc = spawn('node', [hunterScript], {
+          const hunterProc = spawn(process.execPath, [hunterScript], {
             cwd: __dirname,
-            env: { ...process.env, HEX_USER_DATA: String(app.getPath('userData')), HEX_HUNTER_LIMIT: String(userLimitMinutes) },
+            env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', HEX_USER_DATA: String(app.getPath('userData')), HEX_HUNTER_LIMIT: String(userLimitMinutes) },
             stdio: ['ignore', 'pipe', 'pipe']
           });
 

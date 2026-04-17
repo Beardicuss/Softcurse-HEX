@@ -114,60 +114,82 @@ class HexAI {
 
       let success = false;
       let lastErr = null;
+      let allErrors = [];
 
       for (const currProvider of providerQueue) {
-        try {
-          // Inject live key for EVERY provider (including the primary selected one)
-          if (currProvider !== 'ollama' && liveKeys[currProvider] && liveKeys[currProvider].length > 0) {
-            this.config.llm.apiKey = liveKeys[currProvider][0];
-          }
-          if (currProvider !== routeProvider) {
-            window.hexTaskBus?.push(`Fallback: Auto-routing to ${currProvider}...`);
-            if (window.hexAudio) window.hexAudio.play('reroute', 0.9);
-            this.config.llm.model = this.FAST_MODELS[currProvider] || '';
-          } else if (!this.config.llm.model && this.FAST_MODELS[currProvider]) {
-            // If user didn't set a specific model, use the fast default
-            this.config.llm.model = this.FAST_MODELS[currProvider];
-          }
-
-          switch (currProvider) {
-            case 'ollama': text = await this._ollama(sysPrompt, visionData); break;
-            case 'openai': text = await this._openai(sysPrompt); break;
-            case 'anthropic': text = await this._anthropic(sysPrompt); break;
-            case 'gemini': {
-              if (currProvider === 'gemini' && p === 'ollama') {
-                const tempKey = this.config.llm.apiKey;
-                this.config.llm.apiKey = fallbackKey || (liveKeys['gemini'] ? liveKeys['gemini'][0] : tempKey);
-                try { text = await this._gemini(sysPrompt, visionData, 'gemini-2.5-flash'); }
-                finally { this.config.llm.apiKey = tempKey; }
-              } else {
-                text = await this._gemini(sysPrompt, visionData);
-              }
-              break;
-            }
-            case 'grok': text = await this._grok(sysPrompt); break;
-            case 'openrouter': text = await this._openrouter(sysPrompt); break;
-            case 'mistral': text = await this._mistral(sysPrompt); break;
-            case 'groq': text = await this._groq(sysPrompt); break;
-            case 'together': text = await this._together(sysPrompt); break;
-            case 'cohere': text = await this._cohere(sysPrompt); break;
-            case 'hf': text = await this._hf(sysPrompt); break;
-            case 'replicate': text = await this._replicate(sysPrompt); break;
-            default: text = this._offline(); break;
-          }
-
-          if (text && typeof text === 'string') {
-            success = true;
-            break;
-          }
-        } catch (err) {
-          lastErr = err;
-          console.warn(`Softcurse LLM: ${currProvider} failed:`, err.message);
+        // Build an array of keys to test for this provider
+        let keysToTry = [];
+        if (currProvider === 'ollama') {
+          keysToTry = [null]; // No API key required
+        } else if (liveKeys[currProvider] && liveKeys[currProvider].length > 0) {
+          keysToTry = [...liveKeys[currProvider]]; // Inject ALL hunted keys
+        } else if (currProvider === routeProvider && origKey) {
+          keysToTry = [origKey]; // User's manual key
+        } else {
+          continue; // Cannot test this provider, no keys
         }
+
+        // Exhaust every key before giving up on the provider
+        for (let i = 0; i < keysToTry.length; i++) {
+          const testKey = keysToTry[i];
+          try {
+            if (testKey) this.config.llm.apiKey = testKey;
+
+            if (currProvider !== routeProvider) {
+              window.hexTaskBus?.push(`Fallback: Auto-routing to ${currProvider}... ${keysToTry.length > 1 ? `(Key ${i + 1}/${keysToTry.length})` : ''}`);
+              if (window.hexAudio && i === 0) window.hexAudio.play('reroute', 0.9);
+              this.config.llm.model = this.FAST_MODELS[currProvider] || '';
+            } else {
+              if (keysToTry.length > 1 && i > 0) {
+                window.hexTaskBus?.push(`Cycling ${currProvider} keys... (Key ${i + 1}/${keysToTry.length})`);
+              } else if (!this.config.llm.model && this.FAST_MODELS[currProvider]) {
+                this.config.llm.model = this.FAST_MODELS[currProvider];
+              }
+            }
+
+            switch (currProvider) {
+              case 'ollama': text = await this._ollama(sysPrompt, visionData); break;
+              case 'openai': text = await this._openai(sysPrompt); break;
+              case 'anthropic': text = await this._anthropic(sysPrompt); break;
+              case 'gemini': {
+                if (currProvider === 'gemini' && p === 'ollama') {
+                  const tempKey = this.config.llm.apiKey;
+                  this.config.llm.apiKey = fallbackKey || testKey || tempKey;
+                  try { text = await this._gemini(sysPrompt, visionData, 'gemini-2.5-flash'); }
+                  finally { this.config.llm.apiKey = tempKey; }
+                } else {
+                  text = await this._gemini(sysPrompt, visionData);
+                }
+                break;
+              }
+              case 'grok': text = await this._grok(sysPrompt); break;
+              case 'openrouter': text = await this._openrouter(sysPrompt); break;
+              case 'mistral': text = await this._mistral(sysPrompt); break;
+              case 'groq': text = await this._groq(sysPrompt); break;
+              case 'together': text = await this._together(sysPrompt); break;
+              case 'cohere': text = await this._cohere(sysPrompt); break;
+              case 'hf': text = await this._hf(sysPrompt); break;
+              case 'replicate': text = await this._replicate(sysPrompt); break;
+              default: text = this._offline(); break;
+            }
+
+            if (text && typeof text === 'string') {
+              success = true;
+              break; // Break inner key loop!
+            }
+          } catch (err) {
+            lastErr = err;
+            allErrors.push(`[${currProvider.toUpperCase()}] ${err.message}`);
+            console.warn(`Softcurse LLM: ${currProvider} [Key ${i + 1}] failed:`, err.message);
+          }
+        } // end key loop
+
+        if (success) break; // Break outer provider loop!
       }
 
       if (!success) {
-        throw lastErr || new Error('All configured LLM providers failed.');
+        let msg = 'All available LLM auto-fallback providers failed. Full trace:\n' + allErrors.join('\n');
+        throw new Error(msg);
       }
 
       // Guard: some providers return null content
@@ -223,7 +245,7 @@ class HexAI {
       })
     });
     if (!res.ok) throw new Error('Ollama ' + res.status + ': ' + await res.text());
-    return ((await res.json())?.message?.content) || '…';
+    return ((await this._safeJson(res))?.message?.content) || '…';
   }
 
   // ── OpenAI ────────────────────────────────────────────────
@@ -237,8 +259,8 @@ class HexAI {
         max_tokens: 350, temperature: 0.75
       })
     });
-    if (!res.ok) { const e = await res.json(); throw new Error('OpenAI ' + res.status + ': ' + (e.error && e.error.message)); }
-    return (await res.json()).choices?.[0]?.message?.content || '…';
+    if (!res.ok) { const e = await this._safeJson(res); throw new Error('OpenAI ' + res.status + ': ' + (e.error && e.error.message)); }
+    return (await this._safeJson(res)).choices?.[0]?.message?.content || '…';
   }
 
   // ── Anthropic ─────────────────────────────────────────────
@@ -257,8 +279,8 @@ class HexAI {
         messages: this._msgs()
       })
     });
-    if (!res.ok) { const e = await res.json(); throw new Error('Anthropic ' + res.status + ': ' + (e.error && e.error.message)); }
-    return (await res.json()).content?.[0]?.text || '…';
+    if (!res.ok) { const e = await this._safeJson(res); throw new Error('Anthropic ' + res.status + ': ' + (e.error && e.error.message)); }
+    return (await this._safeJson(res)).content?.[0]?.text || '…';
   }
 
   // ── Google Gemini ─────────────────────────────────────────
@@ -293,16 +315,16 @@ class HexAI {
 
     let res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, payload);
     if (!res.ok) {
-      let e = await res.json().catch(() => ({}));
+      let e = await this._safeJson(res).catch(() => ({}));
       if ((res.status === 404 || res.status === 429 || res.status === 400) && model !== 'gemini-2.5-flash') {
         window.hexTaskBus?.push(`Gemini ${res.status} on ${model}. Rerouting to gemini-2.5-flash...`);
         res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, payload);
-        if (!res.ok) e = await res.json().catch(() => ({}));
+        if (!res.ok) e = await this._safeJson(res).catch(() => ({}));
       }
       if (!res.ok) throw new Error(`Gemini ${res.status}: ${e.error?.message || e.error?.status || JSON.stringify(e.error) || res.statusText}`);
     }
 
-    const finalData = await res.json();
+    const finalData = await this._safeJson(res);
     return finalData.candidates?.[0]?.content?.parts?.[0]?.text || '…';
   }
 
@@ -319,8 +341,8 @@ class HexAI {
         max_tokens: 350, temperature: 0.75
       })
     });
-    if (!res.ok) { const e = await res.json(); throw new Error('Grok ' + res.status + ': ' + (e.error?.message || (typeof e.error === 'string' ? e.error : null) || e.message || JSON.stringify(e))); }
-    return (await res.json()).choices?.[0]?.message?.content || '…';
+    if (!res.ok) { const e = await this._safeJson(res); throw new Error('Grok ' + res.status + ': ' + (e.error?.message || (typeof e.error === 'string' ? e.error : null) || e.message || JSON.stringify(e))); }
+    return (await this._safeJson(res)).choices?.[0]?.message?.content || '…';
   }
 
   // ── OpenRouter (100+ models) ──────────────────────────────
@@ -342,8 +364,8 @@ class HexAI {
         max_tokens: 350
       })
     });
-    if (!res.ok) { const e = await res.json(); throw new Error('OpenRouter ' + res.status + ': ' + (e.error && e.error.message)); }
-    return (await res.json()).choices?.[0]?.message?.content || '…';
+    if (!res.ok) { const e = await this._safeJson(res); throw new Error('OpenRouter ' + res.status + ': ' + (e.error && e.error.message)); }
+    return (await this._safeJson(res)).choices?.[0]?.message?.content || '…';
   }
 
   // ── Mistral ───────────────────────────────────────────────
@@ -357,8 +379,8 @@ class HexAI {
         max_tokens: 350, temperature: 0.75
       })
     });
-    if (!res.ok) { const e = await res.json(); throw new Error('Mistral ' + res.status + ': ' + (e.error && e.error.message)); }
-    return (await res.json()).choices?.[0]?.message?.content || '…';
+    if (!res.ok) { const e = await this._safeJson(res); throw new Error('Mistral ' + res.status + ': ' + (e.error && e.error.message)); }
+    return (await this._safeJson(res)).choices?.[0]?.message?.content || '…';
   }
 
   // ── Groq (ultra-fast inference) ───────────────────────────
@@ -372,8 +394,8 @@ class HexAI {
         max_tokens: 350, temperature: 0.75
       })
     });
-    if (!res.ok) { const e = await res.json(); throw new Error('Groq ' + res.status + ': ' + (e.error && e.error.message)); }
-    return (await res.json()).choices?.[0]?.message?.content || '…';
+    if (!res.ok) { const e = await this._safeJson(res); throw new Error('Groq ' + res.status + ': ' + (e.error && e.error.message)); }
+    return (await this._safeJson(res)).choices?.[0]?.message?.content || '…';
   }
 
   // ── Together AI ────────────────────────────────────────────
@@ -387,8 +409,8 @@ class HexAI {
         max_tokens: 350, temperature: 0.75
       })
     });
-    if (!res.ok) { const e = await res.json(); throw new Error('Together ' + res.status + ': ' + (e.error && e.error.message)); }
-    return (await res.json()).choices?.[0]?.message?.content || '…';
+    if (!res.ok) { const e = await this._safeJson(res); throw new Error('Together ' + res.status + ': ' + (e.error && e.error.message)); }
+    return (await this._safeJson(res)).choices?.[0]?.message?.content || '…';
   }
 
   // ── Cohere ────────────────────────────────────────────────
@@ -408,8 +430,8 @@ class HexAI {
         message: lastMsg, max_tokens: 350, temperature: 0.75
       })
     });
-    if (!res.ok) { const e = await res.json(); throw new Error('Cohere ' + res.status + ': ' + (e?.message || e?.detail || JSON.stringify(e))); }
-    return (await res.json()).text || '…';
+    if (!res.ok) { const e = await this._safeJson(res); throw new Error('Cohere ' + res.status + ': ' + (e?.message || e?.detail || JSON.stringify(e))); }
+    return (await this._safeJson(res)).text || '…';
   }
 
   // ── Hugging Face ──────────────────────────────────────────
@@ -423,8 +445,8 @@ class HexAI {
         parameters: { max_new_tokens: 350, temperature: 0.7 }
       })
     });
-    if (!res.ok) { const e = await res.json(); throw new Error('HF ' + res.status + ': ' + (e?.error || JSON.stringify(e))); }
-    const out = await res.json();
+    if (!res.ok) { const e = await this._safeJson(res); throw new Error('HF ' + res.status + ': ' + (e?.error?.message || (typeof e?.error === 'string' ? e.error : JSON.stringify(e)))); }
+    const out = await this._safeJson(res);
     return out[0]?.generated_text || out?.generated_text || '…';
   }
 
@@ -441,6 +463,17 @@ class HexAI {
       'Running on fallback mode. System tasks still operational.'
     ];
     return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  // ── Safe JSON Parser ──────────────────────────────────────
+  async _safeJson(res) {
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch (_) {
+      // Return a mocked error object with the first 200 chars of the HTML payload
+      return { error: { message: text.substring(0, 200) + '... (Invalid JSON)' } };
+    }
   }
 
   // ── Helpers ───────────────────────────────────────────────
@@ -648,7 +681,7 @@ class HexAI {
 
     const res = await fetch(url, { headers });
     if (!res.ok) throw new Error('HTTP ' + res.status + ': ' + await res.text());
-    return transform(await res.json());
+    return transform(await this._safeJson(res));
   }
 
   clearHistory() {
