@@ -421,6 +421,7 @@ async function sendMessage() {
   ta.value = ''; ta.style.height = '36px';
 
   addUserMessage(text);
+  if (window.nsTrackCommand) window.nsTrackCommand();
   addLog('VOICE', `User: ${text}`);
   window.hexAudio.play('action', 0.6);
 

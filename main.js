@@ -2272,6 +2272,20 @@ app.whenReady().then(() => {
       return { success: true };
     });
 
+    ipcMain.handle('hunter:status', () => {
+      const userLimitMinutes = config.llm?.hunterLimitMinutes || 1440;
+      const HUNTER_COOLDOWN_MS = userLimitMinutes * 60 * 1000;
+      let delayMs = 0;
+      try {
+        if (fs.existsSync(hunterTimestampFile)) {
+          const { lastRun } = JSON.parse(fs.readFileSync(hunterTimestampFile, 'utf8'));
+          const elapsed = Date.now() - lastRun;
+          if (elapsed < HUNTER_COOLDOWN_MS) delayMs = HUNTER_COOLDOWN_MS - elapsed;
+        }
+      } catch (_) { }
+      return { delayMs, userLimitMinutes };
+    });
+
     scheduleHunter();
 
   } catch (e) {

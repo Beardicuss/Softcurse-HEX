@@ -90,7 +90,7 @@ async function downloadVoiceModels() {
   }
 }
 
-async function openSettings() {
+async function openSettings(targetTab = 'tab-general') {
   const cfg = config;
   refreshVoiceStatus();
   document.getElementById('cfg-username').value = cfg.userName || '';
@@ -199,8 +199,8 @@ async function openSettings() {
   }
   updateTtsEngineUI();
   updateProviderUI();
-  // Always start on General tab
-  switchSettingsTab('tab-general');
+  // Start on the requested tab
+  switchSettingsTab(targetTab);
   // Auto-show voice status info when general is loaded (shows in voice tab when switched)
   // Pre-populate personality active display
   updatePersonaBadge();

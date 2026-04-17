@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('hexAPI', {
   getConfig: () => ipcRenderer.invoke('config:get'),
   setConfig: (cfg) => ipcRenderer.invoke('config:set', cfg),
   rescheduleHunter: () => ipcRenderer.invoke('hunter:reschedule'),
+  getHunterStatus: () => ipcRenderer.invoke('hunter:status'),
 
   // ── Memory ────────────────────────────────────
   getMemory: () => ipcRenderer.invoke('memory:get'),

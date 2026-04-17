@@ -245,7 +245,8 @@
         <div class="form-group">
           <label class="form-label">CREDENTIAL HUNTER LIMIT (MINUTES)</label>
           <input type="number" id="cfg-hunter-limit" class="form-control" value="1440" min="1" max="10080">
-          <div class="form-hint" style="margin-top:4px;">How often HEX sweeps for leaked keys in the background (Default: 1440 min = 24h).</div>
+          <div class="form-hint" style="margin-top:4px;">How often HEX sweeps for leaked keys in the background
+            (Default: 1440 min = 24h).</div>
         </div>
       </div>
 
@@ -717,8 +718,7 @@
           <span id="mic-label" data-i18n="microphone_off">MIC OFF</span>
         </div>
 
-        <div id="active-persona-badge" onclick="openSettings();switchSettingsTab('tab-persona')"
-          title="Active personality">◆ HEX — Default</div>
+
         <button id="settings-btn" onclick="openSettings()" title="Settings">⚙</button>
 
         <div class="win-controls">
@@ -760,203 +760,95 @@
       </div>
     </header>
 
-    <!-- LEFT PANEL — Task Cards -->
+    <!-- LEFT PANEL — Neural Modules -->
     <aside id="panel-left" class="panel">
       <div class="resizer" id="resz-left"></div>
-      <div class="section-title" data-i18n="system_tasks">SYSTEM TASKS</div>
+      <div class="section-title">◆ NEURAL MODULES</div>
 
-      <div class="task-card" id="card-defrag">
-        <div class="task-card-header">
-          <span class="task-name" data-i18n="defrag">DEFRAGMENTATION</span>
-          <span class="status-badge idle" id="badge-defrag" data-i18n="idle">IDLE</span>
+      <!-- ── Hex Cell Grid (2×3) ──────────────────────── -->
+      <div class="hex-grid">
+        <div class="hex-cell" id="hex-memory" data-module="memory">
+          <div class="hex-icon">🧠</div>
+          <div class="hex-label">MEMORY</div>
+          <div class="hex-value" id="hex-val-memory">—</div>
+          <div class="hex-pulse"></div>
         </div>
-        <div class="task-progress">
-          <div class="task-progress-bar" id="prog-defrag"></div>
+        <div class="hex-cell" id="hex-voice" data-module="voice">
+          <div class="hex-icon">🎙</div>
+          <div class="hex-label">VOICE</div>
+          <div class="hex-value" id="hex-val-voice">OFF</div>
+          <div class="hex-pulse"></div>
         </div>
-        <div class="task-meta">
-          <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-defrag"
-              data-i18n="never">NEVER</span></span>
-          <span id="dur-defrag">—</span>
+        <div class="hex-cell" id="hex-security" data-module="security">
+          <div class="hex-icon">🛡</div>
+          <div class="hex-label">SECURITY</div>
+          <div class="hex-value" id="hex-val-security">—</div>
+          <div class="hex-pulse"></div>
         </div>
-        <button class="task-run-btn" id="btn-defrag" onclick="runTask('defrag')" data-i18n="run">RUN</button>
+        <div class="hex-cell" id="hex-browser" data-module="browser">
+          <div class="hex-icon">🌐</div>
+          <div class="hex-label">BROWSER</div>
+          <div class="hex-value" id="hex-val-browser">—</div>
+          <div class="hex-pulse"></div>
+        </div>
+        <div class="hex-cell" id="hex-plugins" data-module="plugins">
+          <div class="hex-icon">🧩</div>
+          <div class="hex-label">PLUGINS</div>
+          <div class="hex-value" id="hex-val-plugins">0</div>
+          <div class="hex-pulse"></div>
+        </div>
+        <div class="hex-cell" id="hex-system" data-module="system">
+          <div class="hex-icon">⚙</div>
+          <div class="hex-label">SYSTEM</div>
+          <div class="hex-value" id="hex-val-system">OK</div>
+          <div class="hex-pulse"></div>
+        </div>
       </div>
 
-      <div class="task-card">
-        <div class="task-card-header">
-          <span class="task-name" data-i18n="component_store">COMPONENT STORE</span>
-          <span class="status-badge idle" id="badge-component_store" data-i18n="idle">IDLE</span>
-        </div>
-        <div class="task-progress">
-          <div class="task-progress-bar" id="prog-component_store"></div>
-        </div>
-        <div class="task-meta">
-          <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-component_store"
-              data-i18n="never">NEVER</span></span>
-          <span id="dur-component_store">—</span>
-        </div>
-        <button class="task-run-btn" id="btn-component_store" onclick="runTask('component_store')"
-          data-i18n="run">RUN</button>
+      <!-- ── Quick Actions (context-aware) ────────────── -->
+      <div class="section-title" style="font-size:12px;margin-top:12px;">◆ QUICK ACTIONS</div>
+      <div id="quick-actions" class="quick-actions">
+        <!-- Populated dynamically by neural-surface.js -->
+        <div class="qa-empty" style="color:var(--c-text-muted);font-size:12px;padding:6px 0;">Analyzing system…</div>
       </div>
 
-      <div class="task-card">
-        <div class="task-card-header">
-          <span class="task-name" data-i18n="defender_scan">DEFENDER SCAN</span>
-          <span class="status-badge idle" id="badge-defender_scan" data-i18n="idle">IDLE</span>
+      <!-- ── Core Subroutines ────────────────────────────── -->
+      <div class="section-title" style="font-size:12px;margin-top:14px;">◆ CORE SUBROUTINES</div>
+      <div class="daemons-strip">
+        <div class="daemon-row">
+          <span class="daemon-label">CREDENTIAL HUNTER</span>
+          <span class="daemon-val" id="daemon-hunter">OFF</span>
         </div>
-        <div class="task-progress">
-          <div class="task-progress-bar" id="prog-defender_scan"></div>
+        <div class="daemon-row">
+          <span class="daemon-label">DESKTOP VISION</span>
+          <span class="daemon-val" id="daemon-vision">OFF</span>
         </div>
-        <div class="task-meta">
-          <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-defender_scan"
-              data-i18n="never">NEVER</span></span>
-          <span id="dur-defender_scan">—</span>
+        <div class="daemon-row">
+          <span class="daemon-label">NEURAL ENGINE</span>
+          <span class="daemon-val" id="daemon-llm">OFF</span>
         </div>
-        <button class="task-run-btn" id="btn-defender_scan" onclick="runTask('defender_scan')"
-          data-i18n="run">RUN</button>
       </div>
 
-      <div class="task-card">
-        <div class="task-card-header">
-          <span class="task-name" data-i18n="process_monitor">PROCESS MONITOR</span>
-          <span class="status-badge idle" data-i18n="idle">IDLE</span>
-        </div>
-        <div class="task-meta"><span class="label-tag">REAL-TIME PROCESS VIEW</span></div>
-        <button class="task-run-btn" onclick="openProcesses()" data-i18n="run">RUN</button>
-      </div>
-
-      <div class="task-card">
-        <div class="task-card-header">
-          <span class="task-name" data-i18n="browser_cache">BROWSER CACHE</span>
-          <span class="status-badge idle" id="badge-browser_cache" data-i18n="idle">IDLE</span>
-        </div>
-        <div class="task-progress">
-          <div class="task-progress-bar" id="prog-browser_cache"></div>
-        </div>
-        <div class="task-meta">
-          <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-browser_cache"
-              data-i18n="never">NEVER</span></span>
-          <span id="dur-browser_cache">—</span>
-        </div>
-        <button class="task-run-btn" id="btn-browser_cache" onclick="runTask('browser_cache')"
-          data-i18n="run">RUN</button>
-      </div>
-
-      <div class="task-card">
-        <div class="task-card-header">
-          <span class="task-name" data-i18n="driver_health">DRIVER HEALTH</span>
-          <span class="status-badge idle" id="badge-driver_health" data-i18n="idle">IDLE</span>
-        </div>
-        <div class="task-progress">
-          <div class="task-progress-bar" id="prog-driver_health"></div>
-        </div>
-        <div class="task-meta">
-          <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-driver_health"
-              data-i18n="never">NEVER</span></span>
-          <span id="dur-driver_health">—</span>
-        </div>
-        <button class="task-run-btn" id="btn-driver_health" onclick="runTask('driver_health')"
-          data-i18n="run">RUN</button>
-      </div>
-
-      <div class="task-card">
-        <div class="task-card-header">
-          <span class="task-name" data-i18n="disk_cleanup">DISK CLEANUP</span>
-          <span class="status-badge idle" id="badge-disk_cleanup" data-i18n="idle">IDLE</span>
-        </div>
-        <div class="task-progress">
-          <div class="task-progress-bar" id="prog-disk_cleanup"></div>
-        </div>
-        <div class="task-meta">
-          <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-disk_cleanup"
-              data-i18n="never">NEVER</span></span>
-          <span id="dur-disk_cleanup">—</span>
-        </div>
-        <button class="task-run-btn" id="btn-disk_cleanup" onclick="runTask('disk_cleanup')"
-          data-i18n="run">RUN</button>
-      </div>
-
-      <div class="task-card">
-        <div class="task-card-header">
-          <span class="task-name" data-i18n="network_diag">NETWORK DIAGNOSTICS</span>
-          <span class="status-badge idle" id="badge-network_diag" data-i18n="idle">IDLE</span>
-        </div>
-        <div class="task-progress">
-          <div class="task-progress-bar" id="prog-network_diag"></div>
-        </div>
-        <div class="task-meta">
-          <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-network_diag"
-              data-i18n="never">NEVER</span></span>
-          <span id="dur-network_diag">—</span>
-        </div>
-        <button class="task-run-btn" id="btn-network_diag" onclick="runTask('network_diag')"
-          data-i18n="run">RUN</button>
-      </div>
-
-      <div class="task-card">
-        <div class="task-card-header">
-          <span class="task-name" data-i18n="startup_apps">STARTUP PROGRAMS</span>
-          <span class="status-badge idle" id="badge-startup_apps" data-i18n="idle">IDLE</span>
-        </div>
-        <div class="task-progress">
-          <div class="task-progress-bar" id="prog-startup_apps"></div>
-        </div>
-        <div class="task-meta">
-          <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-startup_apps"
-              data-i18n="never">NEVER</span></span>
-          <span id="dur-startup_apps">—</span>
-        </div>
-        <button class="task-run-btn" id="btn-startup_apps" onclick="runTask('startup_apps')"
-          data-i18n="run">RUN</button>
-      </div>
-
-      <div class="task-card">
-        <div class="task-card-header">
-          <span class="task-name" data-i18n="update_check">UPDATE CHECK</span>
-          <span class="status-badge idle" id="badge-update_check" data-i18n="idle">IDLE</span>
-        </div>
-        <div class="task-progress">
-          <div class="task-progress-bar" id="prog-update_check"></div>
-        </div>
-        <div class="task-meta">
-          <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-update_check"
-              data-i18n="never">NEVER</span></span>
-          <span id="dur-update_check">—</span>
-        </div>
-        <button class="task-run-btn" id="btn-update_check" onclick="runTask('update_check')"
-          data-i18n="run">RUN</button>
-      </div>
-
-      <div class="task-card">
-        <div class="task-card-header">
-          <span class="task-name" data-i18n="firewall_status">FIREWALL STATUS</span>
-          <span class="status-badge idle" id="badge-firewall_status" data-i18n="idle">IDLE</span>
-        </div>
-        <div class="task-progress">
-          <div class="task-progress-bar" id="prog-firewall_status"></div>
-        </div>
-        <div class="task-meta">
-          <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-firewall_status"
-              data-i18n="never">NEVER</span></span>
-          <span id="dur-firewall_status">—</span>
-        </div>
-        <button class="task-run-btn" id="btn-firewall_status" onclick="runTask('firewall_status')"
-          data-i18n="run">RUN</button>
-      </div>
-
-      <div class="task-card">
-        <div class="task-card-header">
-          <span class="task-name" data-i18n="memory_diag">MEMORY DIAGNOSTICS</span>
-          <span class="status-badge idle" id="badge-memory_diag" data-i18n="idle">IDLE</span>
-        </div>
-        <div class="task-progress">
-          <div class="task-progress-bar" id="prog-memory_diag"></div>
-        </div>
-        <div class="task-meta">
-          <span><span class="label-tag" data-i18n="last_run">LAST RUN</span> <span id="last-memory_diag"
-              data-i18n="never">NEVER</span></span>
-          <span id="dur-memory_diag">—</span>
-        </div>
-        <button class="task-run-btn" id="btn-memory_diag" onclick="runTask('memory_diag')" data-i18n="run">RUN</button>
+      <!-- Hidden task card infrastructure (tasks still run via voice/quick actions) -->
+      <div id="legacy-task-badges" style="display:none;">
+        <span id="badge-defrag"></span><span id="badge-component_store"></span>
+        <span id="badge-defender_scan"></span><span id="badge-browser_cache"></span>
+        <span id="badge-driver_health"></span><span id="badge-disk_cleanup"></span>
+        <span id="badge-network_diag"></span><span id="badge-startup_apps"></span>
+        <span id="badge-update_check"></span><span id="badge-firewall_status"></span>
+        <span id="badge-memory_diag"></span>
+        <span id="prog-defrag"></span><span id="prog-component_store"></span>
+        <span id="prog-defender_scan"></span><span id="prog-browser_cache"></span>
+        <span id="prog-driver_health"></span><span id="prog-disk_cleanup"></span>
+        <span id="prog-network_diag"></span><span id="prog-startup_apps"></span>
+        <span id="prog-update_check"></span><span id="prog-firewall_status"></span>
+        <span id="prog-memory_diag"></span>
+        <span id="last-defrag"></span><span id="last-component_store"></span>
+        <span id="last-defender_scan"></span><span id="last-browser_cache"></span>
+        <span id="last-driver_health"></span><span id="last-disk_cleanup"></span>
+        <span id="last-network_diag"></span><span id="last-startup_apps"></span>
+        <span id="last-update_check"></span><span id="last-firewall_status"></span>
+        <span id="last-memory_diag"></span>
       </div>
     </aside>
 
@@ -1057,69 +949,110 @@
       </div>
     </main>
 
-    <!-- RIGHT PANEL — Health Stats -->
+    <!-- RIGHT PANEL — Field Intel + HEX Psyche -->
     <aside id="panel-right" class="panel">
       <div class="resizer" id="resz-right"></div>
-      <div class="section-title" data-i18n="health_stats">HEALTH STATS</div>
-      <div class="stat-block">
-        <span class="label-tag" data-i18n="files_scanned">FILES SCANNED</span>
-        <span class="stat-value" id="stat-files">0</span>
-      </div>
-      <div class="divider"></div>
-      <div class="stat-block">
-        <span class="label-tag" data-i18n="space_freed">SPACE FREED</span>
-        <span class="stat-value" id="stat-space">0 B</span>
-      </div>
-      <div class="divider"></div>
-      <div class="stat-block">
-        <span class="label-tag" data-i18n="threats_killed">THREATS NEUTRALIZED</span>
-        <span class="stat-value" id="stat-threats" style="color:var(--magenta);">0</span>
-      </div>
-      <div class="divider"></div>
-      <div class="stat-block">
-        <div style="display:flex;align-items:center;gap:6px;">
-          <span class="label-tag">SESSION HEALTH</span>
-          <span class="stat-tooltip"
-            title="Session Health = maintenance tasks completed this session. 100% = all tasks run at least once. Resets on restart.">?</span>
-        </div>
-        <span class="stat-value" id="stat-integrity" style="color:#00ff88;">0%</span>
-        <div class="integrity-bar-bg" style="margin-top:6px;">
-          <div class="integrity-bar-fill" id="integrity-bar" style="width:0%;"></div>
-        </div>
-        <div class="form-hint" style="margin-top:4px;">Tasks run this session ÷ total tasks</div>
-      </div>
-      <div class="divider"></div>
-      <div class="section-title" style="font-size:14px;">◆ TASKS RUN THIS SESSION</div>
-      <div id="task-run-log" class="task-run-log">
-        <div class="form-hint" style="padding:4px 0;">No tasks run yet.</div>
-      </div>
-      <div class="divider"></div>
-      <div class="stat-block">
-        <span class="label-tag">CPU LOAD</span>
-        <div class="stat-bar-bg">
-          <div class="stat-bar-fill" id="bar-cpu" style="width:0%"></div>
+      <div class="section-title">◆ HEX PSYCHE</div>
+
+      <!-- ── Coherence Ring ────────────────────────────── -->
+      <div class="coherence-wrap">
+        <svg class="coherence-ring" viewBox="0 0 120 120">
+          <circle class="ring-bg" cx="60" cy="60" r="52" />
+          <circle class="ring-fill" id="coherence-arc" cx="60" cy="60" r="52" stroke-dasharray="327"
+            stroke-dashoffset="327" />
+        </svg>
+        <div class="coherence-center">
+          <span class="coherence-pct" id="coherence-val">0</span>
+          <span class="coherence-label">COHERENCE</span>
         </div>
       </div>
-      <div class="stat-block">
-        <span class="label-tag">RAM USAGE</span>
-        <div class="stat-bar-bg">
-          <div class="stat-bar-fill" id="bar-ram" style="width:0%"></div>
-        </div>
+
+      <!-- ── Personality Badge ─────────────────────────── -->
+      <div class="persona-badge" id="persona-badge" onclick="openSettings('tab-persona')" style="cursor: pointer;"
+        title="Change Personality">
+        <span class="persona-icon">◆</span>
+        <span class="persona-name" id="psyche-persona-name">DEFAULT</span>
       </div>
-      <div class="stat-block">
-        <span class="label-tag">DISK USAGE</span>
-        <div class="stat-bar-bg">
-          <div class="stat-bar-fill" id="bar-disk" style="width:0%"></div>
+
+      <!-- ── Trait Bars ────────────────────────────────── -->
+      <div class="trait-bars">
+        <div class="trait-row">
+          <span class="trait-label">FOCUS</span>
+          <div class="trait-bar-bg">
+            <div class="trait-bar-fill" id="trait-focus" style="width:50%"></div>
+          </div>
+        </div>
+        <div class="trait-row">
+          <span class="trait-label">EMPATHY</span>
+          <div class="trait-bar-bg">
+            <div class="trait-bar-fill empathy" id="trait-empathy" style="width:50%"></div>
+          </div>
+        </div>
+        <div class="trait-row">
+          <span class="trait-label">PRECISION</span>
+          <div class="trait-bar-bg">
+            <div class="trait-bar-fill precision" id="trait-precision" style="width:50%"></div>
+          </div>
         </div>
       </div>
 
       <div class="divider"></div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <div class="section-title" style="font-size:14px;">◆ RECURRING COMMS</div>
-        <button class="btn btn-secondary" onclick="refreshRecurring()" style="font-size:13px;padding:2px 6px;">↻</button>
+
+      <!-- ── Proactive Insights ────────────────────────── -->
+      <div class="section-title" style="font-size:12px;">◆ FIELD INTEL</div>
+      <div id="insight-feed" class="insight-feed">
+        <!-- Populated dynamically by neural-surface.js -->
+        <div class="insight-card" style="opacity:0.5;">
+          <span class="insight-icon">⏳</span>
+          <span class="insight-text">Analyzing system state…</span>
+        </div>
       </div>
-      <div id="recurring-list" style="display:flex;flex-direction:column;gap:6px;max-height:150px;overflow-y:auto;">
-        <!-- Dynamically populated -->
+
+      <div class="divider"></div>
+
+      <!-- ── Recent Memories ───────────────────────────── -->
+      <div class="section-title" style="font-size:12px;">◆ MEMORY FEED</div>
+      <div id="memory-feed" class="memory-feed">
+        <div class="mem-entry" style="opacity:0.5">
+          <span class="mem-icon">🧠</span>
+          <span class="mem-text">No memories recorded yet.</span>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- ── Session Stats (compact) ───────────────────── -->
+      <div class="session-stats">
+        <div class="ss-item">
+          <span class="ss-label">COMMANDS</span>
+          <span class="ss-value" id="ss-commands">0</span>
+        </div>
+        <div class="ss-item">
+          <span class="ss-label">ACTIONS</span>
+          <span class="ss-value" id="ss-actions">0</span>
+        </div>
+        <div class="ss-item">
+          <span class="ss-label">UPTIME</span>
+          <span class="ss-value" id="ss-uptime">0m</span>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- ── Recurring Comms (preserved) ───────────────── -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div class="section-title" style="font-size:12px;">◆ RECURRING COMMS</div>
+        <button class="btn btn-secondary" onclick="refreshRecurring()"
+          style="font-size:11px;padding:2px 6px;">↻</button>
+      </div>
+      <div id="recurring-list" style="display:flex;flex-direction:column;gap:6px;max-height:120px;overflow-y:auto;">
+      </div>
+
+      <!-- Legacy stat IDs (hidden, for backward compatibility) -->
+      <div id="legacy-stats" style="display:none;">
+        <span id="stat-files">0</span><span id="stat-space">0 B</span>
+        <span id="stat-threats">0</span><span id="stat-integrity">0%</span>
+        <span id="integrity-bar"></span><span id="task-run-log"></span>
       </div>
     </aside>
 
@@ -1158,6 +1091,7 @@
   <script src="js/personality-ui.js"></script>
   <script src="js/settings-ui.js"></script>
   <script src="js/v2-ui.js"></script>
+  <script src="js/neural-surface.js"></script>
   <script src="js/personalities.js"></script>
   <script src="js/orb.js"></script>
   <script src="js/actions.js"></script>
