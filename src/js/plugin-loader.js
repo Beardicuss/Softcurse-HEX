@@ -193,6 +193,7 @@ class PluginLoader {
             actions: p.manifest.actions || [],
             loaded: p.loaded,
             loadedAt: p.loadedAt,
+            status: 'loaded',
         }));
     }
 
