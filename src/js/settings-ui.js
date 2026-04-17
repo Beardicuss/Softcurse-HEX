@@ -128,7 +128,7 @@ async function openSettings() {
 
   document.getElementById('cfg-model').value = cfg.llm?.model || '';
   if (document.getElementById('cfg-visionkey')) document.getElementById('cfg-visionkey').value = cfg.llm?.visionApiKey || '';
-  if (document.getElementById('cfg-hunter-limit')) document.getElementById('cfg-hunter-limit').value = cfg.llm?.hunterLimitHours || 24;
+  if (document.getElementById('cfg-hunter-limit')) document.getElementById('cfg-hunter-limit').value = cfg.llm?.hunterLimitMinutes || 1440;
 
   // Voice rate/pitch sliders
   const rate = cfg.voice?.rate ?? 0.95;
@@ -444,7 +444,7 @@ async function saveSettings() {
       // Manual API keys deprecated from UI by Phase 13 automation. Preserving internal signature for local router override/fallback.
       apiKey: '',
       visionApiKey: document.getElementById('cfg-visionkey')?.value || '',
-      hunterLimitHours: parseInt(document.getElementById('cfg-hunter-limit')?.value, 10) || 24
+      hunterLimitMinutes: parseInt(document.getElementById('cfg-hunter-limit')?.value, 10) || 1440
     },
     browser: {
       searchEngine: document.getElementById('cfg-searchengine')?.value || 'google'
@@ -504,6 +504,9 @@ async function saveSettings() {
   closeSettings();
   addLog('SYSTEM', 'Configuration saved.');
   showToast('◆ CONFIG SAVED', 'Settings updated and applied.', '', 3000);
+
+  // Kick the credential hunter scheduler with the new timing
+  try { window.hexAPI.rescheduleHunter(); } catch (_) { }
 }
 
 // ─── PLUGIN LOCAL INSTALL UI ─────────────────────────────────────────────────

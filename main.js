@@ -2199,12 +2199,14 @@ app.whenReady().then(() => {
   try {
     const hunterScript = path.join(__dirname, 'ai', 'credential-hunter.js');
     const hunterTimestampFile = path.join(app.getPath('userData'), 'hunter-last-run.json');
+    let _hunterTimer = null;
 
     function scheduleHunter() {
+      if (_hunterTimer) { clearTimeout(_hunterTimer); _hunterTimer = null; }
       if (!fs.existsSync(hunterScript) || app.isQuiting) return;
 
-      const userLimitHours = config.llm?.hunterLimitHours || 24;
-      const HUNTER_COOLDOWN_MS = userLimitHours * 60 * 60 * 1000;
+      const userLimitMinutes = config.llm?.hunterLimitMinutes || 1440;
+      const HUNTER_COOLDOWN_MS = userLimitMinutes * 60 * 1000;
       let delayMs = 0;
 
       try {
@@ -2216,16 +2218,20 @@ app.whenReady().then(() => {
       } catch (_) { /* corrupt file */ }
 
       if (delayMs > 0) {
-        sendLog('HUNTER', `Sleeping. Next run automatically in ${(delayMs / 3600000).toFixed(1)}h.`, 'info');
+        sendLog('HUNTER', `Sleeping. Next run automatically in ${Math.ceil(delayMs / 60000)} min.`, 'info');
+      } else {
+        sendLog('HUNTER', `Cooldown passed. Launching credential hunter now...`, 'info');
       }
 
-      setTimeout(() => {
+      _hunterTimer = setTimeout(() => {
+        _hunterTimer = null;
         if (app.isQuiting) return;
         try {
           fs.writeFileSync(hunterTimestampFile, JSON.stringify({ lastRun: Date.now(), date: new Date().toISOString() }));
+          sendLog('HUNTER', `Spawning ai/credential-hunter.js (interval: ${userLimitMinutes} min)`, 'info');
           const hunterProc = spawn('node', [hunterScript], {
             cwd: __dirname,
-            env: { ...process.env, HEX_USER_DATA: String(app.getPath('userData')), HEX_HUNTER_LIMIT: String(userLimitHours) },
+            env: { ...process.env, HEX_USER_DATA: String(app.getPath('userData')), HEX_HUNTER_LIMIT: String(userLimitMinutes) },
             stdio: ['ignore', 'pipe', 'pipe']
           });
 
@@ -2246,7 +2252,7 @@ app.whenReady().then(() => {
           });
 
           hunterProc.on('close', (code) => {
-            sendLog('HUNTER', `Credential hunter finished. Rescheduling next loop...`, 'info');
+            sendLog('HUNTER', `Credential hunter finished (code ${code}). Next run in ${userLimitMinutes} min.`, 'info');
             scheduleHunter();
           });
 
@@ -2258,6 +2264,13 @@ app.whenReady().then(() => {
         }
       }, delayMs);
     }
+
+    // Expose reschedule so saving settings can kick it live
+    ipcMain.handle('hunter:reschedule', () => {
+      sendLog('HUNTER', 'Settings changed — rescheduling credential hunter.', 'info');
+      scheduleHunter();
+      return { success: true };
+    });
 
     scheduleHunter();
 
