@@ -46,25 +46,46 @@ function filterMemoryFacts(query) {
   if (hint) hint.textContent = filtered.length + '/' + facts.length;
 
   if (!filtered.length) {
-    listEl.innerHTML = '<div class="form-hint" style="padding:8px;">' + (facts.length ? 'No facts match filter.' : 'No facts yet. Chat with HEX — learning happens automatically.') + '</div>';
+    window.hexRenderUtils.clearNode(listEl);
+    const emptyState = window.hexRenderUtils.createEl('div', {
+      className: 'form-hint',
+      text: facts.length ? 'No facts match filter.' : 'No facts yet. Chat with HEX — learning happens automatically.'
+    });
+    emptyState.style.padding = '8px';
+    listEl.appendChild(emptyState);
     return;
   }
-  listEl.innerHTML = '';
+  window.hexRenderUtils.clearNode(listEl);
   filtered.forEach(function (f) {
     const tier = typeof f.tier === 'number' ? f.tier : 3;
     const conf = Math.round((f.confidence || 0) * 100);
     const ageDays = f.created_at ? Math.floor((Date.now() - f.created_at) / 86400000) : 0;
     const ageStr = ageDays < 1 ? 'today' : ageDays + 'd';
     const implicitMark = f.implicit ? ' ~' : '';
-    const row = document.createElement('div');
-    row.className = 'fact-row';
+    const row = window.hexRenderUtils.createEl('div', { className: 'fact-row' });
     row.style.borderLeft = '3px solid ' + TIER_COLORS[tier];
     row.style.paddingLeft = '8px';
-    row.innerHTML =
-      '<span class="fact-cat">' + (f.type || f.category || 'general') + '</span>' +
-      '<span class="fact-text">' + escapeHtml((f.content || '').substring(0, 140)) + '</span>' +
-      '<span style="font-size:13px;opacity:0.4;white-space:nowrap;margin:0 4px;">' + conf + '%' + implicitMark + ' ' + ageStr + '</span>' +
-      '<button class="fact-del" onclick="deleteMemoryFact(' + f.id + ')">✕</button>';
+    row.appendChild(window.hexRenderUtils.createEl('span', {
+      className: 'fact-cat',
+      text: f.type || f.category || 'general'
+    }));
+    row.appendChild(window.hexRenderUtils.createEl('span', {
+      className: 'fact-text',
+      text: (f.content || '').substring(0, 140)
+    }));
+    const meta = window.hexRenderUtils.createEl('span', {
+      text: conf + '%' + implicitMark + ' ' + ageStr
+    });
+    meta.style.fontSize = '13px';
+    meta.style.opacity = '0.4';
+    meta.style.whiteSpace = 'nowrap';
+    meta.style.margin = '0 4px';
+    row.appendChild(meta);
+    row.appendChild(window.hexRenderUtils.createEl('button', {
+      className: 'fact-del',
+      text: '✕',
+      dataset: { memoryDelete: f.id }
+    }));
     listEl.appendChild(row);
   });
 }

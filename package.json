@@ -33,6 +33,7 @@
       "preload.js",
       "src/**/*",
       "ai/**/*",
+      "plugins/**/*",
       "local-voice/**/*",
       "!local-voice/models",
       "!local-voice/models/**/*",

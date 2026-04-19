@@ -17,37 +17,59 @@ function updatePersonaBadge() {
 function refreshPersonaList() {
   const container = document.getElementById('persona-list');
   if (!container) return;
-  container.innerHTML = '';
+  window.hexRenderUtils.clearNode(container);
   const all = window.hexPersonalities.getAll();
   const activeId = window.hexPersonalities.activeId;
 
   if (!all.length) {
-    container.innerHTML = '<div class="form-hint" style="padding:8px;">No personalities found.</div>';
+    const emptyState = window.hexRenderUtils.createEl('div', {
+      className: 'form-hint',
+      text: 'No personalities found.'
+    });
+    emptyState.style.padding = '8px';
+    container.appendChild(emptyState);
     return;
   }
 
   all.forEach(p => {
-    const row = document.createElement('div');
-    row.className = 'persona-row' + (p.id === activeId ? ' active-persona' : '');
+    const row = window.hexRenderUtils.createEl('div', {
+      className: 'persona-row' + (p.id === activeId ? ' active-persona' : '')
+    });
 
     const activeBtnLabel = p.id === activeId ? '✓ ACTIVE' : 'ACTIVATE';
     const activeBtnCls = p.id === activeId ? 'persona-btn activate is-active' : 'persona-btn activate';
     const badgeCls = p.isBuiltIn ? 'persona-row-badge' : 'persona-row-badge custom';
     const badgeLabel = p.isBuiltIn ? 'BUILT-IN' : 'CUSTOM';
 
-    row.innerHTML =
-      '<div class="persona-row-info">' +
-      '<span class="persona-row-name">' + escapeHtml(p.name) + '</span>' +
-      '<span class="persona-row-desc">' + escapeHtml(p.description || '') + '</span>' +
-      '</div>' +
-      '<span class="' + badgeCls + '">' + badgeLabel + '</span>' +
-      '<button class="' + activeBtnCls + '" onclick="activatePersonality(\'' + p.id + '\')">' + activeBtnLabel + '</button>' +
-      (!p.isBuiltIn
-        ? '<button class="persona-btn edit-btn" onclick="editPersonality(\'' + p.id + '\')">EDIT</button>'
-        + '<button class="persona-btn del-btn" onclick="deletePersonality(\'' + p.id + '\')">✕</button>'
-        : '<button class="persona-btn edit-btn" onclick="clonePersonality(\'' + p.id + '\')">CLONE</button>'
-        + '<div></div>'
-      );
+    const info = window.hexRenderUtils.createEl('div', { className: 'persona-row-info' });
+    info.appendChild(window.hexRenderUtils.createEl('span', { className: 'persona-row-name', text: p.name }));
+    info.appendChild(window.hexRenderUtils.createEl('span', { className: 'persona-row-desc', text: p.description || '' }));
+    row.appendChild(info);
+    row.appendChild(window.hexRenderUtils.createEl('span', { className: badgeCls, text: badgeLabel }));
+    row.appendChild(window.hexRenderUtils.createEl('button', {
+      className: activeBtnCls,
+      text: activeBtnLabel,
+      dataset: { personaActivate: p.id }
+    }));
+    if (!p.isBuiltIn) {
+      row.appendChild(window.hexRenderUtils.createEl('button', {
+        className: 'persona-btn edit-btn',
+        text: 'EDIT',
+        dataset: { personaEdit: p.id }
+      }));
+      row.appendChild(window.hexRenderUtils.createEl('button', {
+        className: 'persona-btn del-btn',
+        text: '✕',
+        dataset: { personaDelete: p.id }
+      }));
+    } else {
+      row.appendChild(window.hexRenderUtils.createEl('button', {
+        className: 'persona-btn edit-btn',
+        text: 'CLONE',
+        dataset: { personaClone: p.id }
+      }));
+      row.appendChild(window.hexRenderUtils.createEl('div'));
+    }
     container.appendChild(row);
   });
 

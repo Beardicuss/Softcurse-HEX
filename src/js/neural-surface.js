@@ -144,14 +144,16 @@ function nsUpdateQuickActions() {
 
     // Render top 6
     const top = actions.slice(0, 6);
-    container.innerHTML = top.map(a => {
-        const cls = a.urgent ? 'qa-row urgent' : 'qa-row';
-        const handler = a.task ? `runTask('${a.task}')` : `${a.fn}()`;
-        return `<div class="${cls}" onclick="${handler}">
-      <span class="qa-icon">${a.icon}</span>
-      <span class="qa-text">${a.text}</span>
-    </div>`;
-    }).join('');
+    window.hexRenderUtils.clearNode(container);
+    top.forEach((action) => {
+        const row = window.hexRenderUtils.createEl('div', {
+            className: action.urgent ? 'qa-row urgent' : 'qa-row',
+            dataset: { qaTask: action.task, qaFn: action.fn }
+        });
+        row.appendChild(window.hexRenderUtils.createEl('span', { className: 'qa-icon', text: action.icon }));
+        row.appendChild(window.hexRenderUtils.createEl('span', { className: 'qa-text', text: action.text }));
+        container.appendChild(row);
+    });
 }
 
 // ── Background Daemons ─────────────────────────────────────────
@@ -341,12 +343,15 @@ function nsUpdateInsights() {
         insights.push({ icon: '⚡', text: `${_ns.commandCount} commands this session`, cls: '' });
     }
 
-    feed.innerHTML = insights.slice(0, 5).map(i =>
-        `<div class="insight-card ${i.cls}">
-      <span class="insight-icon">${i.icon}</span>
-      <span class="insight-text">${i.text}</span>
-    </div>`
-    ).join('');
+    window.hexRenderUtils.clearNode(feed);
+    insights.slice(0, 5).forEach((item) => {
+        const card = window.hexRenderUtils.createEl('div', {
+            className: `insight-card ${item.cls}`.trim()
+        });
+        card.appendChild(window.hexRenderUtils.createEl('span', { className: 'insight-icon', text: item.icon }));
+        card.appendChild(window.hexRenderUtils.createEl('span', { className: 'insight-text', text: item.text }));
+        feed.appendChild(card);
+    });
 }
 
 // ── Memory Feed ───────────────────────────────────────────────
@@ -387,12 +392,13 @@ function nsUpdateMemoryFeed() {
         entries.push({ icon: '🧠', text: 'No memories recorded yet.' });
     }
 
-    feed.innerHTML = entries.slice(0, 5).map(e =>
-        `<div class="mem-entry">
-      <span class="mem-icon">${e.icon}</span>
-      <span class="mem-text">${e.text}</span>
-    </div>`
-    ).join('');
+    window.hexRenderUtils.clearNode(feed);
+    entries.slice(0, 5).forEach((entry) => {
+        const row = window.hexRenderUtils.createEl('div', { className: 'mem-entry' });
+        row.appendChild(window.hexRenderUtils.createEl('span', { className: 'mem-icon', text: entry.icon }));
+        row.appendChild(window.hexRenderUtils.createEl('span', { className: 'mem-text', text: entry.text }));
+        feed.appendChild(row);
+    });
 }
 
 // ── Session Stats ─────────────────────────────────────────────

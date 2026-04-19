@@ -101,7 +101,7 @@ async function handleAIAction(action) {
             if (match) {
               const url = match[0];
               addLog('BUTLER', `Memory resolved alias "${appName}" to URL: ${url}`);
-              const r = await window.hexAPI.openUrl(url);
+              const r = await window.hexAPI.browser.open(url);
               if (r.success) {
                 addHexMessage(`**Opening resolved link:** ${url}`);
                 if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_app:${appName}`, true);
@@ -161,17 +161,23 @@ async function handleAIAction(action) {
       const query = (qParams[0] || '').trim();
       const category = (qParams.length > 1 ? qParams[1].trim() : '');
       if (query) {
-        addLog('BUTLER', `Searching PC for files: ${query} ${category ? '(' + category + ')' : ''}`);
+            addLog('BUTLER', `Searching PC for files: ${query} ${category ? '(' + category + ')' : ''}`);
         addHexMessage(`*Scanning all drives for "**${query}**"...* 🔍`);
         const r = await window.hexAPI.butler.findFiles(query, category);
         if (r && r.success) {
           if (r.count > 0) {
             let msg = `**Found ${r.count} result(s) for "${query}":**\n\n`;
+            const actions = [];
             r.files.forEach(f => {
               const sizeMB = (f.size / (1024 * 1024)).toFixed(1);
-              msg += `- 📄 **${f.name}** (${sizeMB} MB)\n  \`${f.path}\`\n  <button class="action-btn" onclick="window.hexAPI.butler.openFile('${f.path.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')">Open</button> <button class="action-btn" onclick="window.hexAPI.butler.openFolder('${f.path.substring(0, Math.max(f.path.lastIndexOf('\\\\'), f.path.lastIndexOf('/'))).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')">Locate</button>\n\n`;
+              const folderPath = f.path.substring(0, Math.max(f.path.lastIndexOf('\\'), f.path.lastIndexOf('/')));
+              msg += `- 📄 **${f.name}** (${sizeMB} MB)\n  \`${f.path}\`\n\n`;
+              actions.push(
+                { label: `Open: ${f.name}`, kind: 'openFile', path: f.path },
+                { label: `Locate: ${f.name}`, kind: 'openFolder', path: folderPath }
+              );
             });
-            addHexMessage(msg);
+            addHexMessage(msg, { actions });
           } else {
             addHexMessage(`I couldn't find any files matching "**${query}**" on your PC.`);
           }
@@ -207,7 +213,7 @@ async function handleAIAction(action) {
       const url = action.args.join(':').trim();
       if (url) {
         addLog('BUTLER', `Opening URL: ${url}`);
-        const r = await window.hexAPI.openUrl(url);
+        const r = await window.hexAPI.browser.open(url);
         if (r?.success) {
           addHexMessage(`**Opened:** ${url}`);
           if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_url:${url}`, true);
@@ -224,13 +230,12 @@ async function handleAIAction(action) {
     case 'browser_open': {
       const bUrl = action.args.join(':').trim();
       if (bUrl) {
-        addLog('BUTLER', `Browser open: ${bUrl}`);
-        const r = await window.hexAPI.openUrl(bUrl);
+        const r = await window.hexAPI.browser.open(bUrl);
         if (r?.success) {
-          addHexMessage(`**Opened in browser:** ${bUrl}`);
+          addHexMessage(`🌐 Opened: ${r.url || bUrl}`);
           if (window.hexBrain) window.hexBrain.recordOutcome(`browser_open:${bUrl}`, true);
         } else {
-          addHexMessage(`**Failed:** ${bUrl} — ${r?.error || 'Unknown error'}`);
+          addHexMessage(`Browser open failed: ${r?.error || 'Unknown error'}`);
           if (window.hexBrain) window.hexBrain.recordOutcome(`browser_open:${bUrl}`, false, r?.error || '');
         }
       }
@@ -240,14 +245,24 @@ async function handleAIAction(action) {
     case 'browser_search': {
       const query = action.args.join(' ').trim();
       if (query) {
-        addLog('BUTLER', `Browser search: ${query}`);
+        addHexMessage(`🔍 Searching the web for: "${query}"...`);
         try {
-          const r = await window.hexAPI.butler.browserSearch(query);
-          addHexMessage(`**Searching Google:** ${query}`);
+          const r = await window.hexAPI.web.search(query);
+          if (r.success && r.results.length > 0) {
+            let msg = `**Web Results for "${query}":**\n\n`;
+            if (r.featured) msg += `> ${r.featured}\n\n`;
+            for (const item of r.results) {
+              msg += `• **${item.title}**\n  ${item.snippet}\n  [${item.url}](${item.url})\n\n`;
+            }
+            addHexMessage(msg);
+            const context = r.results.map(i => `${i.title}: ${i.snippet}`).join('\n');
+            return { data: `Web search results for "${query}":\n${r.featured ? 'Featured: ' + r.featured + '\n' : ''}${context}` };
+          }
+          addHexMessage(`No results found for "${query}".`);
         } catch (e) {
           const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
-          await window.hexAPI.openUrl(searchUrl);
-          addHexMessage(`**Searching Google:** ${query}`);
+          await window.hexAPI.browser.open(searchUrl);
+          addHexMessage(`**Opened Google in browser:** ${query}`);
         }
       }
       break;
@@ -528,41 +543,6 @@ async function handleAIAction(action) {
         addHexMessage(`I couldn't find any playable media matching "**${query}**" on your PC.`);
         if (window.hexMemory) window.hexMemory.recordActionOutcome(`play_media:${query}`, false, 'not found');
         if (window.hexBrain) window.hexBrain.recordOutcome(`play_media:${query}`, false, 'not found');
-      }
-      break;
-    }
-
-    case 'browser_open': {
-      const url = action.args.join(':');
-      const r = await window.hexAPI.browser.open(url);
-      if (r.success) addHexMessage(`🌐 Opened: ${r.url}`);
-      else addHexMessage(`Browser open failed: ${r.error}`);
-      break;
-    }
-
-    case 'browser_search': {
-      const query = action.args.join(' ');
-      addHexMessage(`🔍 Searching the web for: "${query}"...`);
-      try {
-        const r = await window.hexAPI.web.search(query);
-        if (r.success && r.results.length > 0) {
-          let msg = `**Web Results for "${query}":**\n\n`;
-          if (r.featured) msg += `> ${r.featured}\n\n`;
-          for (const item of r.results) {
-            msg += `• **${item.title}**\n  ${item.snippet}\n  [${item.url}](${item.url})\n\n`;
-          }
-          addHexMessage(msg);
-          // Feed results back to AI for reasoning
-          const context = r.results.map(i => `${i.title}: ${i.snippet}`).join('\n');
-          return { data: `Web search results for "${query}":\n${r.featured ? 'Featured: ' + r.featured + '\n' : ''}${context}` };
-        } else {
-          addHexMessage(`No results found for "${query}".`);
-        }
-      } catch (e) {
-        // Fallback: open in default browser
-        const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
-        await window.hexAPI.openUrl(searchUrl);
-        addHexMessage(`**Opened Google in browser:** ${query}`);
       }
       break;
     }

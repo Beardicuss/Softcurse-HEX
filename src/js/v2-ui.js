@@ -146,35 +146,65 @@ function unlockSystem() {
 // ── Plugins List ────────────────────────────────────────────────────────────
 async function loadPluginsList() {
     const listEl = document.getElementById('plugins-list');
-    listEl.innerHTML = '<div class="form-hint">Loading...</div>';
+    window.hexRenderUtils.setPlainText(listEl, 'Loading...', 'form-hint');
 
     try {
         const res = await window.hexAPI.plugins.list();
         if (!res.success) {
-            listEl.innerHTML = `<div class="form-hint" style="color:red;">Error: ${res.error}</div>`;
+            window.hexRenderUtils.setPlainText(listEl, `Error: ${res.error}`, 'form-hint');
             return;
         }
 
         if (!res.plugins || res.plugins.length === 0) {
-            listEl.innerHTML = '<div class="form-hint">No plugins installed.</div>';
+            window.hexRenderUtils.setPlainText(listEl, 'No plugins installed.', 'form-hint');
             return;
         }
 
-        listEl.innerHTML = res.plugins.map(p => `
-      <div class="plugin-card">
-        <div class="plugin-card-header">
-          <div class="plugin-name">${p.name} <span style="color:${p.status === 'loaded' ? '#0f9' : '#ff6b35'};font-size:14px;">${(p.status || 'unknown').toUpperCase()}</span></div>
-          <div style="display:flex;gap:4px;">
-            <button class="btn btn-secondary" onclick="reloadPlugin('${p.id}')" style="font-size:13px;padding:2px 6px;">↻ RELOAD</button>
-            <button class="btn btn-secondary" onclick="removeMarketplacePlugin('${p.id}')" style="font-size:13px;padding:2px 6px;border-color:var(--orange);color:var(--orange);">✕ REMOVE</button>
-          </div>
-        </div>
-        <div class="plugin-desc">${p.description || 'No description provided.'}</div>
-        <div class="plugin-path">${p.id}</div>
-      </div>
-    `).join('');
+        window.hexRenderUtils.clearNode(listEl);
+        res.plugins.forEach((plugin) => {
+            const card = window.hexRenderUtils.createEl('div', { className: 'plugin-card' });
+            const header = window.hexRenderUtils.createEl('div', { className: 'plugin-card-header' });
+            const name = window.hexRenderUtils.createEl('div', { className: 'plugin-name' });
+            const status = window.hexRenderUtils.createEl('span', {
+                text: (plugin.status || 'unknown').toUpperCase(),
+                attrs: {
+                    style: `color:${plugin.status === 'loaded' ? '#0f9' : '#ff6b35'};font-size:14px;`
+                }
+            });
+            name.appendChild(document.createTextNode(`${plugin.name} `));
+            name.appendChild(status);
+
+            const actions = window.hexRenderUtils.createEl('div', {
+                attrs: { style: 'display:flex;gap:4px;' }
+            });
+            actions.appendChild(window.hexRenderUtils.createEl('button', {
+                className: 'btn btn-secondary',
+                text: '↻ RELOAD',
+                dataset: { pluginReload: plugin.id },
+                attrs: { style: 'font-size:13px;padding:2px 6px;' }
+            }));
+            actions.appendChild(window.hexRenderUtils.createEl('button', {
+                className: 'btn btn-secondary',
+                text: '✕ REMOVE',
+                dataset: { pluginRemove: plugin.id },
+                attrs: { style: 'font-size:13px;padding:2px 6px;border-color:var(--orange);color:var(--orange);' }
+            }));
+
+            header.appendChild(name);
+            header.appendChild(actions);
+            card.appendChild(header);
+            card.appendChild(window.hexRenderUtils.createEl('div', {
+                className: 'plugin-desc',
+                text: plugin.description || 'No description provided.'
+            }));
+            card.appendChild(window.hexRenderUtils.createEl('div', {
+                className: 'plugin-path',
+                text: plugin.id
+            }));
+            listEl.appendChild(card);
+        });
     } catch (err) {
-        listEl.innerHTML = `<div class="form-hint" style="color:red;">Error fetching plugins.</div>`;
+        window.hexRenderUtils.setPlainText(listEl, 'Error fetching plugins.', 'form-hint');
     }
 }
 
@@ -218,7 +248,7 @@ let _clipHistory = [];
 async function refreshClipboard() {
     const res = await window.hexAPI.clipboard.history();
     if (res.success) {
-        _clipHistory = res.data;
+        _clipHistory = (res.data || []).map((item, index) => ({ ...item, _sourceIndex: index }));
         renderClipboardList(_clipHistory);
     }
 }
@@ -232,16 +262,24 @@ function searchClipboard(query) {
 function renderClipboardList(items) {
     const listEl = document.getElementById('clipboard-list');
     if (items.length === 0) {
-        listEl.innerHTML = '<div class="form-hint" style="text-align:center;margin-top:20px;">Clipboard history is empty.</div>';
+        window.hexRenderUtils.setPlainText(listEl, 'Clipboard history is empty.', 'form-hint');
         return;
     }
 
-    listEl.innerHTML = items.map((item, idx) => `
-    <div class="clipboard-item" onclick="pasteClipboardIndex(${idx})" title="Click to paste">
-      <span style="opacity:0.5;margin-right:8px;font-size:13px;">${new Date(item.timestamp).toLocaleTimeString()}</span>
-      ${item.text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}
-    </div>
-  `).join('');
+    window.hexRenderUtils.clearNode(listEl);
+    items.forEach((item) => {
+        const row = window.hexRenderUtils.createEl('div', {
+            className: 'clipboard-item',
+            title: 'Click to paste',
+            dataset: { clipboardIndex: item._sourceIndex }
+        });
+        row.appendChild(window.hexRenderUtils.createEl('span', {
+            text: new Date(item.ts || item.timestamp || Date.now()).toLocaleTimeString(),
+            attrs: { style: 'opacity:0.5;margin-right:8px;font-size:13px;' }
+        }));
+        row.appendChild(document.createTextNode(item.text));
+        listEl.appendChild(row);
+    });
 }
 
 async function pasteClipboardIndex(idx) {
@@ -272,30 +310,40 @@ document.addEventListener('keydown', (e) => {
 async function refreshRecurring() {
     const listEl = document.getElementById('recurring-list');
     if (!listEl) return;
-    listEl.innerHTML = '<div class="form-hint">Loading...</div>';
+    window.hexRenderUtils.setPlainText(listEl, 'Loading...', 'form-hint');
 
     try {
         const res = await window.hexAPI.recurring.list();
         if (!res.success) return;
 
         if (Object.keys(res.data).length === 0) {
-            listEl.innerHTML = '<div class="form-hint">No active recurring tasks.</div>';
+            window.hexRenderUtils.setPlainText(listEl, 'No active recurring tasks.', 'form-hint');
             return;
         }
 
-        let html = '';
+        window.hexRenderUtils.clearNode(listEl);
         for (const [id, task] of Object.entries(res.data)) {
-            html += `
-        <div class="recurring-item">
-          <span class="recurring-cron" title="Cron Expression">${task.cron}</span>
-          <span class="recurring-label" title="${task.command}">${task.command}</span>
-          <button class="btn btn-secondary" onclick="cancelRecurring('${id}')" style="border-color:#ff6b35;color:#ff6b35;padding:2px 6px;font-size:13px;">✕</button>
-        </div>
-      `;
+            const row = window.hexRenderUtils.createEl('div', { className: 'recurring-item' });
+            row.appendChild(window.hexRenderUtils.createEl('span', {
+                className: 'recurring-cron',
+                text: task.cron,
+                title: 'Cron Expression'
+            }));
+            row.appendChild(window.hexRenderUtils.createEl('span', {
+                className: 'recurring-label',
+                text: task.command,
+                title: task.command
+            }));
+            row.appendChild(window.hexRenderUtils.createEl('button', {
+                className: 'btn btn-secondary',
+                text: '✕',
+                dataset: { recurringCancel: id },
+                attrs: { style: 'border-color:#ff6b35;color:#ff6b35;padding:2px 6px;font-size:13px;' }
+            }));
+            listEl.appendChild(row);
         }
-        listEl.innerHTML = html;
     } catch (err) {
-        listEl.innerHTML = '<div class="form-hint" style="color:red;">Error fetching schedules.</div>';
+        window.hexRenderUtils.setPlainText(listEl, 'Error fetching schedules.', 'form-hint');
     }
 }
 

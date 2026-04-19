@@ -268,149 +268,18 @@ async function init() {
   });
 }
 
-// ── Clock ──────────────────────────────────────────────────────
-let glitchScheduled = 0;
+// Clock, telemetry, chat rendering, logs, toasts, and process UI now live in
+// dedicated renderer modules. This file remains the coordinator.
 
-function updateClock() {
-  const now = new Date();
-  const time = [now.getHours(), now.getMinutes(), now.getSeconds()]
-    .map(n => String(n).padStart(2, '0')).join(':');
-  document.getElementById('clock').textContent = time;
-
-  const dateEl = document.getElementById('date-display');
-  dateEl.textContent = now.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
-
-  // Glitch burst every ~8 seconds
-  if (now.getSeconds() % 8 === 0 && now.getSeconds() !== glitchScheduled) {
-    glitchScheduled = now.getSeconds();
-    const el = document.getElementById('clock');
-    el.classList.add('glitch-burst');
-    setTimeout(() => el.classList.remove('glitch-burst'), 400);
-  }
-}
-
-// ── Stats ──────────────────────────────────────────────────────
-let lastAlertCpu = 0, lastAlertRam = 0;
-
-function updateStats(data) {
-  sysStats = data;
-
-  // Vitals strip
-  setVitalValue('v-cpu', `${data.cpu}%`, data.cpu > 80 ? (data.cpu > 95 ? 'crit' : 'warn') : '');
-  setVitalValue('v-ram', `${data.ram}%`, data.ram > 80 ? (data.ram > 95 ? 'crit' : 'warn') : '');
-  setVitalValue('v-disk', `${data.disk}%`, data.disk > 90 ? 'warn' : '');
-  setVitalValue('v-gpu', data.gpu != null ? `${data.gpu}%` : '—', data.gpu > 80 ? (data.gpu > 95 ? 'crit' : 'warn') : '');
-  setVitalValue('v-gpu-temp', data.gpuTemp || '—', '');
-  setVitalValue('v-netrx', data.netRx || '—', 'net');
-  setVitalValue('v-nettx', data.netTx || '—', 'net');
-  setVitalValue('v-temp', data.temp || '—', '');
-
-  // Right panel bars
-  setBar('bar-cpu', data.cpu, '#bar-cpu');
-  setBar('bar-ram', data.ram, '#bar-ram');
-  setBar('bar-disk', data.disk, '#bar-disk');
-
-  // Proactive alerts (throttled to once per 5 min)
-  const now = Date.now();
-  if (data.cpu > 90 && now - lastAlertCpu > 300000) {
-    lastAlertCpu = now;
-    handleProactiveMsg({ type: 'high_cpu', cpu: data.cpu });
-  }
-  if (data.ram > 90 && now - lastAlertRam > 300000) {
-    lastAlertRam = now;
-    handleProactiveMsg({ type: 'high_ram', ram: data.ram });
-  }
-}
-
-function setVitalValue(id, value, cls) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.textContent = value;
-  el.className = 'vital-value mono' + (cls ? ` ${cls}` : '');
-}
-
-function setBar(id, pct, selector) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.style.width = Math.min(pct, 100) + '%';
-  el.className = 'stat-bar-fill' + (pct > 90 ? ' high' : pct > 70 ? ' mid' : '');
-}
-
-// ── CHAT ──────────────────────────────────────────────────────
-function addHexMessage(text) {
-  const el = buildChatMsg('hex', text);
-  insertMsg(el);
-  // Apply simple markdown
-  renderMarkdown(el.querySelector('.chat-bubble'));
-  scrollChat();
-}
-
-function addUserMessage(text) {
-  const el = buildChatMsg('user', text);
-  insertMsg(el);
-  scrollChat();
-}
-
-function buildChatMsg(role, text) {
-  const el = document.createElement('div');
-  el.className = `chat-msg ${role}`;
-
-  const ts = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  const label = role === 'hex' ? window.i18n.t('hex_label') : window.i18n.t('user_label');
-
-  el.innerHTML = `
-    <div class="chat-msg-header">
-      <span>${label}</span>
-      <span>${ts}</span>
-    </div>
-    <div class="chat-bubble">${escapeHtml(text)}</div>
-  `;
-  return el;
-}
-
-function insertMsg(el) {
-  const log = document.getElementById('chat-log');
-  const typi = document.getElementById('typing-indicator');
-  log.insertBefore(el, typi);
-}
-
-function scrollChat() {
-  const log = document.getElementById('chat-log');
-  log.scrollTop = log.scrollHeight;
-}
-
-function showTyping() { document.getElementById('typing-indicator').classList.add('visible'); scrollChat(); }
-function hideTyping() { document.getElementById('typing-indicator').classList.remove('visible'); }
-
-// Simple markdown renderer (bold, italic, code, lists)
-function renderMarkdown(el) {
-  if (!el) return;
-  let html = el.textContent || '';
-  // code blocks first
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-  // remove action tags from display
-  html = html.replace(/\[ACTION:[^\]]+\]/g, '');
-  // newlines
-  html = html.replace(/\n/g, '<br>');
-  el.innerHTML = html;
-}
-
-function escapeHtml(s) {
-  if (s == null) return '';
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-let visionEnabled = false;
+window.visionEnabled = false;
 window.toggleVision = function () {
-  visionEnabled = !visionEnabled;
+  window.visionEnabled = !window.visionEnabled;
   const btn = document.getElementById('vision-btn');
   if (btn) {
-    btn.style.filter = visionEnabled ? 'drop-shadow(0 0 6px var(--cyan))' : 'grayscale(1)';
-    btn.style.color = visionEnabled ? 'var(--cyan)' : 'inherit';
+    btn.style.filter = window.visionEnabled ? 'drop-shadow(0 0 6px var(--cyan))' : 'grayscale(1)';
+    btn.style.color = window.visionEnabled ? 'var(--cyan)' : 'inherit';
   }
-  showToast('SYS', 'Vision processing ' + (visionEnabled ? 'ENABLED' : 'DISABLED'), 'info', 2000);
+  showToast('SYS', 'Vision processing ' + (window.visionEnabled ? 'ENABLED' : 'DISABLED'), 'info', 2000);
 };
 
 // ── SEND MESSAGE ──────────────────────────────────────────────
@@ -463,7 +332,7 @@ async function sendMessage() {
 
   try {
     let visionData = null;
-    if (visionEnabled && window.hexAPI && window.hexAPI.captureScreenBase64) {
+      if (window.visionEnabled && window.hexAPI && window.hexAPI.captureScreenBase64) {
       addLog('SYS', 'Capturing visual sensor data...');
       window.hexTaskBus?.push('Capturing screen...');
       visionData = await window.hexAPI.captureScreenBase64();
@@ -657,171 +526,6 @@ function setTaskStatus(taskId, status, dur) {
   if (durEl && dur) durEl.textContent = dur;
 }
 
-// ── HEALTH STATS ──────────────────────────────────────────────
-function updateHealthStats() {
-  const s = window.activityMonitor.stats;
-  animateCount('stat-files', s.filesScanned);
-  document.getElementById('stat-space').textContent = s.spaceFreed || '0 B';
-  animateCount('stat-threats', s.threatsKilled);
-
-  const health = s.sessionHealth || 0;
-  animateCount('stat-integrity', health, '%');
-  const bar = document.getElementById('integrity-bar');
-  if (bar) bar.style.width = health + '%';
-
-  if (health < 80 && (!window._threatPlayed || Date.now() - window._threatPlayed > 60000)) {
-    if (window.hexAudio) window.hexAudio.play('threat', 1.0);
-    window._threatPlayed = Date.now();
-  }
-
-  // Update task run log on right panel
-  const logEl = document.getElementById('task-run-log');
-  if (logEl && s.tasksRun && Object.keys(s.tasksRun).length > 0) {
-    logEl.innerHTML = Object.entries(s.tasksRun).map(([id, info]) =>
-      `<div class="task-log-row">
-        <span class="task-log-name">${id.replace(/_/g, ' ').toUpperCase()}</span>
-        <span class="task-log-meta">${info.count}Ã— · ${info.lastRun || ''}${info.dur ? ' · ' + info.dur : ''}</span>
-      </div>`
-    ).join('');
-  }
-}
-
-function animateCount(id, target, suffix = '') {
-  const el = document.getElementById(id);
-  if (!el) return;
-  const start = parseInt(el.textContent) || 0;
-  const diff = target - start;
-  const dur = 600;
-  const steps = 30;
-  let i = 0;
-  const interval = setInterval(() => {
-    i++;
-    const val = Math.round(start + diff * (i / steps));
-    el.textContent = val.toLocaleString() + suffix;
-    el.classList.add('animating');
-    if (i >= steps) {
-      clearInterval(interval);
-      el.textContent = target.toLocaleString() + suffix;
-      el.classList.remove('animating');
-    }
-  }, dur / steps);
-}
-
-// ── PROACTIVE MESSAGES ────────────────────────────────────────
-function handleProactiveMsg(msg) {
-  const lang = config.language || 'en';
-  switch (msg.type) {
-    case 'break': {
-      // Use smart picker: time-aware, anti-repeat, {name}/{min} substitution
-      const bText = window.i18n.getRandomBreakSuggestion(config.userName, msg.activeMin);
-      addHexMessage(bText);
-      showToast('◆ HEX ADVISORY', bText, 'warn', 10000, [
-        { label: window.i18n.t('break_dismiss'), action: 'dismiss' },
-        { label: window.i18n.t('break_snooze'), action: 'snooze15', cls: 'snooze' }
-      ]);
-      addLog('HEX', bText);
-      if (config.voice?.enabled !== false) speakWithConfig(bText);
-      break;
-    }
-
-    case 'return':
-      const rText = window.i18n.t('return_from_idle', { min: msg.idleMin });
-      addHexMessage(rText);
-      addLog('HEX', rText);
-      break;
-
-    case 'high_cpu':
-      const cpuText = `CPU at ${msg.cpu}% — consider closing unused applications.`;
-      showToast('◆ SYSTEM ALERT', cpuText, 'alert', 6000);
-      addHexMessage(`**High CPU detected** (${msg.cpu}%). Consider closing unused apps.`);
-      addLog('SYSTEM', `High CPU: ${msg.cpu}%`, 'warn');
-      break;
-
-    case 'high_ram':
-      const ramText = `RAM at ${msg.ram}% — memory pressure critical.`;
-      showToast('◆ SYSTEM ALERT', ramText, 'alert', 6000);
-      addHexMessage(`**Memory pressure** at ${msg.ram}%. You may want to close some programs.`);
-      addLog('SYSTEM', `High RAM: ${msg.ram}%`, 'warn');
-      break;
-
-    case 'late_night':
-      const lnText = `It's ${msg.hour}:xx. You've been running for ${msg.activeMin} min. Rest optimizes performance.`;
-      if (!prevAlerts.late_night) {
-        prevAlerts.late_night = Date.now();
-        addHexMessage(`**Late night protocol.** ${lnText}`);
-        showToast('◆ HEX CARES', lnText, 'warn', 10000);
-      }
-      break;
-  }
-}
-
-// ── TOAST ─────────────────────────────────────────────────────
-function showToast(title, body, type = '', duration = 5000, actions = []) {
-  const container = document.getElementById('toast-container');
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-
-  const actionHTML = actions.map(a =>
-    `<button class="toast-btn ${a.cls || ''}" onclick="handleToastAction('${a.action}', this.closest('.toast'))">${a.label}</button>`
-  ).join('');
-
-  toast.innerHTML = `
-    <div class="toast-title">${title}</div>
-    <div class="toast-body">${body}</div>
-    ${actions.length ? `<div class="toast-actions">${actionHTML}</div>` : ''}
-  `;
-
-  container.appendChild(toast);
-  if (type === 'alert') window.hexAudio.play('threat', 0.6);
-  else window.hexAudio.play('toast', 0.6);
-  const timer = setTimeout(() => dismissToast(toast), duration);
-  toast._timer = timer;
-}
-
-function handleToastAction(action, toast) {
-  if (action === 'dismiss') dismissToast(toast);
-  else if (action === 'snooze15') {
-    // Snooze break reminder for 15 min
-    window.activityMonitor.sessionStart = Date.now() - 75 * 60000; // rewind to 75 min
-    dismissToast(toast);
-    addLog('HEX', 'Break reminder snoozed 15 minutes.');
-  }
-}
-
-function dismissToast(toast) {
-  clearTimeout(toast._timer);
-  toast.classList.add('hiding');
-  setTimeout(() => toast.remove(), 300);
-}
-
-// ── TERMINAL ──────────────────────────────────────────────────
-function addLog(source, message, level = 'info') {
-  const el = document.getElementById('terminal-log');
-  if (!el) return;
-  const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
-  const line = document.createElement('div');
-  line.className = `log-line src-${source}`;
-  line.innerHTML = `<span class="log-ts">[${ts}]</span><span class="log-source">[${source}]</span><span class="log-text">${escapeHtml(String(message).substring(0, 200))}</span>`;
-  el.appendChild(line);
-
-  // Auto-prune
-  while (el.children.length > 200) el.removeChild(el.firstChild);
-  el.scrollTop = el.scrollHeight;
-}
-
-function clearTerminal() {
-  const el = document.getElementById('terminal-log');
-  el.innerHTML = '';
-  addLog('SYSTEM', 'Terminal cleared.');
-}
-
-function toggleTerminal() {
-  const bottom = document.getElementById('panel-bottom');
-  const btn = document.getElementById('terminal-toggle');
-  const collapsed = bottom.classList.toggle('terminal-collapsed');
-  if (btn) btn.textContent = collapsed ? '▲ SHOW' : '▼ HIDE';
-}
-
 // == 3D ORB & GLITCH EFFECTS ==
 // Extracted to orb.js
 // ── VOICE ─────────────────────────────────────────────────────
@@ -874,47 +578,6 @@ const PROVIDER_HINTS = {
 
 // == SETTINGS UI ==
 // Extracted to settings-ui.js
-
-// ── PROCESSES ─────────────────────────────────────────────────
-async function openProcesses() {
-  document.getElementById('process-overlay').classList.add('open');
-  await refreshProcesses();
-}
-
-function closeProcesses() {
-  document.getElementById('process-overlay').classList.remove('open');
-}
-
-async function refreshProcesses() {
-  const list = document.getElementById('process-list');
-  list.innerHTML = '<div style="font-family:var(--font-m);font-size:14px;opacity:0.4;padding:8px;">Loading...</div>';
-
-  try {
-    const procs = await window.hexAPI.getProcesses();
-    list.innerHTML = '';
-    procs.forEach(p => {
-      const row = document.createElement('div');
-      row.className = 'process-row';
-      row.innerHTML = `
-        <span class="p-pid">${p.pid}</span>
-        <span class="p-name" title="${p.name}">${p.name}</span>
-        <span class="p-cpu">${p.cpu}%</span>
-        <span class="p-mem">${p.mem}</span>
-        <button class="p-kill" onclick="killProcess(${p.pid}, '${p.name}')">${window.i18n.t('kill_process')}</button>
-      `;
-      list.appendChild(row);
-    });
-  } catch (e) {
-    list.innerHTML = `<div style="font-family:var(--font-m);font-size:14px;color:var(--magenta);padding:8px;">${e?.message || String(e)}</div>`;
-  }
-}
-
-async function killProcess(pid, name) {
-  if (!confirm(`${window.i18n.t('confirm_kill', { name, pid })}`)) return;
-  const r = await window.hexAPI.killProcess(pid);
-  addLog('SYSTEM', r.success ? `Terminated: ${name} (${pid})` : `Failed to kill ${pid}: ${r.error}`);
-  await refreshProcesses();
-}
 
 // ── CLOSE OVERLAY ON BACKDROP CLICK ───────────────────────────
 document.getElementById('settings-overlay').addEventListener('click', function (e) {

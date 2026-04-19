@@ -1,6 +1,78 @@
 ﻿'use strict';
 // == settings-ui.js == System Settings UI ====================================
 // Extracted from renderer.js
+const DEFAULT_LOCAL_VOICE_OPTIONS = [
+  { value: 'en', label: 'English — lessac-medium' },
+  { value: 'ru', label: 'Russian — ruslan-medium' },
+  { value: 'ka', label: 'Georgian — natia-medium' }
+];
+
+function clearNode(node) {
+  window.hexRenderUtils.clearNode(node);
+}
+
+function appendText(parent, text) {
+  parent.appendChild(document.createTextNode(text));
+}
+
+function createTextOption(value, label) {
+  return window.hexRenderUtils.createEl('option', { attrs: { value }, text: label });
+}
+
+function populateLocalVoiceOptions(selectEl, voices = null) {
+  if (!selectEl) return;
+  clearNode(selectEl);
+
+  if (voices && voices.length > 0) {
+    const byLang = {};
+    voices.forEach((voice) => {
+      if (!byLang[voice.lang]) byLang[voice.lang] = [];
+      byLang[voice.lang].push(voice);
+    });
+
+    const langNames = { en: 'English', ru: 'Russian', ka: 'Georgian' };
+    Object.entries(byLang).forEach(([lang, langVoices]) => {
+      const group = document.createElement('optgroup');
+      group.label = langNames[lang] || lang.toUpperCase();
+      langVoices.forEach((voice) => {
+        group.appendChild(createTextOption(
+          voice.id,
+          `${voice.name}${voice.ready ? '' : ' ⚠'}${voice.isDefault ? ' ★' : ''}`
+        ));
+      });
+      selectEl.appendChild(group);
+    });
+    return;
+  }
+
+  DEFAULT_LOCAL_VOICE_OPTIONS.forEach((option) => {
+    selectEl.appendChild(createTextOption(option.value, option.label));
+  });
+}
+
+function setVoiceStatusContent(container, { primaryText, primaryColor, secondarySegments = [] }) {
+  if (!container) return;
+  clearNode(container);
+
+  const primary = window.hexRenderUtils.createEl('strong', { text: primaryText });
+  if (primaryColor) primary.style.color = primaryColor;
+  container.appendChild(primary);
+
+  if (secondarySegments.length > 0) {
+    container.appendChild(document.createElement('br'));
+    secondarySegments.forEach((segment) => {
+      if (segment.type === 'code') {
+        container.appendChild(window.hexRenderUtils.createEl('code', { text: segment.text }));
+      } else if (segment.type === 'span') {
+        const span = window.hexRenderUtils.createEl('span', { text: segment.text });
+        if (segment.color) span.style.color = segment.color;
+        container.appendChild(span);
+      } else {
+        appendText(container, segment.text);
+      }
+    });
+  }
+}
 // ── LOCAL VOICE MODEL MANAGEMENT ─────────────────────────────
 async function openModelsDir() {
   try {
@@ -19,23 +91,45 @@ async function refreshVoiceStatus() {
     const pathEl = document.getElementById('models-dir-path');
     if (pathEl && s.modelsDir) pathEl.textContent = s.modelsDir;
     const isOllama = window.hexVoice?._ollamaProvider;
-    let sttLine;
-    if (s.available && s.sttReady)
-      sttLine = '<b style="color:var(--cyan)">🎙 Active STT: Local Whisper (offline)</b>';
-    else if (isOllama)
-      sttLine = '<b style="color:var(--cyan)">🎙 Active STT: Ollama Whisper</b> — run: <code>ollama pull whisper</code>';
-    else
-      sttLine = '<b style="color:var(--magenta)">⚠ No STT engine — download Whisper below, or set AI provider to Ollama</b>';
-
     if (!s.available) {
-      el.innerHTML = sttLine + '<br><span style="color:var(--muted)">sherpa-onnx not built — run <code>npm run rebuild</code></span>';
+      setVoiceStatusContent(el, {
+        primaryText: isOllama
+          ? '🎙 Active STT: Ollama Whisper'
+          : '⚠ No STT engine — download Whisper below, or set AI provider to Ollama',
+        primaryColor: isOllama ? 'var(--cyan)' : 'var(--magenta)',
+        secondarySegments: isOllama
+          ? [
+            { text: ' — run ' },
+            { type: 'code', text: 'ollama pull whisper' },
+            { text: ' if needed. sherpa-onnx not built — run ' },
+            { type: 'code', text: 'npm run rebuild' }
+          ]
+          : [
+            { type: 'span', text: 'sherpa-onnx not built — run ', color: 'var(--muted)' },
+            { type: 'code', text: 'npm run rebuild' }
+          ]
+      });
       return;
     }
     const stt = s.sttReady ? '✅ Whisper STT' : '❌ Whisper (not downloaded)';
     const en = s.ttsReady?.en ? '✅ TTS EN' : '❌ TTS EN';
     const ru = s.ttsReady?.ru ? '✅ TTS RU' : '❌ TTS RU';
     const ka = s.ttsReady?.ka ? '✅ TTS KA' : '❌ TTS KA';
-    el.innerHTML = sttLine + '<br>' + `${stt} &nbsp; ${en} &nbsp; ${ru} &nbsp; ${ka}`;
+    setVoiceStatusContent(el, {
+      primaryText: s.sttReady
+        ? '🎙 Active STT: Local Whisper (offline)'
+        : isOllama
+          ? '🎙 Active STT: Ollama Whisper'
+          : '⚠ No STT engine — download Whisper below, or set AI provider to Ollama',
+      primaryColor: s.sttReady || isOllama ? 'var(--cyan)' : 'var(--magenta)',
+      secondarySegments: isOllama && !s.sttReady
+        ? [
+          { text: ' — run ' },
+          { type: 'code', text: 'ollama pull whisper' },
+          { text: ` | ${stt}   ${en}   ${ru}   ${ka}` }
+        ]
+        : [{ text: `${stt}   ${en}   ${ru}   ${ka}` }]
+    });
   } catch (e) {
     el.textContent = 'Status check failed: ' + (e?.message || String(e));
   }
@@ -163,30 +257,12 @@ async function openSettings(targetTab = 'tab-general') {
     try {
       const status = await window.hexAPI.voice.status();
       if (status.voices && status.voices.length > 0) {
-        lvSel.innerHTML = '';
-        const byLang = {};
-        for (const v of status.voices) {
-          if (!byLang[v.lang]) byLang[v.lang] = [];
-          byLang[v.lang].push(v);
-        }
-        const langNames = { en: 'English', ru: 'Russian', ka: 'Georgian' };
-        for (const [lang, voices] of Object.entries(byLang)) {
-          const group = document.createElement('optgroup');
-          group.label = langNames[lang] || lang.toUpperCase();
-          for (const v of voices) {
-            const opt = document.createElement('option');
-            opt.value = v.id;
-            opt.textContent = `${v.name}${v.ready ? '' : ' ⚠'}${v.isDefault ? ' ★' : ''}`;
-            group.appendChild(opt);
-          }
-          lvSel.appendChild(group);
-        }
+        populateLocalVoiceOptions(lvSel, status.voices);
       } else {
-        // Fallback to defaults
-        lvSel.innerHTML = '<option value="en">English — lessac-medium</option><option value="ru">Russian — ruslan-medium</option><option value="ka">Georgian — natia-medium</option>';
+        populateLocalVoiceOptions(lvSel);
       }
     } catch (_) {
-      lvSel.innerHTML = '<option value="en">English — lessac-medium</option><option value="ru">Russian — ruslan-medium</option><option value="ka">Georgian — natia-medium</option>';
+      populateLocalVoiceOptions(lvSel);
     }
     lvSel.value = cfg.voice?.localVoiceLang || 'en';
   }
@@ -215,7 +291,8 @@ function populateVoiceSelect(selectedName) {
   const sel = document.getElementById('cfg-voice');
   if (!sel) return;
   const voices = window.hexVoice.getVoicesSorted();
-  sel.innerHTML = '<option value="">— Auto (best match for language) —</option>';
+  clearNode(sel);
+  sel.appendChild(createTextOption('', '— Auto (best match for language) —'));
   voices.forEach(v => {
     const opt = document.createElement('option');
     opt.value = v.name;
@@ -392,30 +469,72 @@ function renderModelPicker(freeOnly) {
     mi.value = (firstFree || _allFetchedModels[0] || {}).id || '';
   }
 
-  const toggleLabel = freeOnly
-    ? `<span onclick="renderModelPicker(false)" style="cursor:pointer;text-decoration:underline;color:var(--accent);">show all ${allCount}</span>`
-    : `<span onclick="renderModelPicker(true)"  style="cursor:pointer;text-decoration:underline;color:var(--accent);">free only (${freeCount})</span>`;
-
-  statusEl.innerHTML = `✅ Showing ${list.length} models — click to select &nbsp;|&nbsp; ${toggleLabel}`;
+  clearNode(statusEl);
+  appendText(statusEl, `✅ Showing ${list.length} models — click to select | `);
+  const toggle = window.hexRenderUtils.createEl('button', {
+    className: 'text-btn',
+    text: freeOnly ? `show all ${allCount}` : `free only (${freeCount})`,
+    dataset: { modelPickerToggle: freeOnly ? 'all' : 'free' }
+  });
+  toggle.style.cursor = 'pointer';
+  toggle.style.textDecoration = 'underline';
+  toggle.style.color = 'var(--accent)';
+  toggle.style.background = 'transparent';
+  toggle.style.border = '0';
+  toggle.style.padding = '0';
+  toggle.style.font = 'inherit';
+  statusEl.appendChild(toggle);
   statusEl.style.display = '';
 
   if (list.length === 0) {
-    picker.innerHTML = '<div style="padding:10px;font-size:14px;color:var(--muted);">No free models found for this provider. Click "show all" above.</div>';
+    clearNode(picker);
+    const emptyState = window.hexRenderUtils.createEl('div', {
+      text: 'No free models found for this provider. Click "show all" above.'
+    });
+    emptyState.style.padding = '10px';
+    emptyState.style.fontSize = '14px';
+    emptyState.style.color = 'var(--muted)';
+    picker.appendChild(emptyState);
     picker.style.display = 'block';
     return;
   }
 
-  picker.innerHTML = list.map(m => {
-    const isActive = m.id === mi.value;
-    const freeBadge = m.free
-      ? '<span style="margin-left:6px;font-size:13px;padding:1px 5px;background:rgba(0,255,150,.2);color:#0f9;border-radius:3px;vertical-align:middle;">FREE</span>'
-      : '';
-    return `<div data-model-id="${m.id}"
-      onclick="selectModel(this.dataset.modelId)"
-      style="padding:7px 10px;cursor:pointer;font-size:14px;font-family:monospace;\n             border-bottom:1px solid rgba(255,255,255,.05);display:flex;align-items:center;\n             ${isActive ? 'background:var(--accent);color:#000;' : ''}">
-      <span style="flex:1;">${m.id}</span>${freeBadge}
-    </div>`;
-  }).join('');
+  clearNode(picker);
+  list.forEach((model) => {
+    const isActive = model.id === mi.value;
+    const row = window.hexRenderUtils.createEl('div', {
+      dataset: { modelId: model.id }
+    });
+    row.style.padding = '7px 10px';
+    row.style.cursor = 'pointer';
+    row.style.fontSize = '14px';
+    row.style.fontFamily = 'monospace';
+    row.style.borderBottom = '1px solid rgba(255,255,255,.05)';
+    row.style.display = 'flex';
+    row.style.alignItems = 'center';
+    if (isActive) {
+      row.style.background = 'var(--accent)';
+      row.style.color = '#000';
+    }
+
+    const label = window.hexRenderUtils.createEl('span', { text: model.id });
+    label.style.flex = '1';
+    row.appendChild(label);
+
+    if (model.free) {
+      const freeBadge = window.hexRenderUtils.createEl('span', { text: 'FREE' });
+      freeBadge.style.marginLeft = '6px';
+      freeBadge.style.fontSize = '13px';
+      freeBadge.style.padding = '1px 5px';
+      freeBadge.style.background = 'rgba(0,255,150,.2)';
+      freeBadge.style.color = '#0f9';
+      freeBadge.style.borderRadius = '3px';
+      freeBadge.style.verticalAlign = 'middle';
+      row.appendChild(freeBadge);
+    }
+
+    picker.appendChild(row);
+  });
   picker.style.display = 'block';
 }
 
@@ -586,26 +705,58 @@ function renderLiveArsenal(keysMap) {
   }
 
   let total = 0;
-  let html = '';
+  clearNode(container);
 
   if (sortedProviders.length === 0) {
-    html = '<div style="color:var(--orange);text-align:center;padding:20px;">No verified keys found.<br>Background hunter is running...</div>';
+    const emptyState = window.hexRenderUtils.createEl('div');
+    emptyState.style.color = 'var(--orange)';
+    emptyState.style.textAlign = 'center';
+    emptyState.style.padding = '20px';
+    emptyState.appendChild(window.hexRenderUtils.createEl('div', { text: 'No verified keys found.' }));
+    emptyState.appendChild(window.hexRenderUtils.createEl('div', { text: 'Background hunter is running...' }));
+    container.appendChild(emptyState);
   } else {
-    for (const p of sortedProviders) {
-      const n = keysMap[p].length;
-      total += n;
-      const isActive = p === activeProvider;
-      const activeColor = n > 0 ? '#00ffc8' : 'var(--muted)';
-      const borderLeft = isActive ? 'border-left:3px solid var(--cyan);' : 'border-left:3px solid transparent;';
-      const bg = isActive ? 'background:rgba(0,255,200,0.06);' : '';
-      html += `<div onclick="selectLiveProvider('${p}')" style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer;${borderLeft}${bg}transition:background .15s;" onmouseover="this.style.background='rgba(0,255,200,0.1)'" onmouseout="this.style.background='${isActive ? 'rgba(0,255,200,0.06)' : ''}'">
-                 <span>${LABELS[p] || p.toUpperCase()}${isActive ? ' <span style=\"color:var(--cyan);font-size:13px;\">● ACTIVE</span>' : ''}</span>
-                 <span style="color:${activeColor};text-shadow:0 0 5px ${activeColor};">${n} valid key${n !== 1 ? 's' : ''}</span>
-               </div>`;
-    }
+    sortedProviders.forEach((provider) => {
+      const count = keysMap[provider].length;
+      total += count;
+      const isActive = provider === activeProvider;
+      const activeColor = count > 0 ? '#00ffc8' : 'var(--muted)';
+      const row = window.hexRenderUtils.createEl('div', {
+        dataset: { liveProvider: provider }
+      });
+      row.style.display = 'flex';
+      row.style.justifyContent = 'space-between';
+      row.style.alignItems = 'center';
+      row.style.padding = '8px 10px';
+      row.style.borderBottom = '1px solid var(--border)';
+      row.style.cursor = 'pointer';
+      row.style.transition = 'background .15s';
+      row.style.borderLeft = isActive ? '3px solid var(--cyan)' : '3px solid transparent';
+      row.style.background = isActive ? 'rgba(0,255,200,0.06)' : '';
+
+      const label = window.hexRenderUtils.createEl('span', {
+        text: LABELS[provider] || provider.toUpperCase()
+      });
+      if (isActive) {
+        label.appendChild(document.createTextNode(' '));
+        const activeBadge = window.hexRenderUtils.createEl('span', { text: '● ACTIVE' });
+        activeBadge.style.color = 'var(--cyan)';
+        activeBadge.style.fontSize = '13px';
+        label.appendChild(activeBadge);
+      }
+      row.appendChild(label);
+
+      const countBadge = window.hexRenderUtils.createEl('span', {
+        text: `${count} valid key${count !== 1 ? 's' : ''}`
+      });
+      countBadge.style.color = activeColor;
+      countBadge.style.textShadow = `0 0 5px ${activeColor}`;
+      row.appendChild(countBadge);
+
+      container.appendChild(row);
+    });
   }
 
-  container.innerHTML = html;
   countEl.textContent = total;
 }
 

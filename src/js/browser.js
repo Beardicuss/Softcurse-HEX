@@ -23,7 +23,7 @@ class HexBrowser {
     // Normalize URL — add https:// if no scheme
     const normalized = this._normalizeUrl(url);
     try {
-      const result = await window.hexAPI.openUrl(normalized);
+      const result = await window.hexAPI.browser.open(normalized);
       if (result.success) {
         this._addHistory(normalized);
         this._log(`Opened: ${normalized}`);
