@@ -77,15 +77,14 @@
     <div id="lock-status" style="font-size:14px;letter-spacing:2px;margin-bottom:30px;min-height:20px;"
       class="glitch-text">INITIALIZING SENSORS...</div>
     <div style="display:flex;gap:15px;align-items:center;">
-      <button class="btn btn-primary" onclick="attemptFaceUnlock()" style="font-size:14px;padding:10px 30px;">SCAN
+      <button class="btn btn-primary" style="font-size:14px;padding:10px 30px;">SCAN
         FACE</button>
-      <button class="btn btn-secondary" onclick="document.getElementById('lock-pin-area').style.display='flex'"
-        style="font-size:14px;">OVERRIDE</button>
+      <button class="btn btn-secondary" style="font-size:14px;">OVERRIDE</button>
     </div>
     <div id="lock-pin-area" style="display:none;margin-top:20px;gap:10px;">
       <input type="password" id="lock-pin" class="form-control" placeholder="ACCESS CODE"
         style="width:200px;text-align:center;letter-spacing:5px;">
-      <button class="btn btn-secondary" onclick="attemptPinUnlock()">ENTER</button>
+      <button class="btn btn-secondary">ENTER</button>
     </div>
   </div>
 
@@ -95,13 +94,13 @@
 
       <!-- Tab bar -->
       <div class="settings-tabs">
-        <button class="stab active" data-tab="tab-general" onclick="switchSettingsTab('tab-general')">⚙ GENERAL</button>
-        <button class="stab" data-tab="tab-ai" onclick="switchSettingsTab('tab-ai')">🤖 AI</button>
-        <button class="stab" data-tab="tab-voice" onclick="switchSettingsTab('tab-voice')">🎙 VOICE</button>
-        <button class="stab" data-tab="tab-persona" onclick="switchSettingsTab('tab-persona')">◆ PERSONA</button>
-        <button class="stab" data-tab="tab-memory" onclick="switchSettingsTab('tab-memory')">🧠 MEMORY</button>
-        <button class="stab" data-tab="tab-security" onclick="switchSettingsTab('tab-security')">🛡 SECURITY</button>
-        <button class="stab" data-tab="tab-plugins" onclick="switchSettingsTab('tab-plugins')">🔌 PLUGINS</button>
+        <button class="stab active" data-tab="tab-general">⚙ GENERAL</button>
+        <button class="stab" data-tab="tab-ai">🤖 AI</button>
+        <button class="stab" data-tab="tab-voice">🎙 VOICE</button>
+        <button class="stab" data-tab="tab-persona">◆ PERSONA</button>
+        <button class="stab" data-tab="tab-memory">🧠 MEMORY</button>
+        <button class="stab" data-tab="tab-security">🛡 SECURITY</button>
+        <button class="stab" data-tab="tab-plugins">🔌 PLUGINS</button>
       </div>
 
       <!-- ══ TAB: GENERAL ══════════════════════════════════ -->
@@ -187,7 +186,7 @@
         <div class="settings-section-label" style="margin-top:14px;">◆ ACTIVE PROVIDER</div>
         <div class="form-group">
           <div style="display:flex;gap:6px;align-items:center;">
-            <select id="cfg-provider" class="form-control" style="flex:1;" onchange="updateProviderUI()">
+            <select id="cfg-provider" class="form-control" style="flex:1;">
               <option value="none">— None (offline) —</option>
               <option value="ollama">🖥 Ollama (Local / Free)</option>
               <option value="anthropic">🟠 Anthropic (Claude)</option>
@@ -210,8 +209,7 @@
           <label class="form-label" data-i18n="model">MODEL NAME</label>
           <div style="display:flex;gap:6px;align-items:center;">
             <input type="text" id="cfg-model" class="form-control" placeholder="" style="flex:1;">
-            <button type="button" id="fetch-models-btn" onclick="fetchAvailableModels()"
-              title="Fetch available models from provider API"
+            <button type="button" id="fetch-models-btn" title="Fetch available models from provider API"
               style="flex-shrink:0;padding:0 10px;height:36px;background:var(--surface2);border:1px solid var(--accent);color:var(--accent);cursor:pointer;font-size:13px;letter-spacing:.05em;white-space:nowrap;">
               ⬇ FETCH
             </button>
@@ -260,8 +258,7 @@
               <input type="checkbox" id="dl-stt" value="stt" checked> Whisper STT
             </label>
             <select id="dl-stt-size"
-              style="font-size:14px;background:var(--surface2);color:var(--text);border:1px solid var(--surface3);padding:2px 6px;cursor:pointer;"
-              onchange="document.getElementById('dl-stt-size-hint').textContent = this.options[this.selectedIndex].dataset.hint">
+              style="font-size:14px;background:var(--surface2);color:var(--text);border:1px solid var(--surface3);padding:2px 6px;cursor:pointer;">
               <option value="tiny" data-hint="~40MB • Fast, lower accuracy" selected>Tiny (~40MB)</option>
               <option value="small" data-hint="~250MB • Balanced">Small (~250MB)</option>
               <option value="medium" data-hint="~750MB • High accuracy">Medium (~750MB)</option>
@@ -282,11 +279,11 @@
             </label>
           </div>
           <div style="display:flex;gap:6px;">
-            <button class="btn btn-secondary" onclick="downloadVoiceModels()" id="download-models-btn"
+            <button class="btn btn-secondary" id="download-models-btn"
               style="border-color:var(--cyan);color:var(--cyan);">
               ⬇ DOWNLOAD SELECTED
             </button>
-            <button class="btn btn-secondary" onclick="refreshVoiceStatus()" style="font-size:14px;">↻</button>
+            <button class="btn btn-secondary" style="font-size:14px;">↻</button>
           </div>
           <div id="download-progress" style="display:none;margin-top:8px;">
             <div id="download-progress-bar"
@@ -300,8 +297,8 @@
             voice works completely offline.</div>
           <div style="display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap;">
             <code id="models-dir-path" style="font-size:14px;color:var(--muted);flex:1;word-break:break-all;">...</code>
-            <button class="btn btn-secondary" onclick="openModelsDir()"
-              style="font-size:14px;white-space:nowrap;flex-shrink:0;">📂 OPEN FOLDER</button>
+            <button class="btn btn-secondary" style="font-size:14px;white-space:nowrap;flex-shrink:0;">📂 OPEN
+              FOLDER</button>
           </div>
           <div class="form-hint" style="margin-top:4px;">
             To add custom Piper voices: place <code>.onnx</code> + <code>.onnx.json</code> files in the
@@ -316,12 +313,11 @@
           <div style="display:flex;gap:6px;">
             <input type="text" id="cfg-models-dir" class="form-control" style="flex:1;font-size:13px;"
               placeholder="(Leave blank for default project-local voice models path)">
-            <button class="btn btn-secondary" onclick="browseModelsDir()"
-              style="padding:4px 10px;font-size:13px;white-space:nowrap;">&#128193; BROWSE</button>
-            <button class="btn btn-secondary" onclick="applyModelsDir()"
-              style="padding:4px 10px;font-size:13px;white-space:nowrap;">APPLY</button>
-            <button class="btn btn-secondary" onclick="checkVoiceStatus()"
-              style="padding:4px 10px;font-size:13px;white-space:nowrap;">✓ CHECK</button>
+            <button class="btn btn-secondary" style="padding:4px 10px;font-size:13px;white-space:nowrap;">&#128193;
+              BROWSE</button>
+            <button class="btn btn-secondary" style="padding:4px 10px;font-size:13px;white-space:nowrap;">APPLY</button>
+            <button class="btn btn-secondary" style="padding:4px 10px;font-size:13px;white-space:nowrap;">✓
+              CHECK</button>
           </div>
           <div class="form-hint">Folder containing: <code>whisper/</code> and <code>tts-en/</code>
             <code>tts-ka/</code> etc.
@@ -338,28 +334,26 @@
           <label class="form-label">TTS ENGINE</label>
           <div style="display:flex;gap:6px;margin-bottom:6px;">
             <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;">
-              <input type="radio" name="tts-engine" id="tts-engine-local" value="local" onchange="updateTtsEngineUI()">
+              <input type="radio" name="tts-engine" id="tts-engine-local" value="local">
               🖥 Local Piper (offline)
             </label>
             <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;">
-              <input type="radio" name="tts-engine" id="tts-engine-os" value="os" onchange="updateTtsEngineUI()">
+              <input type="radio" name="tts-engine" id="tts-engine-os" value="os">
               🔊 OS / Web Speech
             </label>
           </div>
 
           <!-- Local Piper voice selector -->
           <div id="local-voice-picker" style="display:none;margin-bottom:8px;">
-            <select id="cfg-local-voice" class="form-control" style="margin-bottom:4px;"
-              onchange="window.hexVoice._localVoiceLang=this.value;updateTtsEngineUI()">
+            <select id="cfg-local-voice" class="form-control" style="margin-bottom:4px;">
               <!-- Populated dynamically from discovered voice models -->
             </select>
             <div style="display:flex;gap:6px;">
               <input type="range" id="cfg-local-speed" min="0.5" max="2" step="0.05" value="1.0"
-                oninput="document.getElementById('local-speed-val').textContent=parseFloat(this.value).toFixed(2)"
                 style="flex:1;accent-color:var(--cyan);">
               <span id="local-speed-val" class="mono" style="font-size:13px;width:34px;">1.00</span>
-              <button class="btn btn-secondary" onclick="previewLocalVoice()"
-                style="padding:4px 10px;font-size:13px;white-space:nowrap;">▶ TEST</button>
+              <button class="btn btn-secondary" style="padding:4px 10px;font-size:13px;white-space:nowrap;">▶
+                TEST</button>
             </div>
             <div id="local-voice-unavail" class="form-hint" style="color:var(--magenta);display:none;">
               ⚠ Model not downloaded. Go to LOCAL VOICE MODELS above and download it first.
@@ -372,8 +366,8 @@
               <select id="cfg-voice" class="form-control" style="flex:1;">
                 <option value="">— Auto (best match for language) —</option>
               </select>
-              <button class="btn btn-secondary" onclick="previewSelectedVoice()"
-                style="padding:4px 10px;font-size:13px;white-space:nowrap;">▶ TEST</button>
+              <button class="btn btn-secondary" style="padding:4px 10px;font-size:13px;white-space:nowrap;">▶
+                TEST</button>
             </div>
             <div class="form-hint">Voices depend on your OS. Georgian requires a language pack.</div>
           </div>
@@ -382,7 +376,6 @@
           <label class="form-label">SPEECH RATE</label>
           <div style="display:flex;align-items:center;gap:10px;">
             <input type="range" id="cfg-rate" min="0.5" max="2" step="0.05" value="0.95"
-              oninput="document.getElementById('rate-val').textContent=this.value"
               style="flex:1;accent-color:var(--cyan);">
             <span id="rate-val" class="mono" style="font-size:13px;width:34px;">0.95</span>
           </div>
@@ -391,7 +384,6 @@
           <label class="form-label">SPEECH PITCH</label>
           <div style="display:flex;align-items:center;gap:10px;">
             <input type="range" id="cfg-pitch" min="0.5" max="2" step="0.05" value="0.85"
-              oninput="document.getElementById('pitch-val').textContent=this.value"
               style="flex:1;accent-color:var(--cyan);">
             <span id="pitch-val" class="mono" style="font-size:13px;width:34px;">0.85</span>
           </div>
@@ -400,7 +392,6 @@
           <label class="form-label">VOLUME</label>
           <div style="display:flex;align-items:center;gap:10px;">
             <input type="range" id="cfg-volume" min="0" max="1" step="0.05" value="0.9"
-              oninput="document.getElementById('volume-val').textContent=parseFloat(this.value).toFixed(2)"
               style="flex:1;accent-color:var(--orange);">
             <span id="volume-val" class="mono" style="font-size:13px;width:34px;">0.90</span>
           </div>
@@ -442,8 +433,8 @@
           <div class="form-hint">This is exactly what the AI sees as its identity. Be detailed and specific.</div>
         </div>
         <div style="display:flex;gap:8px;margin-top:4px;">
-          <button class="btn btn-primary" onclick="savePersonality()" style="flex:1;">💾 SAVE PERSONALITY</button>
-          <button class="btn btn-secondary" onclick="clearPersonaForm()" style="padding:6px 14px;">✕ CLEAR</button>
+          <button class="btn btn-primary" style="flex:1;">💾 SAVE PERSONALITY</button>
+          <button class="btn btn-secondary" style="padding:6px 14px;">✕ CLEAR</button>
         </div>
       </div>
 
@@ -496,9 +487,8 @@
             class="form-hint" style="display:inline;margin-left:8px;"></span></div>
         <div style="display:flex;gap:6px;margin-bottom:6px;">
           <input type="text" id="mem-search" class="form-control" placeholder="filter facts..."
-            style="flex:1;font-size:13px;" oninput="filterMemoryFacts(this.value)">
-          <select id="mem-type-filter" class="form-control" style="width:120px;font-size:13px;"
-            onchange="filterMemoryFacts(document.getElementById('mem-search').value)">
+            style="flex:1;font-size:13px;">
+          <select id="mem-type-filter" class="form-control" style="width:120px;font-size:13px;">
             <option value="">All types</option>
             <option value="user">User</option>
             <option value="preference">Preference</option>
@@ -514,10 +504,10 @@
         <!-- Actions -->
         <div class="settings-section-label" style="margin-top:12px;">◆ ACTIONS</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-          <button class="btn btn-secondary" onclick="compressSession()" style="font-size:13px;">
+          <button class="btn btn-secondary" style="font-size:13px;">
             💾 COMPRESS SESSION
           </button>
-          <button class="btn btn-secondary" onclick="showMemoryReport()" style="font-size:13px;">
+          <button class="btn btn-secondary" style="font-size:13px;">
             📊 HEALTH REPORT
           </button>
         </div>
@@ -526,16 +516,13 @@
 
         <div class="settings-section-label">◆ DANGER ZONE</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button class="btn btn-secondary" onclick="clearMemoryFacts()"
-            style="border-color:var(--orange);color:var(--orange);">
+          <button class="btn btn-secondary" style="border-color:var(--orange);color:var(--orange);">
             🗑 CLEAR FACTS
           </button>
-          <button class="btn btn-secondary" onclick="clearMemoryHistory()"
-            style="border-color:var(--orange);color:var(--orange);">
+          <button class="btn btn-secondary" style="border-color:var(--orange);color:var(--orange);">
             🗑 CLEAR HISTORY
           </button>
-          <button class="btn btn-secondary" onclick="clearAllMemory()"
-            style="border-color:var(--magenta);color:var(--magenta);">
+          <button class="btn btn-secondary" style="border-color:var(--magenta);color:var(--magenta);">
             ☢ WIPE ALL
           </button>
         </div>
@@ -550,8 +537,7 @@
         <div class="form-group">
           <label class="form-label">ENABLE FACE UNLOCK ON BOOT</label>
           <div style="display:flex;gap:10px;align-items:center;">
-            <select id="cfg-face-enabled" class="form-control" onchange="toggleFaceAuth(this.value === 'true')"
-              style="flex:1;">
+            <select id="cfg-face-enabled" class="form-control" style="flex:1;">
               <option value="false">Disabled</option>
               <option value="true">Enabled</option>
             </select>
@@ -565,8 +551,7 @@
           <label class="form-label">MATCH THRESHOLD</label>
           <div style="display:flex;align-items:center;gap:10px;">
             <input type="range" id="cfg-face-threshold" min="0.5" max="0.99" step="0.01" value="0.85"
-              oninput="document.getElementById('face-thresh-val').textContent=Math.round(this.value*100)+'%'"
-              onchange="setFaceThreshold(this.value)" style="flex:1;accent-color:var(--cyan);">
+              style="flex:1;accent-color:var(--cyan);">
             <span id="face-thresh-val" class="mono" style="font-size:13px;width:34px;">85%</span>
           </div>
           <div class="form-hint">Higher values require exact lighting/angle. 85% is recommended.</div>
@@ -583,12 +568,12 @@
             </div>
           </div>
           <div style="display:flex;gap:8px;margin-top:10px;">
-            <button class="btn btn-secondary" id="btn-start-scanner" onclick="startFaceEnrollment()">1. START
+            <button class="btn btn-secondary" id="btn-start-scanner">1. START
               SCANNER</button>
-            <button class="btn btn-primary" id="btn-capture-face" onclick="captureFaceEnrollment()" disabled>2. CAPTURE
+            <button class="btn btn-primary" id="btn-capture-face" disabled>2. CAPTURE
               & ENROLL</button>
-            <button class="btn btn-secondary" onclick="unenrollFace()"
-              style="border-color:var(--orange);color:var(--orange);">CLEAR DATA</button>
+            <button class="btn btn-secondary" style="border-color:var(--orange);color:var(--orange);">CLEAR
+              DATA</button>
           </div>
         </div>
 
@@ -603,17 +588,15 @@
       <!-- ══ TAB: PLUGINS ═══════════════════════════════════ -->
       <div class="stab-panel" id="tab-plugins">
         <div style="display:flex;gap:10px;margin-bottom:15px;border-bottom:1px solid var(--border);">
-          <button class="stab active" id="subtab-plugins-installed" onclick="switchPluginSubTab('installed')"
-            style="flex:1;text-align:center;">INSTALLED</button>
-          <button class="stab" id="subtab-plugins-market" onclick="switchPluginSubTab('market')"
-            style="flex:1;text-align:center;">LOCAL INSTALL</button>
+          <button class="stab active" id="subtab-plugins-installed" style="flex:1;text-align:center;">INSTALLED</button>
+          <button class="stab" id="subtab-plugins-market" style="flex:1;text-align:center;">LOCAL INSTALL</button>
         </div>
 
         <!-- Installed Plugins Sub-Panel -->
         <div id="panel-plugins-installed">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
             <div class="settings-section-label" style="margin:0;">◆ INSTALLED PLUGINS</div>
-            <button class="btn btn-secondary" onclick="loadPluginsList()" style="font-size:13px;padding:4px 10px;">↻
+            <button class="btn btn-secondary" style="font-size:13px;padding:4px 10px;">↻
               REFRESH</button>
           </div>
           <div id="plugins-list"
@@ -622,7 +605,7 @@
           </div>
           <div class="form-hint" style="margin-top:15px;padding-top:10px;border-top:1px solid var(--border);">
             Place local plugins in <code class="mono" style="color:var(--magenta);">plugins/</code>.
-            <button class="btn btn-secondary" style="margin-left:10px;font-size:13px;" onclick="openPluginsFolder()">📂
+            <button class="btn btn-secondary" style="margin-left:10px;font-size:13px;">📂
               OPEN FOLDER</button>
           </div>
         </div>
@@ -634,8 +617,7 @@
             Browse for a plugin <code class="mono" style="color:var(--magenta);">.zip</code> file on your PC.
             HEX will extract it to the plugins vault automatically.
           </div>
-          <button class="btn btn-primary" onclick="browseAndInstallPlugin()"
-            style="width:100%;padding:10px;font-size:14px;letter-spacing:.08em;">
+          <button class="btn btn-primary" style="width:100%;padding:10px;font-size:14px;letter-spacing:.08em;">
             📂 BROWSE & INSTALL PLUGIN (.zip)
           </button>
           <div id="local-install-status" class="form-hint" style="color:var(--cyan);margin-top:10px;display:none;">
@@ -645,8 +627,8 @@
 
       <!-- Footer buttons -->
       <div class="modal-btns">
-        <button class="btn btn-secondary" onclick="closeSettings()" data-i18n="cancel">CANCEL</button>
-        <button class="btn btn-primary" onclick="saveSettings()" data-i18n="save">SAVE</button>
+        <button class="btn btn-secondary" data-i18n="cancel">CANCEL</button>
+        <button class="btn btn-primary" data-i18n="save">SAVE</button>
       </div>
     </div>
   </div>
@@ -657,9 +639,9 @@
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div class="section-title" data-i18n="processes_title">ACTIVE PROCESSES</div>
         <div style="display:flex;gap:8px;">
-          <button class="btn btn-secondary" onclick="refreshProcesses()" style="padding:4px 12px;font-size:13px;">↻
+          <button class="btn btn-secondary" style="padding:4px 12px;font-size:13px;">↻
             REFRESH</button>
-          <button class="btn btn-secondary" onclick="closeProcesses()" style="padding:4px 12px;font-size:13px;">✕
+          <button class="btn btn-secondary" style="padding:4px 12px;font-size:13px;">✕
             CLOSE</button>
         </div>
       </div>
@@ -679,11 +661,11 @@
       style="width:500px;max-height:80vh;background:var(--surface);border:1px solid var(--accent);box-shadow:var(--glow);padding:20px;display:flex;flex-direction:column;gap:15px;position:relative;">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div class="section-title">CLIPBOARD HISTORY</div>
-        <button class="btn btn-secondary" onclick="closeClipboard()" style="padding:4px 12px;font-size:13px;">✕
+        <button class="btn btn-secondary" style="padding:4px 12px;font-size:13px;">✕
           CLOSE</button>
       </div>
       <input type="text" id="clipboard-search" class="form-control" placeholder="Search clipboard..."
-        oninput="searchClipboard(this.value)" style="margin-bottom:5px;">
+        style="margin-bottom:5px;">
       <div id="clipboard-list"
         style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px;padding-right:5px;min-height:200px;">
         <!-- Dynamically populated -->
@@ -713,16 +695,16 @@
           <button class="lang-btn" data-lang="ru">RU</button>
         </div>
 
-        <div id="mic-status" onclick="toggleMic()">
+        <div id="mic-status">
           <div class="mic-dot"></div>
           <span id="mic-label" data-i18n="microphone_off">MIC OFF</span>
         </div>
 
 
-        <button id="settings-btn" onclick="openSettings()" title="Settings">⚙</button>
+        <button id="settings-btn" title="Settings">⚙</button>
 
         <div class="win-controls">
-          <div class="orb-outer" onclick="window.hexAPI.minimize()" title="Minimize">
+          <div class="orb-outer" title="Minimize">
             <div class="orb-band"></div>
             <div class="orb-inner">
               <div class="orb-icon">
@@ -732,7 +714,7 @@
               </div>
             </div>
           </div>
-          <div class="orb-outer" onclick="window.hexAPI.maximize()" title="Maximize">
+          <div class="orb-outer" title="Maximize">
             <div class="orb-band"></div>
             <div class="orb-inner">
               <div class="orb-icon">
@@ -743,7 +725,7 @@
               </div>
             </div>
           </div>
-          <div class="orb-outer orb-close" onclick="window.hexAPI.close()" title="Close">
+          <div class="orb-outer orb-close" title="Close">
             <div class="orb-band"></div>
             <div class="orb-inner">
               <div class="orb-icon">
@@ -862,11 +844,9 @@
       <!-- Browser URL / Search Bar -->
       <div id="browser-bar">
         <span class="browser-bar-label mono">◆ URL</span>
-        <input type="text" id="browser-input" class="form-control" placeholder="https://... or search query"
-          onkeydown="handleBrowserKey(event)">
-        <button class="browser-bar-btn" onclick="launchBrowser()" title="Go">⏎</button>
-        <button class="browser-bar-btn" id="search-engine-btn" onclick="cycleSearchEngine()"
-          title="Cycle search engine">🔍</button>
+        <input type="text" id="browser-input" class="form-control" placeholder="https://... or search query">
+        <button class="browser-bar-btn" title="Go">⏎</button>
+        <button class="browser-bar-btn" id="search-engine-btn" title="Cycle search engine">🔍</button>
       </div>
 
       <div id="chat-log" aria-live="polite">
@@ -881,14 +861,14 @@
       </div>
 
       <div id="chat-input-area">
-        <button id="vision-btn" onclick="toggleVision()" title="Toggle Vision (Look at screen)">
+        <button id="vision-btn" title="Toggle Vision (Look at screen)">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
             stroke-linecap="square">
             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
             <circle cx="12" cy="12" r="3"></circle>
           </svg>
         </button>
-        <button id="mic-btn" onclick="toggleMic()" title="Toggle Voice Input">
+        <button id="mic-btn" title="Toggle Voice Input">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
             stroke-linecap="square">
             <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
@@ -897,9 +877,8 @@
             <line x1="8" y1="23" x2="16" y2="23"></line>
           </svg>
         </button>
-        <textarea id="chat-input" rows="1" data-i18n-placeholder="chat_placeholder"
-          onkeydown="handleInputKey(event)"></textarea>
-        <button class="chat-send-btn" onclick="sendMessage()" data-i18n="send">SEND</button>
+        <textarea id="chat-input" rows="1" data-i18n-placeholder="chat_placeholder"></textarea>
+        <button class="chat-send-btn" data-i18n="send">SEND</button>
       </div>
 
       <div id="vitals-strip">
@@ -968,8 +947,7 @@
       </div>
 
       <!-- ── Personality Badge ─────────────────────────── -->
-      <div class="persona-badge" id="persona-badge" onclick="openSettings('tab-persona')" style="cursor: pointer;"
-        title="Change Personality">
+      <div class="persona-badge" id="persona-badge" style="cursor: pointer;" title="Change Personality">
         <span class="persona-icon">◆</span>
         <span class="persona-name" id="psyche-persona-name">DEFAULT</span>
       </div>
@@ -1042,8 +1020,7 @@
       <!-- ── Recurring Comms (preserved) ───────────────── -->
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <div class="section-title" style="font-size:12px;">◆ RECURRING COMMS</div>
-        <button class="btn btn-secondary" onclick="refreshRecurring()"
-          style="font-size:11px;padding:2px 6px;">↻</button>
+        <button class="btn btn-secondary" style="font-size:11px;padding:2px 6px;">↻</button>
       </div>
       <div id="recurring-list" style="display:flex;flex-direction:column;gap:6px;max-height:120px;overflow-y:auto;">
       </div>
@@ -1062,14 +1039,13 @@
       <div id="terminal-header">
         <span id="terminal-title" class="mono" data-i18n="terminal_title">TERMINAL FEED</span>
         <div style="display:flex;gap:8px;align-items:center;">
-          <button id="terminal-clear" onclick="clearTerminal()" data-i18n="clear_terminal">CLEAR</button>
-          <button id="terminal-toggle" onclick="toggleTerminal()" title="Hide/Show terminal"
-            style="font-family:var(--font-m);font-size:13px;letter-spacing:2px;color:rgba(0,255,200,0.35);cursor:pointer;background:none;border:none;transition:color 0.15s;"
-            onmouseenter="this.style.color='var(--cyan)'" onmouseleave="this.style.color='rgba(0,255,200,0.35)'">▼
+          <button id="terminal-clear" data-i18n="clear_terminal">CLEAR</button>
+          <button id="terminal-toggle" title="Hide/Show terminal"
+            style="font-family:var(--font-m);font-size:13px;letter-spacing:2px;color:rgba(0,255,200,0.35);cursor:pointer;background:none;border:none;transition:color 0.15s;">▼
             HIDE</button>
         </div>
       </div>
-      <div id="terminal-log" ondblclick="clearTerminal()"></div>
+      <div id="terminal-log"></div>
     </footer>
 
   </div>
@@ -1102,6 +1078,7 @@
   <script src="js/actions.js"></script>
   <script src="js/hex-brain.js"></script>
   <script src="js/renderer.js"></script>
+  <script src="js/event-wiring.js"></script>
   <!-- ── V3 Custom Cursor Tracking & Drag Hooks ──────────── -->
   <div class="cyber-cursor"></div>
   <script>
