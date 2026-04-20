@@ -3253,31 +3253,73 @@ input[type="range"]::-webkit-slider-thumb {
   background: linear-gradient(90deg, var(--c-gold), var(--c-orange));
 }
 
-/* ── Insight Feed ──────────────────────────────────────────── */
-.insight-feed {
+/* ── Shared CRT monitor chassis ──────────────────────────── */
+.insight-feed,
+.memory-feed {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  max-height: 140px;
+  gap: 6px;
   overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+
+  background-color: #01080a;
+
+  border: 4px solid #050b0f;
+  border-radius: 16px;
+  box-shadow:
+    inset 0 0 40px rgba(0, 0, 0, 0.95),
+    inset 0 0 18px rgba(0, 255, 200, 0.12),
+    0 0 0 3px #040c11,
+    0 0 0 20px #0a141a,
+    0 0 0 22px #060e13,
+    0 8px 24px rgba(0, 0, 0, 0.7);
+
+  background-image:
+    radial-gradient(circle at 50% 0%, rgba(200, 255, 255, 0.06) 0%, transparent 55%),
+    radial-gradient(ellipse at center, transparent 20%, rgba(0, 0, 0, 0.65) 100%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.28), rgba(0, 0, 0, 0.28) 1px,
+      transparent 1px, transparent 3px
+    );
+
+  padding: 12px 14px;
+  margin: 4px 24px;
+  outline: none;
+}
+
+/* ── Insight Feed ──────────────────────────────────────────── */
+.insight-feed {
+  max-height: 140px;
+  min-height: 60px;
 }
 
 .insight-card {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
-  padding: 6px 8px;
-  background: var(--c-surface-01);
-  border-left: 2px solid var(--c-cyan-dim);
-  font-family: var(--font-mono);
+  gap: 8px;
+  padding: 6px 4px;
+  background: transparent;
+  font-family: 'Courier New', Courier, monospace;
   font-size: 11px;
-  color: var(--c-text-secondary);
-  line-height: 1.35;
+  letter-spacing: 0.5px;
+  font-weight: bold;
+  color: var(--c-cyan-soft);
+  text-shadow: 0 0 7px rgba(0, 255, 200, 0.75);
+  line-height: 1.4;
   transition: var(--transition-sm);
+  border-bottom: 1px dotted rgba(0, 255, 200, 0.2);
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+.insight-card:last-child {
+  border-bottom: none;
 }
 
 .insight-card:hover {
-  background: var(--c-surface-02);
+  background: rgba(0, 255, 200, 0.04);
 }
 
 .insight-card.warn {
@@ -3304,22 +3346,29 @@ input[type="range"]::-webkit-slider-thumb {
 
 /* ── Memory Feed ───────────────────────────────────────────── */
 .memory-feed {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  max-height: 100px;
-  overflow-y: auto;
+  max-height: 120px;
+  min-height: 50px;
 }
 
 .mem-entry {
   display: flex;
   align-items: flex-start;
-  gap: 5px;
-  padding: 4px 6px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--c-text-muted);
-  line-height: 1.35;
+  gap: 8px;
+  padding: 6px 4px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  font-weight: bold;
+  color: var(--c-cyan-soft);
+  text-shadow: 0 0 7px rgba(0, 255, 200, 0.65);
+  line-height: 1.4;
+  border-bottom: 1px dotted rgba(0, 255, 200, 0.2);
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+.mem-entry:last-child {
+  border-bottom: none;
 }
 
 .mem-icon {
