@@ -332,7 +332,7 @@ async function sendMessage() {
 
   try {
     let visionData = null;
-      if (window.visionEnabled && window.hexAPI && window.hexAPI.captureScreenBase64) {
+    if (window.visionEnabled && window.hexAPI && window.hexAPI.captureScreenBase64) {
       addLog('SYS', 'Capturing visual sensor data...');
       window.hexTaskBus?.push('Capturing screen...');
       visionData = await window.hexAPI.captureScreenBase64();
@@ -457,10 +457,19 @@ async function runTask(taskId) {
   setTaskStatus(taskId, 'running');
   addLog('SYSTEM', `Task started: ${taskId}`);
 
+  // Speak the start phrase if it exists
+  let startPhrase = window.i18n.t(`${taskId}_start_phrase`);
+  if (startPhrase && startPhrase !== `${taskId}_start_phrase`) {
+    if (typeof speakWithConfig === 'function') speakWithConfig(startPhrase);
+    addHexMessage(startPhrase);
+  }
+
   try {
     let result;
     if (isBrowserCache) {
       result = await window.hexAPI.clearBrowserCache();
+    } else if (taskId === 'hunter_scan') {
+      result = await window.hexAPI.runHunterNow();
     } else {
       result = await window.hexAPI.runTask(taskId);
     }
@@ -473,14 +482,33 @@ async function runTask(taskId) {
       window.activityMonitor.recordTaskResult(taskId, result, dur);
       updateHealthStats();
       addLog('SYSTEM', `Task ${taskId} completed in ${dur}`);
+
       const msg = `${taskId.replace(/_/g, ' ')} completed in ${dur}.` +
         (result.freed ? ` Freed: ${result.freed}.` : '') +
         (result.warning ? ` ⚠ ${result.warning}` : '');
       addHexMessage(`**Task complete.** ${msg}`);
+
       if (result.warning) showToast('◆ ADMIN REQUIRED', result.warning, 'warn', 8000);
+
+      // Speak completion phrase randomly
+      let endKey = taskId === 'defender_scan' ? 'scan_complete_clean_phrases' : 'task_complete_phrases';
+      let endArr = window.i18n.t(endKey);
+      if (Array.isArray(endArr) && endArr.length > 0) {
+        let p = endArr[Math.floor(Math.random() * endArr.length)];
+        if (typeof speakWithConfig === 'function') speakWithConfig(p);
+      }
+
     } else {
       addLog('ERROR', `Task ${taskId} failed: ${result.error || 'unknown'}`);
-      addHexMessage(`**Warning.** ${taskId.replace(/_/g, ' ')} encountered an error. Check the terminal log.`);
+
+      let errArr = window.i18n.t('task_error_phrases');
+      if (Array.isArray(errArr) && errArr.length > 0) {
+        let p = errArr[Math.floor(Math.random() * errArr.length)];
+        if (typeof speakWithConfig === 'function') speakWithConfig(p);
+        addHexMessage(`**Warning.** ${taskId.replace(/_/g, ' ')}: ${p}`);
+      } else {
+        addHexMessage(`**Warning.** ${taskId.replace(/_/g, ' ')} encountered an error. Check the terminal log.`);
+      }
     }
   } catch (e) {
     taskState[taskId] = { status: 'error' };

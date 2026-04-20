@@ -84,7 +84,10 @@
     "Welcome back, {name}. The neural link is established and stable.",
     "Initialization complete. Awaiting your commands, {name}.",
     "Greetings, {name}. H.E.X. core is online.",
-    "Hello {name}. My logic circuits are primed. Ready when you are."
+    "Hello {name}. My logic circuits are primed. Ready when you are.",
+    "Boot sequence complete. H.E.X. is operational, {name}. What's first?",
+    "All systems are green. Standing by for your directive, {name}.",
+    "Neural interface synchronized. Good to have you back, {name}."
   ],
   "hex_greeting": "System online. All subsystems nominal. How can I assist you today, {name}?",
   "hex_error": "Neural link disrupted. Attempting reconnection...",
@@ -99,5 +102,127 @@
   "base_url": "BASE URL",
   "user_name": "YOUR NAME",
   "about": "About",
-  "version": "VERSION"
+  "version": "VERSION",
+  "high_cpu_phrases": [
+    "Warning. CPU load at {cpu} percent. Recommend closing unused execution threads.",
+    "CPU pressure at {cpu} percent. Something is consuming excessive cycles. Want me to pull up the process list?",
+    "Thermal advisory: CPU at {cpu} percent load. System performance may degrade. Shall I identify the culprit?",
+    "CPU spike detected: {cpu} percent. This machine is working hard. Closing background processes may help.",
+    "Alert. Processor at {cpu} percent capacity. If this persists, performance will suffer. I can terminate heavy processes on command."
+  ],
+  "high_ram_phrases": [
+    "Memory pressure at {ram} percent. Available RAM is critically low. Consider closing applications.",
+    "RAM at {ram} percent. The system is approaching its memory ceiling. Want me to show what's consuming it?",
+    "Memory alert: {ram} percent utilization. Swap file activity may begin soon. Recommend freeing some RAM.",
+    "Warning. Working memory at {ram} percent capacity. Heavy workloads may cause instability.",
+    "RAM is at {ram} percent. I'd recommend closing a few applications before this becomes a problem."
+  ],
+  "low_disk_phrases": [
+    "Storage alert. Disk sector is critically full. Less than 5 percent free space remains. Time to purge old data.",
+    "Disk capacity warning. Free space is dangerously low. Recommend running disk cleanup or deleting large files.",
+    "Critical: the storage drive is nearly full. The system may slow down or fail to write new data. This needs attention now.",
+    "Storage fault incoming. Free disk space is nearly exhausted. Running cleanup is strongly advised.",
+    "Disk full warning. I can run a cleanup scan or help you find what's taking up the most space."
+  ],
+  "high_temp_phrases": [
+    "Thermal alert. CPU temperature at {temp}. Cooling system may be under strain. Check ventilation.",
+    "Warning. Core temperature is running hot at {temp}. Sustained high temps can damage hardware. Consider reducing load.",
+    "Heat warning: processor at {temp}. If the fans are loud, that's expected. If they're silent, check your cooler.",
+    "Temperature spike detected: {temp}. The system is running warm. Heavy workloads or dust buildup could be the cause.",
+    "Thermal fault risk. CPU is at {temp}. If this climbs further, I'd recommend suspending intensive tasks."
+  ],
+  "threat_detected_phrases": [
+    "Threat signature detected. Defender has flagged a suspicious file. Recommend immediate quarantine.",
+    "Security alert. A potential threat has been identified in the system. Review the defender scan results.",
+    "Intrusion pattern detected. Something suspicious was found during the scan. Do not dismiss this.",
+    "Malicious code signature found. The system's integrity may be compromised. Quarantine initiated.",
+    "Security breach warning. A threat was detected. Immediate action is recommended."
+  ],
+  "scan_complete_clean_phrases": [
+    "Defender scan complete. No threats detected. System integrity confirmed.",
+    "Full scan finished. All sectors are clean. No malicious signatures found.",
+    "Security sweep done. System is clear. No hostile code detected in the scanned sectors.",
+    "Scan complete. No anomalies found. Your system is clean.",
+    "Defender sweep finished. Zero threats. The system is operating securely."
+  ],
+  "task_complete_phrases": [
+    "Task complete. Operation finished without faults.",
+    "Execution successful. The task has been completed.",
+    "Done. All operations in the task concluded normally.",
+    "Task finished. No errors encountered during execution.",
+    "Operation complete. Results are ready for review."
+  ],
+  "task_error_phrases": [
+    "Task fault. The operation encountered an error and could not complete normally.",
+    "Execution failed. Something went wrong during the task. Check the terminal log.",
+    "Operation error. The task did not complete. Terminal log has the details.",
+    "Task terminated with a fault. Review the log for the specific error.",
+    "Warning. The task returned an error. Manual review may be required."
+  ],
+  "late_night_phrases": [
+    "Late night protocol active. It's past midnight and you've been running for {min} minutes. Rest is a performance upgrade.",
+    "Biological advisory: it's late and you've been at this for {min} minutes. Your decision-making degrades significantly after midnight.",
+    "System recommendation: shut down operator. It is past midnight. {min} minutes of continuous work at this hour is suboptimal.",
+    "Late night detected. Hour {hour}. After long sessions your error rate climbs and you won't notice. Consider sleeping.",
+    "I see it's late. {min} minutes in. The work will still be here tomorrow. Your cognitive functions, however, will not recover without sleep."
+  ],
+  "return_from_idle_phrases": [
+    "Welcome back. You were away for {min} minutes. Systems held steady.",
+    "Neural link restored. {min} minute absence logged. Ready when you are.",
+    "Operator returned after {min} minutes. All systems nominal. What are we doing?",
+    "Back online. {min} minutes elapsed during your absence. Nothing critical happened.",
+    "You're back. {min} minutes of idle time recorded. Ready to resume."
+  ],
+  "battery_low_phrases": [
+    "Battery advisory: charge level at {pct} percent. Recommend connecting to power soon.",
+    "Power warning: {pct} percent battery remaining. Plug in when convenient.",
+    "Battery dropping. {pct} percent remaining. Continued operation without power may interrupt your work.",
+    "Low power detected. Battery at {pct} percent. Connect charger to avoid interruption.",
+    "Battery at {pct} percent. Running on reserve power. Find a charger."
+  ],
+  "battery_critical_phrases": [
+    "Critical power failure imminent. Battery at {pct} percent. Plug in immediately or risk data loss.",
+    "Emergency: battery at {pct} percent. The system will shut down soon. Save your work now.",
+    "Power critical. {pct} percent remaining. Immediate charger connection required.",
+    "Battery almost dead. {pct} percent. Connect power now or the system will shut down without warning.",
+    "Final power warning. Battery at {pct} percent. This is the last alert before automatic shutdown."
+  ],
+  "network_lost_phrases": [
+    "Network connection lost. The system is offline. Cloud features and internet access are unavailable.",
+    "Connection severed. Network interface reports no active link. Check your router or cable.",
+    "Network fault detected. Connectivity dropped. Local operations continue normally.",
+    "Internet connection lost. Running in offline mode. Reconnect to restore full functionality.",
+    "Network link down. I'll keep operating but external services are unavailable until you reconnect."
+  ],
+  "network_restored_phrases": [
+    "Network connection restored. System is back online.",
+    "Connectivity reestablished. Internet access is live again.",
+    "Network link restored. All online services are available.",
+    "Connection back online. Resuming full network capability.",
+    "Network restored. The system is fully connected again."
+  ],
+  "plugin_loaded_phrase": "Plugin {name} loaded and ready.",
+  "plugin_error_phrase": "Plugin {name} failed to load. Check the terminal for details.",
+  "shutdown_warning_phrases": [
+    "Shutdown sequence initiated. The system will power off in {sec} seconds. Save any open work.",
+    "Powering down in {sec} seconds. All active processes will be terminated.",
+    "System shutdown in {sec} seconds. This is your final warning.",
+    "Shutdown imminent. {sec} seconds remaining. Close your files.",
+    "Going dark in {sec} seconds. H.E.X. signing off."
+  ],
+  "restart_warning_phrases": [
+    "System restart in {sec} seconds. The machine will reboot and return to operational state.",
+    "Reboot sequence initiated. {sec} seconds until restart.",
+    "Cold reboot in {sec} seconds. Expect a brief offline period.",
+    "Restart imminent. {sec} seconds. I will be back online shortly after.",
+    "Rebooting in {sec} seconds. All active sessions will be closed."
+  ],
+  "defender_start_phrase": "Initiating security sweep. Scanning all sectors for hostile code.",
+  "defrag_start_phrase": "Defragmentation started. Optimizing disk sector layout. This may take a while.",
+  "cleanup_start_phrase": "Disk cleanup initiated. Scanning for recoverable storage space.",
+  "update_start_phrase": "Checking for system updates. Querying the update servers.",
+  "network_diag_start_phrase": "Running network diagnostics. Testing gateway, internet connectivity, and DNS resolution.",
+  "memory_diag_start_phrase": "Running memory diagnostics. Analyzing RAM usage and identifying top consumers.",
+  "firewall_start_phrase": "Checking firewall status. Reviewing active rules and blocked connections.",
+  "driver_check_start_phrase": "Scanning driver health. Enumerating hardware devices and driver states."
 }

@@ -5,6 +5,7 @@ module.exports = function createCoreBridge(ipcRenderer) {
     getConfig: () => ipcRenderer.invoke('config:get'),
     setConfig: (cfg) => ipcRenderer.invoke('config:set', cfg),
     rescheduleHunter: () => ipcRenderer.invoke('hunter:reschedule'),
+    runHunterNow: () => ipcRenderer.invoke('hunter:runNow'),
     getHunterStatus: () => ipcRenderer.invoke('hunter:status'),
 
     appendFinetune: (lines) => ipcRenderer.invoke('finetune:append', { lines }),

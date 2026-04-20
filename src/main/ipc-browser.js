@@ -21,42 +21,6 @@ module.exports = function registerBrowserIPC({
     }
   });
 
-  ipcMain.handle('butler:browser-search', async (_, { query }) => {
-    try {
-      if (!query) return { success: false, error: 'No query provided' };
-      const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
-      await shell.openExternal(searchUrl);
-      sendLog('BUTLER', `Google search: ${query}`);
-      return { success: true, query, url: searchUrl };
-    } catch (e) {
-      return { success: false, error: e.message };
-    }
-  });
-
-  ipcMain.handle('butler:browser-scrape', async (_, { url }) => {
-    try {
-      if (!url) return { success: false, error: 'No URL provided' };
-      const ps = `(Invoke-WebRequest -Uri '${url}' -UseBasicParsing).Content | Select-Object -First 1`;
-      const r  = await butlerExec(
-        `powershell -NoProfile -Command "${ps.replace(/"/g, '\\"')}"`,
-        { timeout: 15000 }
-      );
-      if (r.ok) {
-        let text = (r.out || '')
-          .replace(/<script[\s\S]*?<\/script>/gi, '')
-          .replace(/<style[\s\S]*?<\/style>/gi, '')
-          .replace(/<[^>]+>/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim()
-          .substring(0, 3000);
-        return { success: true, url, text, length: text.length };
-      }
-      return { success: false, error: r.err || 'Scrape failed' };
-    } catch (e) {
-      return { success: false, error: e.message };
-    }
-  });
-
   // ── Web sub-agent (Puppeteer-based) ───────────────────────────────────────
 
   ipcMain.handle('web:scrape', async (_, url) => {
@@ -83,6 +47,6 @@ module.exports = function registerBrowserIPC({
 
   // Close Puppeteer browser cleanly on quit
   app.on('will-quit', () => {
-    webAgent.closeBrowser().catch(() => {});
+    webAgent.closeBrowser().catch(() => { });
   });
 };

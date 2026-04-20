@@ -133,6 +133,7 @@ function nsUpdateQuickActions() {
     if (cpu > 90) actions.push({ icon: '⚠', text: `CPU ${cpu}% — View Processes`, fn: 'openProcesses', urgent: true });
 
     // Always available
+    actions.push({ icon: '🕷', text: 'Credential Hunter', task: 'hunter_scan' });
     actions.push({ icon: '🛡', text: 'Defender Scan', task: 'defender_scan' });
     actions.push({ icon: '🔄', text: 'Check Updates', task: 'update_check' });
     actions.push({ icon: '🧹', text: 'Browser Cache', task: 'browser_cache' });
@@ -143,7 +144,8 @@ function nsUpdateQuickActions() {
     actions.push({ icon: '🧠', text: 'Memory Diagnostics', task: 'memory_diag' });
 
     // Render top 6
-    const top = actions.slice(0, 6);
+    // Render top 8
+    const top = actions.slice(0, 8);
     window.hexRenderUtils.clearNode(container);
     top.forEach((action) => {
         const row = window.hexRenderUtils.createEl('div', {

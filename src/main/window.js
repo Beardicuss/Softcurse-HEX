@@ -4,7 +4,6 @@
 // Returns { createWindow, applySystemSettings }.
 
 const path = require('path');
-const { exec } = require('child_process');
 
 module.exports = function registerWindow({
   BrowserWindow, Tray, Menu, nativeImage, shell, app,
@@ -21,8 +20,8 @@ module.exports = function registerWindow({
   // ── Create main window ─────────────────────────────────────────────────────
   function createWindow() {
     mainWindow = new BrowserWindow({
-      width: 1440,
-      height: 900,
+      width: 1450,
+      height: 1100,
       minWidth: 1100,
       minHeight: 720,
       backgroundColor: '#020202',
@@ -109,7 +108,7 @@ module.exports = function registerWindow({
     if (config.system.minimizeToTray) {
       if (!tray) {
         try {
-          const iconPath = path.join(__dirname, '..', 'src', 'assets', 'hex.png');
+          const iconPath = path.join(__dirname, '..', 'assets', 'hex.png');
           const icon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
           tray = new Tray(icon);
           tray.setToolTip('Softcurse H.E.X.');

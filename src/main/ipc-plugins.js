@@ -4,15 +4,16 @@
 // remove, get-action-tags, open-folder.
 // Also seeds bundled sample plugins on first run.
 
-const fs   = require('fs');
+const fs = require('fs');
 const path = require('path');
 
 module.exports = function registerPluginsIPC({
   ipcMain, app, shell, dialog,
   PluginLoader,
   sendLog,
+  butlerExec,
 }) {
-  const pluginsDir   = path.join(app.getPath('userData'), 'plugins');
+  const pluginsDir = path.join(app.getPath('userData'), 'plugins');
   const pluginLoader = new PluginLoader(pluginsDir, (...args) => {
     const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
     sendLog('PLUGINS', msg);
@@ -20,7 +21,7 @@ module.exports = function registerPluginsIPC({
 
   // ── Seed bundled sample plugins on first run ───────────────────────────────
   function seedBundledPlugins() {
-    const bundledDir = path.join(__dirname, '..', 'plugins');
+    const bundledDir = path.join(__dirname, '..', '..', 'plugins');
     if (!fs.existsSync(bundledDir)) return;
     try {
       const entries = fs.readdirSync(bundledDir, { withFileTypes: true });
@@ -58,45 +59,41 @@ module.exports = function registerPluginsIPC({
   ipcMain.handle('plugins:discover', () => ({
     success: true,
     plugins: pluginLoader.discover().map(m => ({
-      id:          m.id,
-      name:        m.name,
-      version:     m.version,
+      id: m.id,
+      name: m.name,
+      version: m.version,
       description: m.description,
-      actions:     m.actions,
+      actions: m.actions,
     })),
   }));
 
   ipcMain.handle('plugins:install-local', async () => {
     try {
       const result = await dialog.showOpenDialog(null, {
-        title:      'Select Plugin ZIP File',
-        filters:    [{ name: 'Plugin Archives', extensions: ['zip'] }],
+        title: 'Select Plugin ZIP File',
+        filters: [{ name: 'Plugin Archives', extensions: ['zip'] }],
         properties: ['openFile'],
       });
       if (result.canceled || !result.filePaths.length) return null;
 
-      const zipPath  = result.filePaths[0];
-      const zipName  = path.basename(zipPath, '.zip');
+      const zipPath = result.filePaths[0];
+      const zipName = path.basename(zipPath, '.zip');
       const pluginId = zipName.replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase();
-      const destDir  = path.join(pluginsDir, pluginId);
+      const destDir = path.join(pluginsDir, pluginId);
 
       sendLog('PLUGINS', `Installing local plugin: ${pluginId} from ${zipPath}`);
       if (fs.existsSync(destDir)) fs.rmSync(destDir, { recursive: true, force: true });
 
-      await new Promise((resolve, reject) => {
-        require('child_process').exec(
-          `powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${destDir}' -Force"`,
-          (err) => { if (err) reject(err); else resolve(); }
-        );
-      });
+      const r = await butlerExec(`powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${destDir}' -Force"`);
+      if (!r.ok) throw new Error(r.err || 'Plugin extraction failed');
 
       // Hot-load the newly extracted plugin
       try {
         const manifestPath = path.join(destDir, 'manifest.json');
         if (fs.existsSync(manifestPath)) {
-          const manifest       = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-          manifest._dir        = destDir;
-          manifest._mainPath   = path.join(destDir, manifest.main);
+          const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+          manifest._dir = destDir;
+          manifest._mainPath = path.join(destDir, manifest.main);
           pluginLoader.loadPlugin(manifest);
         }
       } catch (e) {
@@ -124,7 +121,7 @@ module.exports = function registerPluginsIPC({
 
   ipcMain.handle('plugins:load', (_, { id }) => {
     const manifests = pluginLoader.discover();
-    const manifest  = manifests.find(m => m.id === id);
+    const manifest = manifests.find(m => m.id === id);
     if (!manifest) return { success: false, error: `Plugin "${id}" not found` };
     const ok = pluginLoader.loadPlugin(manifest);
     return { success: ok, error: ok ? null : 'Failed to load plugin' };

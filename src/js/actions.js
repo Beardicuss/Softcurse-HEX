@@ -247,7 +247,7 @@ async function handleAIAction(action) {
       if (query) {
         addHexMessage(`🔍 Searching the web for: "${query}"...`);
         try {
-          const r = await window.hexAPI.web.search(query);
+          const r = await window.hexAPI.browser.search(query);
           if (r.success && r.results.length > 0) {
             let msg = `**Web Results for "${query}":**\n\n`;
             if (r.featured) msg += `> ${r.featured}\n\n`;
@@ -551,7 +551,7 @@ async function handleAIAction(action) {
       const targetUrl = action.args.join(':');
       addHexMessage(`🕷 Scraping \`${targetUrl}\`...`);
       try {
-        const r = await window.hexAPI.web.scrape(targetUrl);
+        const r = await window.hexAPI.browser.scrape(targetUrl);
         if (r.success) {
           addHexMessage(`✅ Scraped **"${r.title}"** (${r.charCount} chars)`);
           return { data: `Scraped content from ${r.title} (${r.url}):\n\n${r.text}` };

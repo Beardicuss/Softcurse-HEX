@@ -21,20 +21,20 @@ const {
 } = require('electron');
 
 app.commandLine.appendSwitch('disable-features', 'AudioServiceOutOfProcess');
-app.commandLine.appendSwitch('autoplay-policy',  'no-user-gesture-required');
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
-const path     = require('path');
-const fs       = require('fs');
+const path = require('path');
+const fs = require('fs');
 const { spawn } = require('child_process');
 const schedule = require('node-schedule');
-const si       = require('systeminformation');
+const si = require('systeminformation');
 const PluginLoader = require('./src/js/plugin-loader');
-const FaceAuth     = require('./src/js/face-auth');
-const webAgent     = require('./src/js/web-agent');
+const FaceAuth = require('./src/js/face-auth');
+const webAgent = require('./src/js/web-agent');
 
 // ── Path constants ─────────────────────────────────────────────────────────────
 const userDataPath = process.env.HEX_USER_DATA || app.getPath('userData');
-const CONFIG_PATH  = path.join(userDataPath, 'config.json');
+const CONFIG_PATH = path.join(userDataPath, 'config.json');
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 const { formatBytes, formatUptime, runCmd, butlerExec, makeButlerConfirm } =
@@ -44,8 +44,8 @@ const { formatBytes, formatUptime, runCmd, butlerExec, makeButlerConfirm } =
 const { loadConfig, saveConfig: _saveConfig } = require('./src/main/config');
 
 let config = loadConfig(safeStorage, app, CONFIG_PATH);
-const getConfig  = ()    => config;
-const setConfig  = (cfg) => { config = cfg; };
+const getConfig = () => config;
+const setConfig = (cfg) => { config = cfg; };
 const saveConfig = (cfg) => _saveConfig(safeStorage, cfg, CONFIG_PATH);
 
 // ── Local voice engine ─────────────────────────────────────────────────────────
@@ -92,7 +92,7 @@ const { createWindow, applySystemSettings } = require('./src/main/window')({
   getConfig,
   startPolling,
   onWindowCreated: (win) => { mainWindow = win; },
-  onWindowClosed:  ()    => { mainWindow = null; },
+  onWindowClosed: () => { mainWindow = null; },
   sendLog,
 });
 
@@ -166,6 +166,7 @@ const { loadAll: loadAllPlugins } = require('./src/main/ipc-plugins')({
   ipcMain, app, shell, dialog,
   PluginLoader,
   sendLog,
+  butlerExec,
 });
 
 // ── Face auth IPC ─────────────────────────────────────────────────────────────
@@ -198,9 +199,9 @@ app.whenReady().then(() => {
       const vbsPath = path.join(__dirname, 'scripts', 'ollama', 'run-ollama.vbs');
       require('child_process').exec(`wscript.exe "${vbsPath}"`, (err) => {
         if (err) console.warn('Softcurse: Failed to auto-start local Ollama', err);
-        else     console.log('Softcurse: Ollama auto-started via bundled script');
+        else console.log('Softcurse: Ollama auto-started via bundled script');
       });
-    } catch (_) {}
+    } catch (_) { }
   }
 
   // Load persisted reminders and schedules
@@ -246,4 +247,4 @@ app.on('will-quit', () => {
 });
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-app.on('activate',          () => { if (!mainWindow) createWindow(); });
+app.on('activate', () => { if (!mainWindow) createWindow(); });

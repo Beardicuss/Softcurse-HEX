@@ -6,13 +6,8 @@ module.exports = function createBrowserBridge(ipcRenderer) {
 
     browser: {
       open: (url) => ipcRenderer.invoke('butler:browser-open', { url }),
-      search: (query) => ipcRenderer.invoke('butler:browser-search', { query }),
-      scrape: (url) => ipcRenderer.invoke('butler:browser-scrape', { url }),
-    },
-
-    web: {
-      scrape: (url) => ipcRenderer.invoke('web:scrape', url),
       search: (query) => ipcRenderer.invoke('web:search', query),
+      scrape: (url) => ipcRenderer.invoke('web:scrape', url),
     },
   };
 };
