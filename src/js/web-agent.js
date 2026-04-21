@@ -18,7 +18,12 @@
 
 const { chromium } = require('playwright-core');
 const path = require('path');
-const fs   = require('fs');
+const fs = require('fs');
+const os = require('os');
+
+// HEX gets its own Chrome profile dir — bypasses the "Who's using Chrome?" picker
+const HEX_BROWSER_DIR = path.join(os.tmpdir(), 'hex-browser-profile');
+if (!fs.existsSync(HEX_BROWSER_DIR)) fs.mkdirSync(HEX_BROWSER_DIR, { recursive: true });
 
 const MAX_TEXT_CHARS = 4000;
 
@@ -49,7 +54,7 @@ function findBrowserPath() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 let _headlessBrowser = null;
-let _headlessTimer   = null;
+let _headlessTimer = null;
 
 async function getHeadlessBrowser() {
   if (_headlessTimer) clearTimeout(_headlessTimer);
@@ -60,21 +65,26 @@ async function getHeadlessBrowser() {
   _headlessBrowser = await chromium.launch({
     executablePath: execPath,
     headless: true,
-    args: ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
+    args: [
+      '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
+      '--user-data-dir=' + path.join(HEX_BROWSER_DIR, 'headless'),
+      '--profile-directory=Default',
+      '--no-first-run', '--no-default-browser-check',
+    ],
   });
   return _headlessBrowser;
 }
 
 async function closeHeadless() {
   if (_headlessBrowser) {
-    try { await _headlessBrowser.close(); } catch (_) {}
+    try { await _headlessBrowser.close(); } catch (_) { }
     _headlessBrowser = null;
   }
 }
 
 async function scrapeUrl(url) {
   const browser = await getHeadlessBrowser();
-  const page    = await browser.newPage();
+  const page = await browser.newPage();
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.waitForTimeout(1500);
@@ -84,7 +94,7 @@ async function scrapeUrl(url) {
       const main = document.querySelector('article,main,[role="main"],.content,.post,.entry');
       return (main || document.body).innerText || '';
     });
-    const title   = await page.title();
+    const title = await page.title();
     const cleaned = text.replace(/\n{3,}/g, '\n\n').trim();
     return {
       success: true, title, url,
@@ -100,7 +110,7 @@ async function scrapeUrl(url) {
 
 async function searchWeb(query) {
   const browser = await getHeadlessBrowser();
-  const page    = await browser.newPage();
+  const page = await browser.newPage();
   try {
     await page.goto('https://www.google.com/search?q=' + encodeURIComponent(query) + '&hl=en', { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.waitForTimeout(1500);
@@ -132,30 +142,30 @@ async function searchWeb(query) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 let _ctrlBrowser = null;
-let _ctrlPage    = null;
-let _ctrlTimer   = null;
-const CTRL_IDLE  = 5 * 60 * 1000;
+let _ctrlPage = null;
+let _ctrlTimer = null;
+const CTRL_IDLE = 5 * 60 * 1000;
 
 // ── Site-specific search box selectors ───────────────────────────────────────
 
 const SITE_SEARCH_SELECTORS = {
-  'youtube.com':       { input: 'input#search,input[name="search_query"]',           submit: 'button#search-icon-legacy,button[aria-label*="Search"]' },
-  'google.com':        { input: 'input[name="q"],textarea[name="q"]',               submit: null },
-  'amazon.com':        { input: 'input#twotabsearchtextbox',                        submit: 'input#nav-search-submit-button' },
-  'amazon.co.uk':      { input: 'input#twotabsearchtextbox',                        submit: 'input#nav-search-submit-button' },
-  'github.com':        { input: 'input[name="q"],input[placeholder*="Search"]',     submit: null },
-  'reddit.com':        { input: 'input[placeholder*="Search"]',                     submit: null },
-  'twitter.com':       { input: 'input[data-testid="SearchBox_Search_Input"]',      submit: null },
-  'x.com':             { input: 'input[data-testid="SearchBox_Search_Input"]',      submit: null },
-  'myauto.ge':         { input: 'input[placeholder*="ძებნ"],input[placeholder*="Search"],input[type="search"],input[name*="q"],input[name*="search"]', submit: 'button[type="submit"],button.search-btn,.search-button' },
-  'ss.ge':             { input: 'input[name="q"],input[type="search"],input[placeholder*="ძებნ"]', submit: 'button[type="submit"]' },
-  'myhome.ge':         { input: 'input[type="search"],input[placeholder*="Search"]', submit: null },
-  'ebay.com':          { input: 'input#gh-ac',                                      submit: 'input#gh-btn' },
-  'bing.com':          { input: 'input#sb_form_q',                                  submit: null },
-  'duckduckgo.com':    { input: 'input[name="q"]',                                  submit: null },
-  'wikipedia.org':     { input: 'input#searchInput,input[name="search"]',           submit: null },
-  'stackoverflow.com': { input: 'input[placeholder*="Search"]',                     submit: null },
-  'aliexpress.com':    { input: 'input.search-key',                                 submit: null },
+  'youtube.com': { input: 'input#search,input[name="search_query"]', submit: 'button#search-icon-legacy,button[aria-label*="Search"]' },
+  'google.com': { input: 'input[name="q"],textarea[name="q"]', submit: null },
+  'amazon.com': { input: 'input#twotabsearchtextbox', submit: 'input#nav-search-submit-button' },
+  'amazon.co.uk': { input: 'input#twotabsearchtextbox', submit: 'input#nav-search-submit-button' },
+  'github.com': { input: 'input[name="q"],input[placeholder*="Search"]', submit: null },
+  'reddit.com': { input: 'input[placeholder*="Search"]', submit: null },
+  'twitter.com': { input: 'input[data-testid="SearchBox_Search_Input"]', submit: null },
+  'x.com': { input: 'input[data-testid="SearchBox_Search_Input"]', submit: null },
+  'myauto.ge': { input: 'input[placeholder*="ძებნ"],input[placeholder*="Search"],input[type="search"],input[name*="q"],input[name*="search"]', submit: 'button[type="submit"],button.search-btn,.search-button' },
+  'ss.ge': { input: 'input[name="q"],input[type="search"],input[placeholder*="ძებნ"]', submit: 'button[type="submit"]' },
+  'myhome.ge': { input: 'input[type="search"],input[placeholder*="Search"]', submit: null },
+  'ebay.com': { input: 'input#gh-ac', submit: 'input#gh-btn' },
+  'bing.com': { input: 'input#sb_form_q', submit: null },
+  'duckduckgo.com': { input: 'input[name="q"]', submit: null },
+  'wikipedia.org': { input: 'input#searchInput,input[name="search"]', submit: null },
+  'stackoverflow.com': { input: 'input[placeholder*="Search"]', submit: null },
+  'aliexpress.com': { input: 'input.search-key', submit: null },
 };
 
 function getSiteSelectors(url) {
@@ -164,9 +174,9 @@ function getSiteSelectors(url) {
     for (const [site, sel] of Object.entries(SITE_SEARCH_SELECTORS)) {
       if (host.includes(site)) return sel;
     }
-  } catch (_) {}
+  } catch (_) { }
   return {
-    input:  'input[type="search"],input[name="q"],input[name="query"],input[placeholder*="earch" i],input[aria-label*="earch" i]',
+    input: 'input[type="search"],input[name="q"],input[name="query"],input[placeholder*="earch" i],input[aria-label*="earch" i]',
     submit: 'button[type="submit"],input[type="submit"],button[aria-label*="earch" i]',
   };
 }
@@ -187,7 +197,12 @@ async function getControlledPage() {
   _ctrlBrowser = await chromium.launch({
     executablePath: execPath,
     headless: false,
-    args: ['--no-sandbox', '--start-maximized'],
+    args: [
+      '--no-sandbox', '--start-maximized',
+      '--user-data-dir=' + path.join(HEX_BROWSER_DIR, 'controlled'),
+      '--profile-directory=Default',
+      '--no-first-run', '--no-default-browser-check',
+    ],
   });
   const ctx = await _ctrlBrowser.newContext({ viewport: null });
   _ctrlPage = await ctx.newPage();
@@ -203,7 +218,7 @@ async function getControlledPage() {
 
 async function closeControlled() {
   if (_ctrlBrowser) {
-    try { await _ctrlBrowser.close(); } catch (_) {}
+    try { await _ctrlBrowser.close(); } catch (_) { }
     _ctrlBrowser = null; _ctrlPage = null;
   }
 }
@@ -237,7 +252,7 @@ async function smartSearch(query, siteUrl) {
 
     if (!inputHandle) {
       // Fallback: Google site search
-      const host        = new URL(page.url()).hostname;
+      const host = new URL(page.url()).hostname;
       const fallbackUrl = 'https://www.google.com/search?q=site:' + host + '+' + encodeURIComponent(query);
       await page.goto(fallbackUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
       return { success: true, method: 'google-site-search', url: page.url(), query };
@@ -306,7 +321,7 @@ async function findAndClick(visibleText) {
           await page.waitForTimeout(1000);
           return { success: true, found: sel, url: page.url() };
         }
-      } catch (_) {}
+      } catch (_) { }
     }
     return { success: false, error: 'Could not find element with text: "' + visibleText + '"' };
   } catch (err) {
@@ -372,7 +387,7 @@ async function readCurrentPage() {
       const main = document.querySelector('article,main,[role="main"],.content');
       return (main || document.body).innerText || '';
     });
-    const title   = await page.title();
+    const title = await page.title();
     const cleaned = text.replace(/\n{3,}/g, '\n\n').trim();
     return {
       success: true, title, url: page.url(),
@@ -388,7 +403,7 @@ async function getSessionStatus() {
   const open = !!(_ctrlBrowser && _ctrlBrowser.isConnected() && _ctrlPage && !_ctrlPage.isClosed());
   return {
     open,
-    url:   open ? _ctrlPage.url() : null,
+    url: open ? _ctrlPage.url() : null,
     title: open ? await _ctrlPage.title().catch(() => null) : null,
   };
 }

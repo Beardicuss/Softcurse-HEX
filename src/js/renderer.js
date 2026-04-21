@@ -355,7 +355,9 @@ async function sendMessage() {
 
     // Execute actions — batch independent actions in parallel
     const infoResults = [];
-    const SEQUENTIAL_ACTIONS = new Set(['shutdown', 'restart', 'logoff', 'lock_screen']); // must run alone
+    const SEQUENTIAL_ACTIONS = new Set(['shutdown', 'restart', 'logoff', 'lock_screen',
+      'web_navigate', 'web_search', 'web_click', 'web_find_click', 'web_type',
+      'web_back', 'web_forward', 'web_refresh', 'web_read', 'web_close']); // must run in order
     const actions = result.actions || [];
     const parallelBatch = [];
     const sequentialQueue = [];

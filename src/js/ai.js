@@ -548,8 +548,14 @@ class HexAI {
       if (rest.includes('|')) {
         rawArgs = rest.split('|');
       } else if (/^https?:\/\//i.test(rest)) {
-        // Single arg (URL) — don't split
-        rawArgs = [rest];
+        // URL present — extract scheme://authority[/path] then split remainder
+        const urlMatch = rest.match(/^(https?:\/\/[^/:]+(?::\d+)?(?:\/[^:]*)?)(:.+)?$/i);
+        if (urlMatch && urlMatch[2]) {
+          // Has text after the URL portion, e.g. "https://youtube.com:search query"
+          rawArgs = [urlMatch[1], ...urlMatch[2].slice(1).split(':')];
+        } else {
+          rawArgs = [rest]; // Pure URL, no extra args
+        }
       } else {
         rawArgs = rest.split(':');
       }
