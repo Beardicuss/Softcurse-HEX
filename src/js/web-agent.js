@@ -21,9 +21,70 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-// HEX gets its own Chrome profile dir — bypasses the "Who's using Chrome?" picker
+// Fallback HEX-only profile dir (used when Chrome profile is locked)
 const HEX_BROWSER_DIR = path.join(os.tmpdir(), 'hex-browser-profile');
 if (!fs.existsSync(HEX_BROWSER_DIR)) fs.mkdirSync(HEX_BROWSER_DIR, { recursive: true });
+
+// ── Chrome profile sync ──────────────────────────────────────────────────────
+// Copies essential files from the user's last-used Chrome profile into
+// HEX's temp dir so Playwright can use them (Chrome blocks remote debugging
+// on the real user data dir).
+
+const PROFILE_FILES = [
+  'Cookies', 'Cookies-journal',
+  'Login Data', 'Login Data-journal',
+  'Web Data', 'Web Data-journal',
+  'Preferences', 'Secure Preferences',
+  'Bookmarks', 'Favicons', 'Favicons-journal',
+  'History', 'History-journal',
+];
+
+function syncChromeProfile() {
+  try {
+    const LOCALAPPDATA = process.env.LOCALAPPDATA || '';
+    const chromeUserData = path.join(LOCALAPPDATA, 'Google', 'Chrome', 'User Data');
+    const localStatePath = path.join(chromeUserData, 'Local State');
+    if (!fs.existsSync(localStatePath)) return false;
+
+    const localState = JSON.parse(fs.readFileSync(localStatePath, 'utf8'));
+    const lastUsed = localState.profile?.last_used || 'Default';
+
+    const srcProfile = path.join(chromeUserData, lastUsed);
+    if (!fs.existsSync(srcProfile)) return false;
+
+    // Copy into HEX's controlled dir under Default/ so Chrome treats it as the profile
+    const destProfile = path.join(HEX_BROWSER_DIR, 'controlled', 'Default');
+    if (!fs.existsSync(destProfile)) fs.mkdirSync(destProfile, { recursive: true });
+
+    let copied = 0;
+    for (const file of PROFILE_FILES) {
+      const src = path.join(srcProfile, file);
+      const dst = path.join(destProfile, file);
+      try {
+        if (fs.existsSync(src)) {
+          fs.copyFileSync(src, dst);
+          copied++;
+        }
+      } catch (_) { /* file may be locked by Chrome — skip it */ }
+    }
+
+    // Also copy Local State and First Run marker to the user data dir level
+    const destUserData = path.join(HEX_BROWSER_DIR, 'controlled');
+    try {
+      fs.copyFileSync(localStatePath, path.join(destUserData, 'Local State'));
+    } catch (_) { }
+    // Write First Run marker so Chrome doesn't show setup
+    try {
+      fs.writeFileSync(path.join(destUserData, 'First Run'), '', { flag: 'wx' });
+    } catch (_) { }
+
+    console.log(`[HEX Web Agent] Synced ${copied} files from Chrome profile "${lastUsed}"`);
+    return copied > 0;
+  } catch (err) {
+    console.warn('[HEX Web Agent] Profile sync failed:', err.message);
+    return false;
+  }
+}
 
 const MAX_TEXT_CHARS = 4000;
 
@@ -196,10 +257,12 @@ async function getControlledPage() {
   const execPath = findBrowserPath();
   if (!execPath) throw new Error('No browser found. Install Chrome or Edge.');
 
+  // Sync cookies/logins/bookmarks from user's last Chrome profile
+  syncChromeProfile();
+
   const CTRL_DIR = path.join(HEX_BROWSER_DIR, 'controlled');
   if (!fs.existsSync(CTRL_DIR)) fs.mkdirSync(CTRL_DIR, { recursive: true });
 
-  // launchPersistentContext: userDataDir is first arg — no --user-data-dir flag
   const ctrlCtx = await chromium.launchPersistentContext(CTRL_DIR, {
     executablePath: execPath,
     headless: false,
