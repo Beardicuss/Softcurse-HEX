@@ -268,6 +268,124 @@ async function handleAIAction(action) {
       break;
     }
 
+    // ── Controlled visible browser actions ─────────────────────────────────
+
+    case 'web_navigate': {
+      // [ACTION:web_navigate:URL]
+      const url = action.args.join(':').trim();
+      if (!url) break;
+      addHexMessage(`🌐 Navigating to **${url}**...`);
+      const r = await window.hexAPI.browser.navigate(url);
+      if (r.success) {
+        addHexMessage(`✅ Opened: **${r.title || r.url}**`);
+      } else {
+        addHexMessage(`❌ Navigation failed: ${r.error}`);
+      }
+      break;
+    }
+
+    case 'web_search': {
+      // [ACTION:web_search:QUERY] — search on the currently open page
+      // [ACTION:web_search:SITE_URL:QUERY] — open site and search
+      const parts  = action.args;
+      let siteUrl  = null;
+      let query    = '';
+      // If first arg looks like a URL, treat it as the site
+      if (parts[0] && /^https?:\/\/|^\w+\.\w+/.test(parts[0])) {
+        siteUrl = parts[0];
+        query   = parts.slice(1).join(' ').trim();
+      } else {
+        query = parts.join(' ').trim();
+      }
+      if (!query) break;
+      const label = siteUrl ? `**${new URL(siteUrl.startsWith('http') ? siteUrl : 'https://' + siteUrl).hostname}**` : 'current page';
+      addHexMessage(`🔍 Searching ${label} for: **${query}**...`);
+      const r = await window.hexAPI.browser.smartSearch(query, siteUrl);
+      if (r.success) {
+        addHexMessage(`✅ Search done — page: **${r.title || r.url}**`);
+        return { data: `Browser searched for "${query}" — now on page: ${r.title} (${r.url})` };
+      } else {
+        addHexMessage(`❌ Search failed: ${r.error}`);
+      }
+      break;
+    }
+
+    case 'web_click': {
+      // [ACTION:web_click:CSS_SELECTOR]
+      const selector = action.args.join(':').trim();
+      if (!selector) break;
+      const r = await window.hexAPI.browser.click(selector);
+      if (r.success) addHexMessage(`✅ Clicked: \`${selector}\``);
+      else addHexMessage(`❌ Click failed: ${r.error}`);
+      break;
+    }
+
+    case 'web_find_click': {
+      // [ACTION:web_find_click:VISIBLE TEXT]  — click by visible label/text
+      const text = action.args.join(' ').trim();
+      if (!text) break;
+      addHexMessage(`🖱 Clicking: **${text}**...`);
+      const r = await window.hexAPI.browser.findClick(text);
+      if (r.success) addHexMessage(`✅ Clicked "${text}"`);
+      else addHexMessage(`❌ Could not click "${text}": ${r.error}`);
+      break;
+    }
+
+    case 'web_type': {
+      // [ACTION:web_type:CSS_SELECTOR:TEXT TO TYPE]
+      const selector = action.args[0] || '';
+      const text     = action.args.slice(1).join(':').trim();
+      if (!selector || !text) break;
+      const r = await window.hexAPI.browser.type(selector, text);
+      if (r.success) addHexMessage(`⌨️ Typed into \`${selector}\``);
+      else addHexMessage(`❌ Type failed: ${r.error}`);
+      break;
+    }
+
+    case 'web_back': {
+      // [ACTION:web_back]
+      const r = await window.hexAPI.browser.back();
+      if (r.success) addHexMessage(`⬅️ Back — now on: **${r.title || r.url}**`);
+      else addHexMessage(`❌ Back failed: ${r.error}`);
+      break;
+    }
+
+    case 'web_forward': {
+      // [ACTION:web_forward]
+      const r = await window.hexAPI.browser.forward();
+      if (r.success) addHexMessage(`➡️ Forward — now on: **${r.title || r.url}**`);
+      else addHexMessage(`❌ Forward failed: ${r.error}`);
+      break;
+    }
+
+    case 'web_refresh': {
+      // [ACTION:web_refresh]
+      const r = await window.hexAPI.browser.refresh();
+      if (r.success) addHexMessage(`🔄 Page refreshed: **${r.title}**`);
+      else addHexMessage(`❌ Refresh failed: ${r.error}`);
+      break;
+    }
+
+    case 'web_read': {
+      // [ACTION:web_read]  — read current page and feed content back to AI
+      addHexMessage(`📖 Reading current page...`);
+      const r = await window.hexAPI.browser.readPage();
+      if (r.success) {
+        addHexMessage(`✅ Read **${r.title}** (${r.charCount} chars)`);
+        return { data: `Current page content — ${r.title} (${r.url}):\n\n${r.text}` };
+      } else {
+        addHexMessage(`❌ Read failed: ${r.error}`);
+      }
+      break;
+    }
+
+    case 'web_close': {
+      // [ACTION:web_close]
+      await window.hexAPI.browser.close();
+      addHexMessage(`🔌 Browser session closed.`);
+      break;
+    }
+
     case 'create_file':
       if (action.args[0]) {
         const content = action.args.slice(1).join(':');
