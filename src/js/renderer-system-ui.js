@@ -145,6 +145,7 @@ function handleProactiveMsg(msg) {
       const text = window.i18n.t('return_from_idle', { min: msg.idleMin });
       addHexMessage(text);
       addLog('HEX', text);
+      if (config.voice?.enabled !== false) speakWithConfig(text);
       break;
     }
     case 'high_cpu': {
@@ -152,6 +153,7 @@ function handleProactiveMsg(msg) {
       showToast('◆ SYSTEM ALERT', text, 'alert', 6000);
       addHexMessage(`**High CPU detected** (${msg.cpu}%). Consider closing unused apps.`);
       addLog('SYSTEM', `High CPU: ${msg.cpu}%`, 'warn');
+      if (config.voice?.enabled !== false) speakWithConfig(text);
       break;
     }
     case 'high_ram': {
@@ -159,6 +161,7 @@ function handleProactiveMsg(msg) {
       showToast('◆ SYSTEM ALERT', text, 'alert', 6000);
       addHexMessage(`**Memory pressure** at ${msg.ram}%. You may want to close some programs.`);
       addLog('SYSTEM', `High RAM: ${msg.ram}%`, 'warn');
+      if (config.voice?.enabled !== false) speakWithConfig(text);
       break;
     }
     case 'late_night': {
@@ -167,6 +170,7 @@ function handleProactiveMsg(msg) {
         prevAlerts.late_night = Date.now();
         addHexMessage(`**Late night protocol.** ${text}`);
         showToast('◆ HEX CARES', text, 'warn', 10000);
+        if (config.voice?.enabled !== false) speakWithConfig(text);
       }
       break;
     }

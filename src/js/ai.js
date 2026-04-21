@@ -38,7 +38,8 @@ class HexAI {
   }
 
   // ── Main chat entry ───────────────────────────────────────
-  async chat(userMsg, systemState, lang = 'ka', visionData = null) {
+  async chat(userMsg, systemState, lang = 'ka', visionData = null, maxTokens = 800) {
+    this._maxTokens = maxTokens;
     window._lastUserMsg = userMsg;
     // Use persistent memory history if available
     if (window.hexMemory) {
@@ -241,7 +242,7 @@ class HexAI {
         model,
         messages: [{ role: 'system', content: system }, ...historyParts],
         stream: false,
-        options: { temperature: 0.75, num_predict: 350 }
+        options: { temperature: 0.75, num_predict: this._maxTokens || 800 }
       })
     });
     if (!res.ok) throw new Error('Ollama ' + res.status + ': ' + await res.text());
@@ -256,7 +257,7 @@ class HexAI {
       body: JSON.stringify({
         model: this.config.llm.model || 'gpt-4o-mini',
         messages: [{ role: 'system', content: system }, ...this._msgs()],
-        max_tokens: 350, temperature: 0.75
+        max_tokens: this._maxTokens || 800, temperature: 0.75
       })
     });
     if (!res.ok) { const e = await this._safeJson(res); throw new Error('OpenAI ' + res.status + ': ' + (e.error && e.error.message)); }
@@ -275,7 +276,7 @@ class HexAI {
       },
       body: JSON.stringify({
         model: this.config.llm.model || 'claude-haiku-4-5-20251001',
-        max_tokens: 350, system,
+        max_tokens: this._maxTokens || 800, system,
         messages: this._msgs()
       })
     });
@@ -310,7 +311,7 @@ class HexAI {
     const payload = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents, generationConfig: { maxOutputTokens: 350, temperature: 0.75 } })
+      body: JSON.stringify({ contents, generationConfig: { maxOutputTokens: this._maxTokens || 800, temperature: 0.75 } })
     };
 
     let res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, payload);
@@ -338,7 +339,7 @@ class HexAI {
       body: JSON.stringify({
         model,
         messages: [{ role: 'system', content: system }, ...this._msgs()],
-        max_tokens: 350, temperature: 0.75
+        max_tokens: this._maxTokens || 800, temperature: 0.75
       })
     });
     if (!res.ok) { const e = await this._safeJson(res); throw new Error('Grok ' + res.status + ': ' + (e.error?.message || (typeof e.error === 'string' ? e.error : null) || e.message || JSON.stringify(e))); }
@@ -361,7 +362,7 @@ class HexAI {
       body: JSON.stringify({
         model,
         messages: [{ role: 'system', content: system }, ...this._msgs()],
-        max_tokens: 350
+        max_tokens: this._maxTokens || 800
       })
     });
     if (!res.ok) { const e = await this._safeJson(res); throw new Error('OpenRouter ' + res.status + ': ' + (e.error && e.error.message)); }
@@ -376,7 +377,7 @@ class HexAI {
       body: JSON.stringify({
         model: this.config.llm.model || 'mistral-small-latest',
         messages: [{ role: 'system', content: system }, ...this._msgs()],
-        max_tokens: 350, temperature: 0.75
+        max_tokens: this._maxTokens || 800, temperature: 0.75
       })
     });
     if (!res.ok) { const e = await this._safeJson(res); throw new Error('Mistral ' + res.status + ': ' + (e.error && e.error.message)); }
@@ -391,7 +392,7 @@ class HexAI {
       body: JSON.stringify({
         model: this.config.llm.model || 'llama-3.1-8b-instant',
         messages: [{ role: 'system', content: system }, ...this._msgs()],
-        max_tokens: 350, temperature: 0.75
+        max_tokens: this._maxTokens || 800, temperature: 0.75
       })
     });
     if (!res.ok) { const e = await this._safeJson(res); throw new Error('Groq ' + res.status + ': ' + (e.error && e.error.message)); }
@@ -406,7 +407,7 @@ class HexAI {
       body: JSON.stringify({
         model: this.config.llm.model || 'meta-llama/Llama-3-8b-chat-hf',
         messages: [{ role: 'system', content: system }, ...this._msgs()],
-        max_tokens: 350, temperature: 0.75
+        max_tokens: this._maxTokens || 800, temperature: 0.75
       })
     });
     if (!res.ok) { const e = await this._safeJson(res); throw new Error('Together ' + res.status + ': ' + (e.error && e.error.message)); }
@@ -427,7 +428,7 @@ class HexAI {
       body: JSON.stringify({
         model: this.config.llm.model || 'command-r-plus',
         preamble: system, chat_history: chatHistory,
-        message: lastMsg, max_tokens: 350, temperature: 0.75
+        message: lastMsg, max_tokens: this._maxTokens || 800, temperature: 0.75
       })
     });
     if (!res.ok) { const e = await this._safeJson(res); throw new Error('Cohere ' + res.status + ': ' + (e?.message || e?.detail || JSON.stringify(e))); }
@@ -442,7 +443,7 @@ class HexAI {
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.config.llm.apiKey },
       body: JSON.stringify({
         inputs: system + '\n\n' + this.history.map(m => m.role + ': ' + m.content).join('\n') + '\n\nAssistant:',
-        parameters: { max_new_tokens: 350, temperature: 0.7 }
+        parameters: { max_new_tokens: this._maxTokens || 800, temperature: 0.7 }
       })
     });
     if (!res.ok) { const e = await this._safeJson(res); throw new Error('HF ' + res.status + ': ' + (e?.error?.message || (typeof e?.error === 'string' ? e.error : JSON.stringify(e)))); }
