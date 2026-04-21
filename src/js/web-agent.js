@@ -32,11 +32,11 @@ const MAX_TEXT_CHARS = 4000;
 function findBrowserPath() {
   const LOCALAPPDATA = process.env.LOCALAPPDATA || '';
   const candidates = [
-    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
     'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
     path.join(LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
     path.join(LOCALAPPDATA, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
     '/usr/bin/chromium-browser',
     '/usr/bin/chromium',
@@ -53,38 +53,41 @@ function findBrowserPath() {
 //  HEADLESS SESSION (scraping / searching)
 // ══════════════════════════════════════════════════════════════════════════════
 
-let _headlessBrowser = null;
+// launchPersistentContext avoids the --user-data-dir flag ban in launch()
+let _headlessCtx = null;
 let _headlessTimer = null;
+const HEADLESS_DIR = path.join(HEX_BROWSER_DIR, 'headless');
 
 async function getHeadlessBrowser() {
   if (_headlessTimer) clearTimeout(_headlessTimer);
   _headlessTimer = setTimeout(closeHeadless, 30000);
-  if (_headlessBrowser && _headlessBrowser.isConnected()) return _headlessBrowser;
+  if (_headlessCtx) return _headlessCtx;
   const execPath = findBrowserPath();
   if (!execPath) throw new Error('No browser found. Install Chrome or Edge.');
-  _headlessBrowser = await chromium.launch({
+  if (!fs.existsSync(HEADLESS_DIR)) fs.mkdirSync(HEADLESS_DIR, { recursive: true });
+  _headlessCtx = await chromium.launchPersistentContext(HEADLESS_DIR, {
     executablePath: execPath,
     headless: true,
-    args: [
-      '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
-      '--user-data-dir=' + path.join(HEX_BROWSER_DIR, 'headless'),
-      '--profile-directory=Default',
-      '--no-first-run', '--no-default-browser-check',
-    ],
+    args: ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
+      '--no-first-run', '--no-default-browser-check'],
   });
-  return _headlessBrowser;
+  return _headlessCtx;
 }
 
 async function closeHeadless() {
-  if (_headlessBrowser) {
-    try { await _headlessBrowser.close(); } catch (_) { }
-    _headlessBrowser = null;
+  if (_headlessCtx) {
+    try { await _headlessCtx.close(); } catch (_) { }
+    _headlessCtx = null;
   }
 }
 
+async function headlessPage() {
+  const ctx = await getHeadlessBrowser();
+  return ctx.newPage();
+}
+
 async function scrapeUrl(url) {
-  const browser = await getHeadlessBrowser();
-  const page = await browser.newPage();
+  const page = await headlessPage();
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.waitForTimeout(1500);
@@ -109,8 +112,7 @@ async function scrapeUrl(url) {
 }
 
 async function searchWeb(query) {
-  const browser = await getHeadlessBrowser();
-  const page = await browser.newPage();
+  const page = await headlessPage();
   try {
     await page.goto('https://www.google.com/search?q=' + encodeURIComponent(query) + '&hl=en', { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.waitForTimeout(1500);
@@ -187,27 +189,30 @@ async function getControlledPage() {
   if (_ctrlTimer) clearTimeout(_ctrlTimer);
   _ctrlTimer = setTimeout(closeControlled, CTRL_IDLE);
 
-  if (_ctrlBrowser && _ctrlBrowser.isConnected() && _ctrlPage && !_ctrlPage.isClosed()) {
+  if (_ctrlBrowser && _ctrlPage && !_ctrlPage.isClosed()) {
     return _ctrlPage;
   }
 
   const execPath = findBrowserPath();
   if (!execPath) throw new Error('No browser found. Install Chrome or Edge.');
 
-  _ctrlBrowser = await chromium.launch({
+  const CTRL_DIR = path.join(HEX_BROWSER_DIR, 'controlled');
+  if (!fs.existsSync(CTRL_DIR)) fs.mkdirSync(CTRL_DIR, { recursive: true });
+
+  // launchPersistentContext: userDataDir is first arg — no --user-data-dir flag
+  const ctrlCtx = await chromium.launchPersistentContext(CTRL_DIR, {
     executablePath: execPath,
     headless: false,
-    args: [
-      '--no-sandbox', '--start-maximized',
-      '--user-data-dir=' + path.join(HEX_BROWSER_DIR, 'controlled'),
-      '--profile-directory=Default',
-      '--no-first-run', '--no-default-browser-check',
-    ],
+    viewport: null,
+    args: ['--no-sandbox', '--start-maximized',
+      '--no-first-run', '--no-default-browser-check'],
   });
-  const ctx = await _ctrlBrowser.newContext({ viewport: null });
-  _ctrlPage = await ctx.newPage();
 
-  _ctrlBrowser.on('disconnected', () => {
+  // Store the context as _ctrlBrowser so closeControlled() can .close() it
+  _ctrlBrowser = ctrlCtx;
+  _ctrlPage = await ctrlCtx.newPage();
+
+  ctrlCtx.on('close', () => {
     _ctrlBrowser = null; _ctrlPage = null;
     if (_ctrlTimer) { clearTimeout(_ctrlTimer); _ctrlTimer = null; }
   });
@@ -400,7 +405,7 @@ async function readCurrentPage() {
 }
 
 async function getSessionStatus() {
-  const open = !!(_ctrlBrowser && _ctrlBrowser.isConnected() && _ctrlPage && !_ctrlPage.isClosed());
+  const open = !!(_ctrlBrowser && _ctrlPage && !_ctrlPage.isClosed());
   return {
     open,
     url: open ? _ctrlPage.url() : null,

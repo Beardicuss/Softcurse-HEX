@@ -161,7 +161,7 @@ async function handleAIAction(action) {
       const query = (qParams[0] || '').trim();
       const category = (qParams.length > 1 ? qParams[1].trim() : '');
       if (query) {
-            addLog('BUTLER', `Searching PC for files: ${query} ${category ? '(' + category + ')' : ''}`);
+        addLog('BUTLER', `Searching PC for files: ${query} ${category ? '(' + category + ')' : ''}`);
         addHexMessage(`*Scanning all drives for "**${query}**"...* 🔍`);
         const r = await window.hexAPI.butler.findFiles(query, category);
         if (r && r.success) {
@@ -287,13 +287,13 @@ async function handleAIAction(action) {
     case 'web_search': {
       // [ACTION:web_search:QUERY] — search on the currently open page
       // [ACTION:web_search:SITE_URL:QUERY] — open site and search
-      const parts  = action.args;
-      let siteUrl  = null;
-      let query    = '';
+      const parts = action.args;
+      let siteUrl = null;
+      let query = '';
       // If first arg looks like a URL, treat it as the site
       if (parts[0] && /^https?:\/\/|^\w+\.\w+/.test(parts[0])) {
         siteUrl = parts[0];
-        query   = parts.slice(1).join(' ').trim();
+        query = parts.slice(1).join(' ').trim();
       } else {
         query = parts.join(' ').trim();
       }
@@ -303,6 +303,20 @@ async function handleAIAction(action) {
       const r = await window.hexAPI.browser.smartSearch(query, siteUrl);
       if (r.success) {
         addHexMessage(`✅ Search done — page: **${r.title || r.url}**`);
+
+        // Auto-play: if on YouTube, click the first video result
+        const currentUrl = r.url || '';
+        if (currentUrl.includes('youtube.com')) {
+          addHexMessage(`▶️ Clicking first video result...`);
+          const playResult = await window.hexAPI.browser.click('ytd-video-renderer a#video-title')
+            .catch(() => window.hexAPI.browser.click('a#video-title'))
+            .catch(() => window.hexAPI.browser.click('ytd-video-renderer a'))
+            .catch(() => null);
+          if (playResult && playResult.success) {
+            addHexMessage(`🎵 Now playing!`);
+          }
+        }
+
         return { data: `Browser searched for "${query}" — now on page: ${r.title} (${r.url})` };
       } else {
         addHexMessage(`❌ Search failed: ${r.error}`);
@@ -324,6 +338,11 @@ async function handleAIAction(action) {
       // [ACTION:web_find_click:VISIBLE TEXT]  — click by visible label/text
       const text = action.args.join(' ').trim();
       if (!text) break;
+      // Skip if auto-play already navigated to a YouTube video
+      try {
+        const st = await window.hexAPI.browser.status();
+        if (st.open && st.url && st.url.includes('youtube.com/watch')) break;
+      } catch (_) { }
       addHexMessage(`🖱 Clicking: **${text}**...`);
       const r = await window.hexAPI.browser.findClick(text);
       if (r.success) addHexMessage(`✅ Clicked "${text}"`);
@@ -334,7 +353,7 @@ async function handleAIAction(action) {
     case 'web_type': {
       // [ACTION:web_type:CSS_SELECTOR:TEXT TO TYPE]
       const selector = action.args[0] || '';
-      const text     = action.args.slice(1).join(':').trim();
+      const text = action.args.slice(1).join(':').trim();
       if (!selector || !text) break;
       const r = await window.hexAPI.browser.type(selector, text);
       if (r.success) addHexMessage(`⌨️ Typed into \`${selector}\``);
