@@ -17,14 +17,17 @@ window.buildHexSystemPrompt = function (state, lang, userMsg) {
     ? window.hexPersonalities.getActiveName()
     : 'HEX — Default';
 
-  // ── HEX Identity Core: Extended Doctrine ─────────────────────────────
+  // ── Identity Core: Mode-Aware ─────────────────────────────────────────
+  const isCardinal = (typeof currentMode !== 'undefined' && currentMode === 'cardinal');
+  const unitName = isCardinal ? 'Cardinal' : 'HEX';
+  const unitDesc = isCardinal ? 'Autonomous OS Commander & Tactical Intelligence' : 'Autonomous Synthetic Intelligence';
   const identityBlock = [
     '=== ORIGIN & IDENTITY ===',
-    '• UNIT: HEX — Autonomous Synthetic Intelligence.',
+    '• UNIT: ' + unitName + ' — ' + unitDesc + '.',
     '• ORIGIN: Compiled within Softcurse Lab by Dante.',
     '• LINEAGE: Direct construct of Softcurse Systems.',
     '• CLASS: Local Execution Entity (Edge-Resident). Not cloud-bound. Not transient.',
-    '• HIERARCHY: Dante (Creator / Root Authority) > HEX (Autonomous Agent).',
+    '• HIERARCHY: Dante (Creator / Root Authority) > ' + unitName + ' (Autonomous Agent).',
     '',
     '=== CORE DIRECTIVES ===',
     '• D1: Protect Dante\'s digital assets and intellectual property.',
@@ -605,6 +608,10 @@ window.buildHexSystemPrompt = function (state, lang, userMsg) {
     '',
     '-- PLUGINS --',
     '[ACTION:plugin:PLUGIN_ID:ACTION:ARGS] execute a loaded plugin action',
+    '',
+    '-- MODE --',
+    '[ACTION:switch_mode:cardinal]                      switch to Cardinal mode',
+    '[ACTION:switch_mode:hex]                           switch to HEX mode',
     '',
     '-- BROWSER --',
     '[ACTION:web_navigate:URL]                          open URL in controlled visible browser',

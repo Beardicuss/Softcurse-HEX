@@ -7,6 +7,99 @@ let config = null;
 let sysStats = { cpu: 0, ram: 0, disk: 0 };
 let taskState = {}; // taskId → { status, startTime }
 let prevAlerts = {}; // prevent duplicate proactive alerts
+let currentMode = 'hex'; // 'hex' or 'cardinal'
+
+// ── Mode Switcher ─────────────────────────────────────────────
+function switchMode(mode) {
+  if (mode === 'toggle') mode = currentMode === 'hex' ? 'cardinal' : 'hex';
+  if (mode !== 'hex' && mode !== 'cardinal') return;
+  if (mode === currentMode) return;
+  currentMode = mode;
+
+  const body = document.body;
+  const title = document.getElementById('app-title');
+  const label = document.getElementById('mode-label');
+  const wakeInput = document.getElementById('cfg-wakeword');
+
+  // Build logo for current mode
+  buildModeLogo(mode);
+
+  if (mode === 'cardinal') {
+    body.classList.add('mode-cardinal');
+    if (label) label.textContent = 'CARDINAL';
+    document.title = 'Softcurse Cardinal';
+    if (window.hexVoice) window.hexVoice.wakeWord = 'hey cardinal';
+    if (wakeInput) wakeInput.value = 'hey cardinal';
+  } else {
+    body.classList.remove('mode-cardinal');
+    if (label) label.textContent = 'HEX';
+    document.title = 'Softcurse H.E.X.';
+    if (window.hexVoice) window.hexVoice.wakeWord = 'hey hex';
+    if (wakeInput) wakeInput.value = 'hey hex';
+  }
+
+  // Auto-swap personality to match mode
+  if (window.hexPersonalities) {
+    window.hexPersonalities.activeId = mode === 'cardinal' ? 'cardinal_default' : 'hex_default';
+    if (window.hexPersonalities.onUpdate) window.hexPersonalities.onUpdate();
+  }
+
+  // Persist mode to config
+  if (config) {
+    config.mode = mode;
+    try { window.hexAPI.setConfig(config); } catch (_) { }
+  }
+
+  addLog('SYSTEM', `Mode switched to ${mode.toUpperCase()}`);
+  showToast(`◆ ${mode.toUpperCase()} MODE`, `Interface switched to ${mode === 'cardinal' ? 'Cardinal Commander' : 'H.E.X. Cyberpunk'} mode.`, '', 3000);
+}
+
+function restoreMode() {
+  const saved = config?.mode || 'hex';
+  currentMode = saved === 'cardinal' ? 'cardinal' : 'hex';
+  buildModeLogo(currentMode);
+  if (currentMode === 'cardinal') {
+    document.body.classList.add('mode-cardinal');
+    const label = document.getElementById('mode-label');
+    if (label) label.textContent = 'CARDINAL';
+    document.title = 'Softcurse Cardinal';
+  }
+}
+
+// ── Shared Logo Builder ───────────────────────────────────────
+function buildModeLogo(mode) {
+  const title = document.getElementById('app-title');
+  if (!title) return;
+  title.textContent = '';
+  title.style.display = 'flex';
+  title.style.alignItems = 'center';
+  title.style.gap = '10px';
+
+  // Icon image with glow background
+  const icon = document.createElement('img');
+  icon.style.cssText = 'width:28px;height:28px;object-fit:contain;border-radius:4px;';
+
+  if (mode === 'cardinal') {
+    icon.src = 'assets/cardinal/cardinal_icon.png';
+    icon.style.boxShadow = '0 0 12px rgba(200,57,43,0.6), 0 0 30px rgba(200,57,43,0.2)';
+    icon.style.background = 'rgba(200,57,43,0.1)';
+  } else {
+    icon.src = 'assets/hex.png';
+    icon.style.boxShadow = '0 0 12px rgba(0,255,255,0.6), 0 0 30px rgba(0,255,255,0.2)';
+    icon.style.background = 'rgba(0,255,255,0.1)';
+  }
+  title.appendChild(icon);
+
+  // Name text
+  const name = document.createElement('span');
+  name.textContent = mode === 'cardinal' ? 'CARDINAL' : 'H.E.X.';
+  name.style.cssText = 'letter-spacing:4px;';
+  title.appendChild(name);
+
+  // Hide version badge
+  const badge = document.querySelector('.topbar-badge');
+  if (badge) badge.style.display = 'none';
+}
 
 // ── AUDIO SYSTEM ──────────────────────────────────────────────
 window.hexAudio = {
@@ -53,6 +146,7 @@ window.hexAudio = {
 // ── Init ──────────────────────────────────────────────────────
 async function init() {
   config = await window.hexAPI.getConfig();
+  restoreMode();
   window.hexAudio.init();
 
   // Load i18n — Georgian default

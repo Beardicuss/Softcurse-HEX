@@ -1860,5 +1860,11 @@ ${r.output.substring(0, 500)}
       }
       break;
     }
+    case 'switch_mode': {
+      // [ACTION:switch_mode:cardinal] or [ACTION:switch_mode:hex]
+      const target = (action.args[0] || 'toggle').toLowerCase().trim();
+      switchMode(target);
+      break;
+    }
   }
 }

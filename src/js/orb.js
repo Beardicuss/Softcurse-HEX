@@ -59,8 +59,9 @@ function startHexAnimation() {
     rotY += 0.005;
     const rx = 0.2 + Math.sin(tick * 0.006) * 0.12;
 
-    // Clear with HEX background
-    hexCtx.fillStyle = '#020202';
+    // Clear with background
+    const isCard = (typeof currentMode !== 'undefined' && currentMode === 'cardinal');
+    hexCtx.fillStyle = isCard ? '#0a0a0b' : '#020202';
     hexCtx.fillRect(0, 0, hexW, hexH);
 
     // Spawn pulses
@@ -105,10 +106,17 @@ function startHexAnimation() {
       const sz = Math.max(0.3, (0.5 + depth * 1.8) * (1 + pulse * 1.5));
       const alpha = Math.min(1, 0.25 + depth * 0.55 + pulse * 0.8);
 
-      // HEX colors: base cyan (#00ffc8), pulse orange (#ff6b35)
-      const rr = Math.min(255, Math.floor((0 + pulse * 255) * br));
-      const gg = Math.min(255, Math.floor((200 + pulse * 55) * br));
-      const bb = Math.min(255, Math.floor((160 - pulse * 100) * br));
+      // Mode-aware colors: HEX = cyan-green, Cardinal = crimson-red
+      let rr, gg, bb;
+      if (isCard) {
+        rr = Math.min(255, Math.floor((200 + pulse * 55) * br));
+        gg = Math.min(255, Math.floor((40 + pulse * 30) * br));
+        bb = Math.min(255, Math.floor((30 + pulse * 10) * br));
+      } else {
+        rr = Math.min(255, Math.floor((0 + pulse * 255) * br));
+        gg = Math.min(255, Math.floor((200 + pulse * 55) * br));
+        bb = Math.min(255, Math.floor((160 - pulse * 100) * br));
+      }
 
       hexCtx.globalAlpha = alpha;
       hexCtx.fillStyle = `rgb(${rr},${gg},${bb})`;
@@ -120,7 +128,7 @@ function startHexAnimation() {
     hexCtx.globalAlpha = 1;
 
     // Subtle orbit rings
-    hexCtx.strokeStyle = 'rgba(0,255,200,0.05)';
+    hexCtx.strokeStyle = isCard ? 'rgba(200,57,43,0.08)' : 'rgba(0,255,200,0.05)';
     hexCtx.lineWidth = 0.5;
     for (let i = 0; i < 2; i++) {
       hexCtx.beginPath();
@@ -152,15 +160,15 @@ function startHexAnimation() {
     // Label
     hexCtx.globalAlpha = 0.25;
     hexCtx.font = '500 9px "Space Mono", monospace';
-    hexCtx.fillStyle = '#00ffc8';
+    hexCtx.fillStyle = isCard ? '#c8392b' : '#00ffc8';
     hexCtx.textAlign = 'center';
-    hexCtx.fillText('◉  NEURAL PROCESSING', cx, ty - 18);
+    hexCtx.fillText(isCard ? '◉  COMMAND MATRIX' : '◉  NEURAL PROCESSING', cx, ty - 18);
 
     // Progress bar
     const barW = Math.min(180, hexW * 0.25);
     const barX = cx - barW / 2;
     hexCtx.globalAlpha = 0.12;
-    hexCtx.fillStyle = '#00ffc8';
+    hexCtx.fillStyle = isCard ? '#c8392b' : '#00ffc8';
     hexCtx.fillRect(barX, ty - 10, barW, 1.5);
     const fill = (Math.sin(tick * 0.04) * 0.5 + 0.5);
     hexCtx.globalAlpha = 0.5;
@@ -169,7 +177,7 @@ function startHexAnimation() {
     // Task text
     hexCtx.globalAlpha = ta * 0.7;
     hexCtx.font = '10px "Space Mono", monospace';
-    hexCtx.fillStyle = '#0ff';
+    hexCtx.fillStyle = isCard ? '#e05a4a' : '#0ff';
     hexCtx.fillText(currentTaskText, cx, ty);
 
     hexCtx.globalAlpha = 1;
