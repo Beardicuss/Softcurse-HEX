@@ -295,6 +295,8 @@ async function openSettings(targetTab = 'tab-general') {
   const sysTray = document.getElementById('cfg-minimize-tray');
   if (sysAuto) sysAuto.value = String(cfg.system?.autostart === true);
   if (sysTray) sysTray.value = String(cfg.system?.minimizeToTray === true);
+  const sleepEl = document.getElementById('cfg-sleep-timeout');
+  if (sleepEl) sleepEl.value = cfg.sleepTimeoutMin || 0;
 
   document.getElementById('cfg-model').value = cfg.llm?.model || '';
   if (document.getElementById('cfg-visionkey')) document.getElementById('cfg-visionkey').value = cfg.llm?.visionApiKey || '';
@@ -676,7 +678,8 @@ async function saveSettings() {
       ...config.system,
       autostart: document.getElementById('cfg-autostart')?.value === 'true',
       minimizeToTray: document.getElementById('cfg-minimize-tray')?.value === 'true'
-    }
+    },
+    sleepTimeoutMin: parseInt(document.getElementById('cfg-sleep-timeout')?.value) || 0,
   };
 
   const prevLang = config.language;

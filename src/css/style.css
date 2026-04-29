@@ -3436,3 +3436,109 @@ input[type="range"]::-webkit-slider-thumb {
   color: var(--c-cyan-soft);
   text-shadow: 0 0 10px rgba(0, 255, 200, 0.3);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   SLEEP / STANDBY MODE OVERLAY
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+#sleep-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.8s ease;
+  cursor: pointer;
+}
+
+#sleep-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#sleep-clock-canvas {
+  width: 400px;
+  height: 400px;
+}
+
+#sleep-time-digital {
+  font-family: 'Orbitron', 'Share Tech Mono', monospace;
+  font-size: 28px;
+  letter-spacing: 8px;
+  margin-top: -8px;
+}
+
+#sleep-mode-name {
+  font-family: 'Orbitron', 'Share Tech Mono', monospace;
+  font-size: 38px;
+  letter-spacing: 14px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+#sleep-wake-btn {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 14px;
+  letter-spacing: 4px;
+  margin-top: 32px;
+  padding: 10px 30px;
+  border-radius: 24px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  animation: sleep-pulse 2.5s ease-in-out infinite;
+}
+
+#sleep-wake-btn:hover {
+  transform: scale(1.08);
+}
+
+/* ── HEX mode (cyan) ── */
+#sleep-overlay.hex-sleep #sleep-time-digital {
+  color: #00e5ff;
+  text-shadow: 0 0 20px rgba(0, 229, 255, 0.5);
+}
+#sleep-overlay.hex-sleep #sleep-mode-name {
+  color: #00e5ff;
+  text-shadow: 0 0 30px rgba(0, 229, 255, 0.4), 0 0 60px rgba(0, 229, 255, 0.15);
+}
+#sleep-overlay.hex-sleep #sleep-wake-btn {
+  color: #00e5ff;
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  background: rgba(0, 229, 255, 0.05);
+  text-shadow: 0 0 8px rgba(0, 229, 255, 0.5);
+}
+#sleep-overlay.hex-sleep #sleep-wake-btn:hover {
+  background: rgba(0, 229, 255, 0.12);
+  box-shadow: 0 0 20px rgba(0, 229, 255, 0.3);
+}
+
+/* ── Cardinal mode (crimson/amber) ── */
+#sleep-overlay.cardinal-sleep #sleep-time-digital {
+  color: #dc143c;
+  text-shadow: 0 0 20px rgba(220, 20, 60, 0.5);
+}
+#sleep-overlay.cardinal-sleep #sleep-mode-name {
+  color: #ff8c00;
+  text-shadow: 0 0 30px rgba(255, 140, 0, 0.4), 0 0 60px rgba(220, 20, 60, 0.15);
+}
+#sleep-overlay.cardinal-sleep #sleep-wake-btn {
+  color: #dc143c;
+  border: 1px solid rgba(220, 20, 60, 0.3);
+  background: rgba(220, 20, 60, 0.05);
+  text-shadow: 0 0 8px rgba(220, 20, 60, 0.5);
+}
+#sleep-overlay.cardinal-sleep #sleep-wake-btn:hover {
+  background: rgba(220, 20, 60, 0.12);
+  box-shadow: 0 0 20px rgba(220, 20, 60, 0.3);
+}
+
+@keyframes sleep-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}

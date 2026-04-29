@@ -497,6 +497,9 @@ async function init() {
   const greet = window.i18n.getRandomWelcomePhrase ? window.i18n.getRandomWelcomePhrase(name) : window.i18n.t('hex_greeting', { name });
   addHexMessage(greet);
   addLog('HEX', 'System initialized. All subsystems nominal.');
+
+  // Init sleep/standby mode
+  if (window.hexSleep) window.hexSleep.init();
   // Speak the greeting
   setTimeout(() => {
     if (window.hexVoice && (!config.voice || config.voice.enabled !== false)) {
@@ -555,6 +558,7 @@ async function sendMessage() {
 
   addUserMessage(text);
   if (window.nsTrackCommand) window.nsTrackCommand();
+  if (window.hexSleep) window.hexSleep.resetIdle(); // Reset sleep timer on interaction
   addLog('VOICE', `User: ${text}`);
   window.hexAudio.play('action', 0.6);
 

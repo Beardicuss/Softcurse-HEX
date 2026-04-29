@@ -367,6 +367,17 @@ class HexVoice {
       return variants.some(v => t.includes(v));
     };
 
+    // ── Sleep mode wake detection ──────────────────────────────────
+    // If HEX is sleeping and mic is active, check for "wake up" before normal processing
+    if (this._sleepWakeHook) {
+      if (this._sleepWakeHook(cleaned)) return; // consumed by sleep module
+    }
+
+    // Reset sleep idle timer on any voice interaction
+    if (window.hexSleep && !window.hexSleep.isSleeping) {
+      window.hexSleep.resetIdle();
+    }
+
     if (this.wakeWordMode) {
       if (matchesWakeWord(cleaned)) {
         this.onWakeWord?.();

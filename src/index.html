@@ -147,6 +147,11 @@
             <option value="true">Enabled</option>
           </select>
         </div>
+        <div class="form-group">
+          <label class="form-label">SLEEP TIMEOUT (minutes)</label>
+          <input type="number" id="cfg-sleep-timeout" class="form-control" min="0" max="999" step="1" placeholder="0 = disabled" value="0">
+          <span class="form-hint">0 = disabled. HEX suspends resources when idle to reduce PC load.</span>
+        </div>
 
         <div class="settings-section-label">◆ MONITORING</div>
         <div class="form-group">
@@ -1086,6 +1091,7 @@
   <script src="js/renderer-processes.js"></script>
   <script src="js/actions.js"></script>
   <script src="js/hex-brain.js"></script>
+  <script src="js/sleep.js"></script>
   <script src="js/renderer.js"></script>
   <script src="js/event-wiring.js"></script>
   <!-- ── V3 Custom Cursor Tracking & Drag Hooks ──────────── -->
