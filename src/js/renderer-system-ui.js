@@ -3,6 +3,7 @@
 let glitchScheduled = 0;
 let lastAlertCpu = 0;
 let lastAlertRam = 0;
+let lastAlertDisk = 0;
 
 function updateClock() {
   const now = new Date();
@@ -14,7 +15,7 @@ function updateClock() {
   const dateEl = document.getElementById('date-display');
   if (clock) clock.textContent = time;
   if (dateEl) {
-    dateEl.textContent = now.toLocaleDateString('en-US', {
+    dateEl.textContent = window.i18n.formatDate(now, {
       weekday: 'short',
       year: 'numeric',
       month: 'short',
@@ -68,6 +69,10 @@ function updateStats(data) {
     lastAlertRam = now;
     handleProactiveMsg({ type: 'high_ram', ram: data.ram });
   }
+  if (data.disk > 95 && now - lastAlertDisk > 300000) {
+    lastAlertDisk = now;
+    handleProactiveMsg({ type: 'low_disk', disk: data.disk });
+  }
 }
 
 function animateCount(id, target, suffix = '') {
@@ -118,7 +123,7 @@ function updateHealthStats() {
     const row = window.hexRenderUtils.createEl('div', { className: 'task-log-row' });
     row.appendChild(window.hexRenderUtils.createEl('span', {
       className: 'task-log-name',
-      text: id.replace(/_/g, ' ').toUpperCase()
+      text: window.i18n.t(id)
     }));
     row.appendChild(window.hexRenderUtils.createEl('span', {
       className: 'task-log-meta',
@@ -133,7 +138,7 @@ function handleProactiveMsg(msg) {
     case 'break': {
       const text = window.i18n.getRandomBreakSuggestion(config.userName, msg.activeMin);
       addHexMessage(text);
-      showToast('◆ HEX ADVISORY', text, 'warn', 10000, [
+      showToast(window.i18n.t('hex_advisory_title'), text, 'warn', 10000, [
         { label: window.i18n.t('break_dismiss'), action: 'dismiss' },
         { label: window.i18n.t('break_snooze'), action: 'snooze15', cls: 'snooze' }
       ]);
@@ -142,34 +147,42 @@ function handleProactiveMsg(msg) {
       break;
     }
     case 'return': {
-      const text = window.i18n.t('return_from_idle', { min: msg.idleMin });
+      const text = window.i18n.getRandomPhrase('return_from_idle_phrases', { min: msg.idleMin });
       addHexMessage(text);
       addLog('HEX', text);
       if (config.voice?.enabled !== false) speakWithConfig(text);
       break;
     }
     case 'high_cpu': {
-      const text = `CPU at ${msg.cpu}% — consider closing unused applications.`;
-      showToast('◆ SYSTEM ALERT', text, 'alert', 6000);
-      addHexMessage(`**High CPU detected** (${msg.cpu}%). Consider closing unused apps.`);
-      addLog('SYSTEM', `High CPU: ${msg.cpu}%`, 'warn');
+      const text = window.i18n.getRandomPhrase('high_cpu_phrases', { cpu: msg.cpu });
+      showToast(window.i18n.t('system_alert_title'), text, 'alert', 6000);
+      addHexMessage(window.i18n.t('high_cpu_message', { cpu: msg.cpu }));
+      addLog('SYSTEM', window.i18n.t('high_cpu_log', { cpu: msg.cpu }), 'warn');
       if (config.voice?.enabled !== false) speakWithConfig(text);
       break;
     }
     case 'high_ram': {
-      const text = `RAM at ${msg.ram}% — memory pressure critical.`;
-      showToast('◆ SYSTEM ALERT', text, 'alert', 6000);
-      addHexMessage(`**Memory pressure** at ${msg.ram}%. You may want to close some programs.`);
-      addLog('SYSTEM', `High RAM: ${msg.ram}%`, 'warn');
+      const text = window.i18n.getRandomPhrase('high_ram_phrases', { ram: msg.ram });
+      showToast(window.i18n.t('system_alert_title'), text, 'alert', 6000);
+      addHexMessage(window.i18n.t('high_ram_message', { ram: msg.ram }));
+      addLog('SYSTEM', window.i18n.t('high_ram_log', { ram: msg.ram }), 'warn');
+      if (config.voice?.enabled !== false) speakWithConfig(text);
+      break;
+    }
+    case 'low_disk': {
+      const text = window.i18n.getRandomPhrase('low_disk_phrases', { disk: msg.disk });
+      showToast(window.i18n.t('system_alert_title'), text, 'alert', 6000);
+      addHexMessage(window.i18n.t('low_disk_message', { disk: msg.disk }));
+      addLog('SYSTEM', window.i18n.t('low_disk_log', { disk: msg.disk }), 'warn');
       if (config.voice?.enabled !== false) speakWithConfig(text);
       break;
     }
     case 'late_night': {
-      const text = `It's ${msg.hour}:xx. You've been running for ${msg.activeMin} min. Rest optimizes performance.`;
+      const text = window.i18n.getRandomPhrase('late_night_phrases', { hour: msg.hour, min: msg.activeMin });
       if (!prevAlerts.late_night) {
         prevAlerts.late_night = Date.now();
-        addHexMessage(`**Late night protocol.** ${text}`);
-        showToast('◆ HEX CARES', text, 'warn', 10000);
+        addHexMessage(window.i18n.t('late_night_message', { text }));
+        showToast(window.i18n.t('hex_cares_title'), text, 'warn', 10000);
         if (config.voice?.enabled !== false) speakWithConfig(text);
       }
       break;

@@ -64,7 +64,7 @@ class ActivityMonitor {
   checkSystemAlert(stats) {
     if (stats.cpu > 90) this.onProactiveMessage?.({ type: 'high_cpu', cpu: stats.cpu });
     if (stats.ram > 90) this.onProactiveMessage?.({ type: 'high_ram', ram: stats.ram });
-    if (stats.disk > 95) this.onProactiveMessage?.({ type: 'low_disk' });
+    if (stats.disk > 95) this.onProactiveMessage?.({ type: 'low_disk', disk: stats.disk });
   }
 
   // Record actual task completions — session health is real
@@ -74,7 +74,7 @@ class ActivityMonitor {
     // Track which unique tasks have been run this session
     if (!this.stats.tasksRun[taskId]) this.stats.tasksRun[taskId] = { count: 0 };
     this.stats.tasksRun[taskId].count++;
-    this.stats.tasksRun[taskId].lastRun = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    this.stats.tasksRun[taskId].lastRun = window.i18n.formatTime(new Date(), { hour: '2-digit', minute: '2-digit' });
     if (dur) this.stats.tasksRun[taskId].dur = dur;
 
     // Session health = unique tasks run / total tasks (capped at 100%)

@@ -346,9 +346,13 @@
 
           <!-- Local Piper voice selector -->
           <div id="local-voice-picker" style="display:none;margin-bottom:8px;">
-            <select id="cfg-local-voice" class="form-control" style="margin-bottom:4px;">
-              <!-- Populated dynamically from discovered voice models -->
-            </select>
+            <div style="display:flex;gap:4px;align-items:center;margin-bottom:4px;">
+              <select id="cfg-local-voice" class="form-control" style="flex:1;">
+                <!-- Populated dynamically from discovered voice models -->
+              </select>
+              <button id="fav-voice-btn" class="btn btn-secondary" title="Set as favourite voice for this language"
+                style="padding:4px 8px;font-size:16px;min-width:32px;cursor:pointer;">☆</button>
+            </div>
             <div style="display:flex;gap:6px;">
               <input type="range" id="cfg-local-speed" min="0.5" max="2" step="0.05" value="1.0"
                 style="flex:1;accent-color:var(--cyan);">

@@ -78,8 +78,8 @@ module.exports = function registerBrowserIPC({
     catch (e) { return { success: false, error: e.message }; }
   });
 
-  ipcMain.handle('web:back',    async () => { try { return await webAgent.goBack();      } catch (e) { return { success: false, error: e.message }; } });
-  ipcMain.handle('web:forward', async () => { try { return await webAgent.goForward();   } catch (e) { return { success: false, error: e.message }; } });
+  ipcMain.handle('web:back', async () => { try { return await webAgent.goBack(); } catch (e) { return { success: false, error: e.message }; } });
+  ipcMain.handle('web:forward', async () => { try { return await webAgent.goForward(); } catch (e) { return { success: false, error: e.message }; } });
   ipcMain.handle('web:refresh', async () => { try { return await webAgent.refreshPage(); } catch (e) { return { success: false, error: e.message }; } });
 
   ipcMain.handle('web:read-page', async () => {
@@ -91,6 +91,12 @@ module.exports = function registerBrowserIPC({
   ipcMain.handle('web:session-status', async () => {
     try { return await webAgent.getSessionStatus(); }
     catch (e) { return { open: false, error: e.message }; }
+  });
+
+  ipcMain.handle('web:screenshot', async () => {
+    sendLog('WEB', 'Capturing browser screenshot', 'info');
+    try { return await webAgent.screenshotPage(); }
+    catch (e) { return { success: false, error: e.message }; }
   });
 
   ipcMain.handle('web:close-browser', async () => {

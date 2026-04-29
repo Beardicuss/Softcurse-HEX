@@ -5,6 +5,10 @@
 // memory feed, quick actions, vitals, and session stats.
 // ═══════════════════════════════════════════════════════════════
 
+function nsT(key, vars = {}) {
+    return window.i18n?.t ? window.i18n.t(key, vars) : key;
+}
+
 const _ns = {
     startTime: Date.now(),
     commandCount: 0,
@@ -27,11 +31,11 @@ function nsUpdateModules() {
                     (brain.profile.preferences?.favoriteApps?.length || 0) +
                     (brain.profile.insights?.length || 0) +
                     (brain.profile.sessionHistory?.length || 0);
-                memVal.textContent = `${factCount} facts`;
+                memVal.textContent = nsT('memory_facts_count', { count: factCount });
                 memCell.classList.add('active');
                 memCell.classList.remove('offline');
             } else {
-                memVal.textContent = 'INIT';
+                memVal.textContent = nsT('status_init');
                 memCell.classList.remove('active');
             }
         } catch (_) { memVal.textContent = '—'; }
@@ -43,15 +47,15 @@ function nsUpdateModules() {
     if (voiceCell && voiceVal) {
         const voice = window.hexVoice;
         if (voice && (voice._localSTT || voice._localTTS)) {
-            voiceVal.textContent = 'READY';
+            voiceVal.textContent = nsT('status_ready');
             voiceCell.classList.add('active');
             voiceCell.classList.remove('offline');
         } else if (config.voice?.ttsProvider && config.voice.ttsProvider !== 'none') {
-            voiceVal.textContent = 'CLOUD';
+            voiceVal.textContent = nsT('status_cloud');
             voiceCell.classList.add('active');
             voiceCell.classList.remove('offline');
         } else {
-            voiceVal.textContent = 'OFF';
+            voiceVal.textContent = nsT('status_off');
             voiceCell.classList.add('offline');
             voiceCell.classList.remove('active');
         }
@@ -63,11 +67,11 @@ function nsUpdateModules() {
     if (secCell && secVal) {
         const threats = parseInt(document.getElementById('stat-threats')?.textContent || '0') || 0;
         if (threats > 0) {
-            secVal.textContent = `${threats} found`;
+            secVal.textContent = nsT('security_found_count', { count: threats });
             secCell.classList.add('alert');
             secCell.classList.remove('active', 'offline');
         } else {
-            secVal.textContent = 'CLEAR';
+            secVal.textContent = nsT('status_clear');
             secCell.classList.add('active');
             secCell.classList.remove('alert', 'offline');
         }
@@ -91,7 +95,7 @@ function nsUpdateModules() {
             window.hexAPI.plugins.list().then(res => {
                 const list = res.plugins || [];
                 const count = Array.isArray(list) ? list.length : 0;
-                plugVal.textContent = `${count} loaded`;
+                plugVal.textContent = nsT('plugins_loaded_count', { count });
                 if (count > 0) { plugCell.classList.add('active'); plugCell.classList.remove('offline'); }
                 else { plugCell.classList.add('offline'); plugCell.classList.remove('active'); }
             }).catch(() => { plugVal.textContent = '0'; });
@@ -106,11 +110,11 @@ function nsUpdateModules() {
         const ram = _ns.lastVitals.ram;
         const disk = _ns.lastVitals.disk;
         if (cpu > 90 || ram > 90 || disk > 95) {
-            sysVal.textContent = 'WARN';
+            sysVal.textContent = nsT('status_warn');
             sysCell.classList.add('alert');
             sysCell.classList.remove('active', 'offline');
         } else {
-            sysVal.textContent = 'OK';
+            sysVal.textContent = nsT('status_ok');
             sysCell.classList.add('active');
             sysCell.classList.remove('alert', 'offline');
         }
@@ -128,20 +132,20 @@ function nsUpdateQuickActions() {
     const disk = _ns.lastVitals.disk;
 
     // Urgent context-aware actions
-    if (disk > 85) actions.push({ icon: '⚠', text: `Disk ${disk}% — Run Cleanup`, task: 'disk_cleanup', urgent: true });
-    if (ram > 90) actions.push({ icon: '⚠', text: `RAM ${ram}% — Kill Processes`, fn: 'openProcesses', urgent: true });
-    if (cpu > 90) actions.push({ icon: '⚠', text: `CPU ${cpu}% — View Processes`, fn: 'openProcesses', urgent: true });
+    if (disk > 85) actions.push({ icon: '⚠', text: nsT('qa_disk_cleanup', { disk }), task: 'disk_cleanup', urgent: true });
+    if (ram > 90) actions.push({ icon: '⚠', text: nsT('qa_kill_processes', { ram }), fn: 'openProcesses', urgent: true });
+    if (cpu > 90) actions.push({ icon: '⚠', text: nsT('qa_view_processes', { cpu }), fn: 'openProcesses', urgent: true });
 
     // Always available
-    actions.push({ icon: '🕷', text: 'Credential Hunter', task: 'hunter_scan' });
-    actions.push({ icon: '🛡', text: 'Defender Scan', task: 'defender_scan' });
-    actions.push({ icon: '🔄', text: 'Check Updates', task: 'update_check' });
-    actions.push({ icon: '🧹', text: 'Browser Cache', task: 'browser_cache' });
-    actions.push({ icon: '🧪', text: 'Network Test', task: 'network_diag' });
-    actions.push({ icon: '🖥', text: 'Process Monitor', fn: 'openProcesses' });
-    actions.push({ icon: '💾', text: 'Defragmentation', task: 'defrag' });
-    actions.push({ icon: '🔥', text: 'Firewall Status', task: 'firewall_status' });
-    actions.push({ icon: '🧠', text: 'Memory Diagnostics', task: 'memory_diag' });
+    actions.push({ icon: '🕷', text: nsT('qa_credential_hunter'), task: 'hunter_scan' });
+    actions.push({ icon: '🛡', text: nsT('qa_defender_scan'), task: 'defender_scan' });
+    actions.push({ icon: '🔄', text: nsT('qa_check_updates'), task: 'update_check' });
+    actions.push({ icon: '🧹', text: nsT('qa_browser_cache'), task: 'browser_cache' });
+    actions.push({ icon: '🧪', text: nsT('qa_network_test'), task: 'network_diag' });
+    actions.push({ icon: '🖥', text: nsT('qa_process_monitor'), fn: 'openProcesses' });
+    actions.push({ icon: '💾', text: nsT('qa_defragmentation'), task: 'defrag' });
+    actions.push({ icon: '🔥', text: nsT('qa_firewall_status'), task: 'firewall_status' });
+    actions.push({ icon: '🧠', text: nsT('qa_memory_diagnostics'), task: 'memory_diag' });
 
     // Render top 6
     // Render top 8
@@ -187,7 +191,7 @@ function nsUpdateDaemons() {
                 dHunter.textContent = timeStr.trim();
                 dHunter.className = 'daemon-val local';
             } else {
-                dHunter.textContent = 'ACTIVE';
+                dHunter.textContent = nsT('status_active');
                 dHunter.className = 'daemon-val active';
             }
         });
@@ -197,10 +201,10 @@ function nsUpdateDaemons() {
     const dVision = document.getElementById('daemon-vision');
     if (dVision) {
         if (window.visionEnabled) {
-            dVision.textContent = 'ACTIVE';
+            dVision.textContent = nsT('status_active');
             dVision.className = 'daemon-val active';
         } else {
-            dVision.textContent = 'OFF';
+            dVision.textContent = nsT('status_off');
             dVision.className = 'daemon-val offline';
         }
     }
@@ -210,13 +214,13 @@ function nsUpdateDaemons() {
     if (dLLM) {
         const isCloud = config.llm?.provider !== 'ollama' && config.llm?.provider !== 'none';
         if (isCloud) {
-            dLLM.textContent = 'CLOUD';
+            dLLM.textContent = nsT('status_cloud');
             dLLM.className = 'daemon-val cloud';
         } else if (config.llm?.provider === 'ollama') {
-            dLLM.textContent = 'LOCAL';
+            dLLM.textContent = nsT('status_local');
             dLLM.className = 'daemon-val local';
         } else {
-            dLLM.textContent = 'OFF';
+            dLLM.textContent = nsT('status_off');
             dLLM.className = 'daemon-val offline';
         }
     }
@@ -314,12 +318,12 @@ function nsUpdateInsights() {
     const { cpu, ram, disk } = _ns.lastVitals;
 
     // System state insights
-    if (disk > 90) insights.push({ icon: '🔴', text: `Disk critical: ${disk}% used`, cls: 'critical' });
-    else if (disk > 75) insights.push({ icon: '🟡', text: `Disk at ${disk}% — cleanup recommended`, cls: 'warn' });
-    else insights.push({ icon: '🟢', text: `Disk healthy: ${disk}% used`, cls: 'good' });
+    if (disk > 90) insights.push({ icon: '🔴', text: nsT('insight_disk_critical', { disk }), cls: 'critical' });
+    else if (disk > 75) insights.push({ icon: '🟡', text: nsT('insight_disk_warn', { disk }), cls: 'warn' });
+    else insights.push({ icon: '🟢', text: nsT('insight_disk_good', { disk }), cls: 'good' });
 
-    if (ram > 85) insights.push({ icon: '🟡', text: `RAM at ${ram}% — close unused apps`, cls: 'warn' });
-    if (cpu > 85) insights.push({ icon: '🟡', text: `CPU load: ${cpu}%`, cls: 'warn' });
+    if (ram > 85) insights.push({ icon: '🟡', text: nsT('insight_ram_warn', { ram }), cls: 'warn' });
+    if (cpu > 85) insights.push({ icon: '🟡', text: nsT('insight_cpu_warn', { cpu }), cls: 'warn' });
 
     // Brain insights
     try {
@@ -327,22 +331,22 @@ function nsUpdateInsights() {
         if (brain && brain.profile) {
             const factCount = (brain.profile.insights?.length || 0) +
                 (brain.profile.preferences?.favoriteApps?.length || 0);
-            insights.push({ icon: '🧠', text: `${factCount} observations stored`, cls: '' });
+            insights.push({ icon: '🧠', text: nsT('insight_observations_stored', { count: factCount }), cls: '' });
 
             const lastSession = brain.profile.sessionHistory?.[brain.profile.sessionHistory.length - 1];
             if (lastSession?.summary) {
-                insights.push({ icon: '📝', text: `Last: ${lastSession.summary.substring(0, 60)}`, cls: '' });
+                insights.push({ icon: '📝', text: nsT('insight_last_session', { summary: lastSession.summary.substring(0, 60) }), cls: '' });
             }
 
             if (brain.profile.dayNumber) {
-                insights.push({ icon: '📅', text: `HEX age: Day ${brain.profile.dayNumber}`, cls: '' });
+                insights.push({ icon: '📅', text: nsT('insight_hex_age', { day: brain.profile.dayNumber }), cls: '' });
             }
         }
     } catch (_) { }
 
     // Session insights
     if (_ns.commandCount > 0) {
-        insights.push({ icon: '⚡', text: `${_ns.commandCount} commands this session`, cls: '' });
+        insights.push({ icon: '⚡', text: nsT('insight_commands_session', { count: _ns.commandCount }), cls: '' });
     }
 
     window.hexRenderUtils.clearNode(feed);
@@ -368,30 +372,47 @@ function nsUpdateMemoryFeed() {
         if (brain && brain.profile) {
             // User preferences
             if (brain.profile.user?.expertise && brain.profile.user.expertise !== 'unknown') {
-                entries.push({ icon: '🎯', text: `Expertise: ${brain.profile.user.expertise}` });
+                entries.push({
+                    icon: '🎯',
+                    text: nsT('memory_expertise', { value: brain.profile.user.expertise })
+                });
             }
             if (brain.profile.user?.communicationStyle && brain.profile.user.communicationStyle !== 'unknown') {
-                entries.push({ icon: '💬', text: `Style: ${brain.profile.user.communicationStyle}` });
+                entries.push({
+                    icon: '💬',
+                    text: nsT('memory_style', { value: brain.profile.user.communicationStyle })
+                });
             }
             if (brain.profile.preferences?.favoriteApps?.length > 0) {
-                entries.push({ icon: '⭐', text: `Apps: ${brain.profile.preferences.favoriteApps.slice(0, 3).join(', ')}` });
+                entries.push({
+                    icon: '⭐',
+                    text: nsT('memory_apps', {
+                        value: brain.profile.preferences.favoriteApps.slice(0, 3).join(', ')
+                    })
+                });
             }
 
             // Recent insights
             const recent = (brain.profile.insights || []).slice(-3);
             for (const ins of recent) {
-                entries.push({ icon: '💡', text: ins.insight?.substring(0, 60) || 'Observation recorded' });
+                entries.push({
+                    icon: '💡',
+                    text: ins.insight?.substring(0, 60) || nsT('memory_observation_recorded')
+                });
             }
 
             // Active hours
             if (brain.profile.user?.activeHours?.length > 0) {
-                entries.push({ icon: '🕐', text: `Active hours: ${brain.profile.user.activeHours.join(', ')}` });
+                entries.push({
+                    icon: '🕐',
+                    text: nsT('memory_active_hours', { value: brain.profile.user.activeHours.join(', ') })
+                });
             }
         }
     } catch (_) { }
 
     if (entries.length === 0) {
-        entries.push({ icon: '🧠', text: 'No memories recorded yet.' });
+        entries.push({ icon: '🧠', text: nsT('memory_empty') });
     }
 
     window.hexRenderUtils.clearNode(feed);

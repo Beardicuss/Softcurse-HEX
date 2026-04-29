@@ -8,6 +8,183 @@ let sysStats = { cpu: 0, ram: 0, disk: 0 };
 let taskState = {}; // taskId → { status, startTime }
 let prevAlerts = {}; // prevent duplicate proactive alerts
 let currentMode = 'hex'; // 'hex' or 'cardinal'
+window.hexSessionContext = {
+  primaryGoal: '',
+  lastUserMessage: '',
+  lastAssistantMessage: '',
+  lastUserWasFollowUp: false,
+  lastActionTypes: [],
+  lastActionSummary: '',
+  lastSystemDataSummary: '',
+  activeSurface: 'chat',
+  lastTouchedAt: null
+};
+
+function getLocalizedUserName(name = config?.userName) {
+  return window.i18n?.getLocalizedUserName
+    ? window.i18n.getLocalizedUserName(name || 'Operator')
+    : (name || 'Operator');
+}
+
+function getLocalizedUnitName(mode = currentMode, style = 'short') {
+  if (window.i18n?.getAssistantName) {
+    return window.i18n.getAssistantName(mode, style);
+  }
+  if (mode === 'cardinal') return 'CARDINAL';
+  return style === 'display' ? 'H.E.X.' : 'HEX';
+}
+
+function refreshIdentityUI() {
+  const label = document.getElementById('mode-label');
+  if (label) label.textContent = getLocalizedUnitName(currentMode, 'short');
+  document.title = 'Softcurse ' + getLocalizedUnitName(currentMode, 'display');
+  buildModeLogo(currentMode);
+}
+
+function isLikelyFollowUpMessage(text) {
+  const raw = (text || '').trim();
+  if (!raw) return false;
+  const lower = raw.toLowerCase();
+  const words = lower.split(/\s+/).filter(Boolean);
+
+  if (/^(and|also|then|now|again|next|continue|go on|keep going)\b/.test(lower)) return true;
+  if (/^(open|play|click|read|scroll|focus|select|choose|use|try)\s+(it|that|this|them|those|these|one|ones|first|second|third|fourth|fifth|last|next|previous)\b/.test(lower)) return true;
+  if (/^(open|play|click|read)\s+(the\s+)?(first|second|third|fourth|fifth|last|next)\b/.test(lower)) return true;
+  if (/^(go back|back|forward|refresh|reload|scroll down|scroll up|read the page|close it|click it|open it|play it)$/.test(lower)) return true;
+  if (words.length <= 6 && /\b(it|that|this|them|those|these|one|ones|first|second|third|fourth|fifth|last|next|previous|same|there)\b/.test(lower)) return true;
+  return false;
+}
+
+function extractSessionEntities(text) {
+  const source = String(text || '');
+  const entities = [];
+  const seen = new Set();
+
+  const pushEntity = (value) => {
+    const clean = String(value || '').trim();
+    if (!clean) return;
+    const key = clean.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    entities.push(clean);
+  };
+
+  (source.match(/https?:\/\/[^\s]+/gi) || []).forEach(pushEntity);
+  (source.match(/"([^"]+)"/g) || []).forEach((value) => pushEntity(value.slice(1, -1)));
+  (source.match(/\b[A-Z][a-z0-9_-]{2,}\b/g) || []).forEach(pushEntity);
+
+  if (entities.length === 0) {
+    const stop = new Set(['open', 'play', 'click', 'read', 'show', 'the', 'this', 'that', 'with', 'from', 'into', 'then', 'also', 'please']);
+    source.toLowerCase().split(/[^a-z0-9]+/).forEach((word) => {
+      if (word.length >= 4 && !stop.has(word)) pushEntity(word);
+    });
+  }
+
+  return entities.slice(0, 8);
+}
+
+function summarizeActionPlan(actions) {
+  if (!Array.isArray(actions) || actions.length === 0) return '';
+  return actions.map((action) => {
+    const argText = Array.isArray(action.args) && action.args.length > 0
+      ? ':' + action.args.join(':')
+      : '';
+    return action.type + argText;
+  }).join(' | ').substring(0, 400);
+}
+
+function updateSessionContextForUser(text, browserStatus) {
+  const ctx = window.hexSessionContext;
+  const followUp = isLikelyFollowUpMessage(text) && (!!ctx.primaryGoal || !!browserStatus?.open);
+  const baseGoal = followUp && ctx.primaryGoal ? ctx.primaryGoal : text;
+
+  ctx.lastUserMessage = text;
+  ctx.lastUserWasFollowUp = followUp;
+  ctx.lastTouchedAt = Date.now();
+  ctx.activeSurface = browserStatus?.open ? 'browser' : 'chat';
+  if (!followUp || !ctx.primaryGoal) ctx.primaryGoal = text;
+
+  if (window.hexMemory) {
+    const taskLine = followUp && ctx.primaryGoal
+      ? `${ctx.primaryGoal} | follow-up: ${text}`
+      : text;
+    window.hexMemory.updateWorking({
+      currentTask: taskLine,
+      currentEntities: extractSessionEntities(browserStatus?.open
+        ? `${baseGoal} ${text} ${browserStatus.title || ''} ${browserStatus.url || ''}`
+        : `${baseGoal} ${text}`)
+    });
+  }
+}
+
+function updateSessionContextForAssistant(text, actions) {
+  const ctx = window.hexSessionContext;
+  ctx.lastAssistantMessage = String(text || '').substring(0, 400);
+  ctx.lastActionTypes = Array.isArray(actions) ? actions.map((action) => action.type) : [];
+  ctx.lastActionSummary = summarizeActionPlan(actions);
+  if (ctx.lastActionTypes.some((type) => type.startsWith('web_') || type.startsWith('browser_'))) {
+    ctx.activeSurface = 'browser';
+  }
+  ctx.lastTouchedAt = Date.now();
+}
+
+function updateSessionContextForSystemData(infoResults) {
+  const ctx = window.hexSessionContext;
+  ctx.lastSystemDataSummary = (infoResults || []).join('\n').substring(0, 700);
+  ctx.lastTouchedAt = Date.now();
+}
+
+async function getBrowserSessionState() {
+  try {
+    if (!window.hexAPI?.browser?.status) return { open: false, url: null, title: null };
+    const status = await window.hexAPI.browser.status();
+    return {
+      open: !!status?.open,
+      url: status?.url || null,
+      title: status?.title || null
+    };
+  } catch (_) {
+    return { open: false, url: null, title: null };
+  }
+}
+
+async function buildAIContextState(userText) {
+  const browserSession = await getBrowserSessionState();
+  updateSessionContextForUser(userText, browserSession);
+
+  const recentTurns = window.hexMemory
+    ? window.hexMemory.getRecentHistory(4)
+    : window.hexAI.history.slice(-4);
+  const working = window.hexMemory?.working || {};
+
+  return {
+    cpu: sysStats.cpu,
+    ram: sysStats.ram,
+    disk: sysStats.disk,
+    diskUsed: sysStats.diskUsed,
+    diskFree: sysStats.diskFree,
+    netRx: sysStats.netRx,
+    netTx: sysStats.netTx,
+    temp: sysStats.temp,
+    platform: navigator.platform,
+    uptime: document.getElementById('v-uptime')?.textContent,
+    userName: getLocalizedUserName(config.userName),
+    activeTask: getActiveTask(),
+    ttsEngine: config.voice?.ttsEngine || 'os',
+    aiProvider: config.llm?.provider || 'none',
+    browserSession,
+    sessionContext: { ...window.hexSessionContext },
+    workingMemory: {
+      currentTask: working.currentTask || null,
+      currentEntities: Array.isArray(working.currentEntities) ? [...working.currentEntities] : [],
+      mood: working.mood || 'neutral'
+    },
+    recentTurns: recentTurns.map((turn) => ({
+      role: turn.role || 'user',
+      content: String(turn.content || '').substring(0, 180)
+    }))
+  };
+}
 
 // ── Mode Switcher ─────────────────────────────────────────────
 function switchMode(mode) {
@@ -17,26 +194,18 @@ function switchMode(mode) {
   currentMode = mode;
 
   const body = document.body;
-  const title = document.getElementById('app-title');
-  const label = document.getElementById('mode-label');
   const wakeInput = document.getElementById('cfg-wakeword');
-
-  // Build logo for current mode
-  buildModeLogo(mode);
 
   if (mode === 'cardinal') {
     body.classList.add('mode-cardinal');
-    if (label) label.textContent = 'CARDINAL';
-    document.title = 'Softcurse Cardinal';
     if (window.hexVoice) window.hexVoice.wakeWord = 'hey cardinal';
     if (wakeInput) wakeInput.value = 'hey cardinal';
   } else {
     body.classList.remove('mode-cardinal');
-    if (label) label.textContent = 'HEX';
-    document.title = 'Softcurse H.E.X.';
     if (window.hexVoice) window.hexVoice.wakeWord = 'hey hex';
     if (wakeInput) wakeInput.value = 'hey hex';
   }
+  refreshIdentityUI();
 
   // Auto-swap personality to match mode
   if (window.hexPersonalities) {
@@ -57,13 +226,12 @@ function switchMode(mode) {
 function restoreMode() {
   const saved = config?.mode || 'hex';
   currentMode = saved === 'cardinal' ? 'cardinal' : 'hex';
-  buildModeLogo(currentMode);
   if (currentMode === 'cardinal') {
     document.body.classList.add('mode-cardinal');
-    const label = document.getElementById('mode-label');
-    if (label) label.textContent = 'CARDINAL';
-    document.title = 'Softcurse Cardinal';
+  } else {
+    document.body.classList.remove('mode-cardinal');
   }
+  refreshIdentityUI();
 }
 
 // ── Shared Logo Builder ───────────────────────────────────────
@@ -92,7 +260,7 @@ function buildModeLogo(mode) {
 
   // Name text
   const name = document.createElement('span');
-  name.textContent = mode === 'cardinal' ? 'CARDINAL' : 'H.E.X.';
+  name.textContent = getLocalizedUnitName(mode, 'display');
   name.style.cssText = 'letter-spacing:4px;';
   title.appendChild(name);
 
@@ -146,6 +314,7 @@ window.hexAudio = {
 // ── Init ──────────────────────────────────────────────────────
 async function init() {
   config = await window.hexAPI.getConfig();
+  window._hexConfig = config;
   restoreMode();
   window.hexAudio.init();
 
@@ -153,6 +322,7 @@ async function init() {
   const lang = config.language || 'ka';
   await window.i18n.load(lang);
   window.i18n.apply();
+  refreshIdentityUI();
 
   // ── Load persistent memory (before AI configure) ──
   window.hexMemory.onLog = (msg) => addLog('HEX', msg);
@@ -323,7 +493,7 @@ async function init() {
   }, 1000);
 
   // Greeting
-  const name = config.userName || 'Operator';
+  const name = getLocalizedUserName(config.userName || 'Operator');
   const greet = window.i18n.getRandomWelcomePhrase ? window.i18n.getRandomWelcomePhrase(name) : window.i18n.t('hex_greeting', { name });
   addHexMessage(greet);
   addLog('HEX', 'System initialized. All subsystems nominal.');
@@ -388,6 +558,9 @@ async function sendMessage() {
   addLog('VOICE', `User: ${text}`);
   window.hexAudio.play('action', 0.6);
 
+  const preflightBrowserState = await getBrowserSessionState();
+  updateSessionContextForUser(text, preflightBrowserState);
+
   // Check for reminder intent first
   const ri = window.reminders.parseReminderIntent(text);
   if (ri.found) {
@@ -405,20 +578,7 @@ async function sendMessage() {
   const directResult = await tryDirectCommand(text);
   if (directResult.handled) return;
 
-  // Build system state for AI context — include everything available
-  const systemState = {
-    cpu: sysStats.cpu, ram: sysStats.ram,
-    disk: sysStats.disk,
-    diskUsed: sysStats.diskUsed, diskFree: sysStats.diskFree,
-    netRx: sysStats.netRx, netTx: sysStats.netTx,
-    temp: sysStats.temp,
-    platform: navigator.platform,
-    uptime: document.getElementById('v-uptime')?.textContent,
-    userName: config.userName,
-    activeTask: getActiveTask(),
-    ttsEngine: config.voice?.ttsEngine || 'os',
-    aiProvider: config.llm?.provider || 'none'
-  };
+  const systemState = await buildAIContextState(text);
 
   showTyping();
   window.hexTaskBus?.push('Sending message to AI...');
@@ -426,7 +586,26 @@ async function sendMessage() {
 
   try {
     let visionData = null;
-    if (window.visionEnabled && window.hexAPI && window.hexAPI.captureScreenBase64) {
+    const browserFollowUp = systemState.browserSession?.open && systemState.sessionContext?.lastUserWasFollowUp;
+    if (browserFollowUp && window.hexAPI?.browser?.screenshot) {
+      addLog('VISION', 'Capturing active browser session for follow-up reasoning...');
+      window.hexTaskBus?.push('Capturing browser session...');
+      const snap = await window.hexAPI.browser.screenshot().catch(() => null);
+      if (snap?.success && snap.image) {
+        visionData = snap.image;
+        window._webVisionData = snap.image;
+        window._webVisionMeta = {
+          url: snap.url || systemState.browserSession.url || null,
+          title: snap.title || systemState.browserSession.title || null,
+          capturedAt: Date.now(),
+          source: 'follow-up'
+        };
+      }
+    }
+    if (!visionData && browserFollowUp && window._webVisionData) {
+      visionData = window._webVisionData;
+    }
+    if (!visionData && window.visionEnabled && window.hexAPI && window.hexAPI.captureScreenBase64) {
       addLog('SYS', 'Capturing visual sensor data...');
       window.hexTaskBus?.push('Capturing screen...');
       visionData = await window.hexAPI.captureScreenBase64();
@@ -436,6 +615,7 @@ async function sendMessage() {
     hideTyping();
     window.hexAudio.stop('processing');
     const hexText = result.text || '…';
+    updateSessionContextForAssistant(hexText, result.actions || []);
     addHexMessage(hexText);
     addLog('HEX', `→ ${String(hexText).substring(0, 100)}${hexText.length > 100 ? '…' : ''}`);
 
@@ -451,7 +631,7 @@ async function sendMessage() {
     const infoResults = [];
     const SEQUENTIAL_ACTIONS = new Set(['shutdown', 'restart', 'logoff', 'lock_screen',
       'web_navigate', 'web_search', 'web_click', 'web_find_click', 'web_type',
-      'web_back', 'web_forward', 'web_refresh', 'web_read', 'web_close']); // must run in order
+      'web_back', 'web_forward', 'web_refresh', 'web_read', 'web_close', 'web_look']); // must run in order
     const actions = result.actions || [];
     const parallelBatch = [];
     const sequentialQueue = [];
@@ -504,16 +684,22 @@ async function sendMessage() {
     // If we got real PC data back, do a follow-up AI call so HEX responds intelligently
     // about the ACTUAL data instead of having it appear as a raw system message
     if (infoResults.length > 0) {
+      updateSessionContextForSystemData(infoResults);
       showTyping();
       window.hexTaskBus?.push('Processing system data with AI...');
       try {
         const followUp = await window.hexAI.chat(
           'SYSTEM DATA (just retrieved from this PC — use this to answer the user):\n' + infoResults.join('\n'),
-          systemState, config.language || 'en'
+          await buildAIContextState(text),
+          config.language || 'en',
+          window._webVisionData || null,
+          800,
+          { persistUser: false, persistAssistant: true, extractFacts: false }
         );
         hideTyping();
         const followText = followUp.text || '';
         if (followText && followText !== '…') {
+          updateSessionContextForAssistant(followText, followUp.actions || []);
           addHexMessage(followText);
           if (config.voice?.enabled !== false) speakWithConfig(followText);
         }
@@ -675,11 +861,33 @@ function updateMicUI(listening) {
 
 // ── LANGUAGE ──────────────────────────────────────────────────
 async function setLanguage(lang) {
+  const prevLang = config.language;
   config.language = lang;
   await window.hexAPI.setConfig({ language: lang });
   await window.i18n.load(lang);
   window.i18n.apply();
   window.hexVoice.setLanguage(lang);
+  refreshIdentityUI();
+
+  // Inject a language-barrier marker into history so AI switches cleanly
+  // without losing any conversation context or learned knowledge
+  if (prevLang && prevLang !== lang && window.hexMemory) {
+    const langNames = { en: 'English', ru: 'Russian', ka: 'Georgian' };
+    const newLangName = langNames[lang] || 'English';
+    // Add a hard language barrier as both user instruction and AI acknowledgement
+    window.hexMemory.addTurn('user', `[SYSTEM: Language changed to ${newLangName}. All responses from now on must be exclusively in ${newLangName}. Do not use any words from ${langNames[prevLang] || prevLang} or any other language.]`);
+    window.hexMemory.addTurn('assistant', `Understood. Switching to ${newLangName}. All my responses will now be in ${newLangName} only.`);
+    addLog('SYSTEM', `Language barrier injected into conversation history.`);
+  }
+
+  // Auto-switch to favourite voice for the new language
+  if (config.voice?.favouriteVoices?.[lang]) {
+    const favVoice = config.voice.favouriteVoices[lang];
+    config.voice.localVoiceLang = favVoice;
+    window.hexVoice._localVoiceLang = favVoice;
+    await window.hexAPI.setConfig({ voice: config.voice });
+    addLog('VOICE', `Auto-switched to favourite voice: ${favVoice}`);
+  }
 
   document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b.dataset.lang === lang));
   addLog('SYSTEM', `Language switched to: ${lang.toUpperCase()}`);

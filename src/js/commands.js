@@ -10,6 +10,9 @@ async function tryDirectCommand(text) {
   const t = raw.toLowerCase();
 
   const do_ = async (type, args, msg) => {
+    if (typeof updateSessionContextForAssistant === 'function') {
+      updateSessionContextForAssistant(msg || '', [{ type, args: args || [] }]);
+    }
     if (msg) addHexMessage(msg);
     await handleAIAction({ type, args: args || [] });
     return { handled: true };

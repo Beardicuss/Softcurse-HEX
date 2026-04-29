@@ -7,6 +7,8 @@ class HexAI {
   constructor() {
     this.config = null;
     this.history = [];
+    this._transientMessages = null;
+    this._lastSystemState = null;
     this.MAX_HISTORY = 20;
     // Complexity-aware routing: fast models for simple queries
     this.FAST_MODELS = {
@@ -38,24 +40,42 @@ class HexAI {
   }
 
   // ── Main chat entry ───────────────────────────────────────
-  async chat(userMsg, systemState, lang = 'ka', visionData = null, maxTokens = 800) {
+  async chat(userMsg, systemState, lang = 'ka', visionData = null, maxTokens = 800, options = {}) {
     this._maxTokens = maxTokens;
+    this._lastSystemState = systemState || null;
     window._lastUserMsg = userMsg;
+    const persistUser = options.persistUser !== false;
+    const persistAssistant = options.persistAssistant !== false;
+    const extractFacts = options.extractFacts !== false;
+    let messageHistory = [];
+
     // Use persistent memory history if available
     if (window.hexMemory) {
-      window.hexTaskBus?.push('Saving user message to memory...');
-      window.hexMemory.addTurn('user', userMsg);
-      // Update working memory mood immediately (before LLM call)
-      window.hexMemory.working.mood = window.hexMemory._detectMood(userMsg);
+      if (persistUser) {
+        window.hexTaskBus?.push('Saving user message to memory...');
+        window.hexMemory.addTurn('user', userMsg);
+        // Update working memory mood immediately (before LLM call)
+        window.hexMemory.working.mood = window.hexMemory._detectMood(userMsg);
+      }
       this.history = window.hexMemory.getRecentHistory(20);
+      messageHistory = persistUser
+        ? [...this.history]
+        : [...this.history, { role: 'user', content: userMsg }];
     } else {
-      this.history.push({ role: 'user', content: userMsg });
-      this._trim();
+      if (persistUser) {
+        this.history.push({ role: 'user', content: userMsg });
+        this._trim();
+      }
+      messageHistory = persistUser
+        ? [...this.history]
+        : [...this.history, { role: 'user', content: userMsg }];
     }
 
     window.hexTaskBus?.push('Building system prompt...');
     const sysPrompt = this._systemPrompt(systemState, lang);
     let text;
+
+    this._transientMessages = messageHistory;
 
     try {
       const p = this.config && this.config.llm ? this.config.llm.provider : 'none';
@@ -204,16 +224,23 @@ class HexAI {
     } catch (e) {
       console.error('AI error:', e);
       text = 'Neural link disrupted: ' + (e?.message || String(e));
+    } finally {
+      this._transientMessages = null;
     }
 
     // Save to persistent memory
     if (window.hexMemory) {
-      window.hexTaskBus?.push('Extracting facts from response...');
-      window.hexMemory.addTurn('assistant', text || '');
-      window.hexMemory.extractFromExchange(userMsg || '', text || '');
+      if (persistAssistant) window.hexMemory.addTurn('assistant', text || '');
+      if (persistUser && extractFacts) {
+        window.hexTaskBus?.push('Extracting facts from response...');
+        window.hexMemory.extractFromExchange(userMsg || '', text || '');
+      }
       this.history = window.hexMemory.getRecentHistory(20);
     } else {
-      this.history.push({ role: 'assistant', content: text });
+      if (persistAssistant) {
+        this.history.push({ role: 'assistant', content: text });
+        this._trim();
+      }
     }
 
     return { text, actions: this._parseActions(text) };
@@ -479,14 +506,16 @@ class HexAI {
 
   // ── Helpers ───────────────────────────────────────────────
   _msgs() {
-    const raw = this.history.map(m => ({ role: m.role, content: m.content }));
+    const source = this._transientMessages || this.history;
+    const raw = source.map(m => ({ role: m.role, content: m.content }));
 
     // ── Memory Reminder Injection ──────────────────────────────
     // Small models (Llama 3.1 8B) suffer from "lost in the middle" —
     // they ignore facts buried deep in the system prompt. Injecting a
     // compact memory summary as a system message right before the user's
     // latest message ensures it lands in the model's attention window.
-    const reminder = this._buildMemoryReminder();
+    const reminderParts = [this._buildMemoryReminder(), this._buildContinuityReminder()].filter(Boolean);
+    const reminder = reminderParts.join('\n\n');
     if (reminder) {
       // Insert right before the last user message
       const lastUserIdx = raw.length - 1;
@@ -528,6 +557,47 @@ class HexAI {
       'If the user asks about something listed above, answer directly from these facts.',
       'If the user says "open my website", find the URL above and use [ACTION:open_url:THE_URL].'
     ].join('\n');
+  }
+
+  _buildContinuityReminder() {
+    const state = this._lastSystemState || {};
+    const session = state.sessionContext || {};
+    const browser = state.browserSession || {};
+    const recentTurns = Array.isArray(state.recentTurns) ? state.recentTurns : [];
+    const lines = [];
+
+    const hasContext = !!(
+      session.primaryGoal ||
+      session.lastActionSummary ||
+      session.lastSystemDataSummary ||
+      session.lastUserWasFollowUp ||
+      browser.open
+    );
+    if (!hasContext) return null;
+
+    lines.push('[LIVE SESSION CONTINUITY — do NOT start fresh]');
+    if (session.primaryGoal) lines.push('Current ongoing goal: ' + session.primaryGoal);
+    if (session.lastUserMessage) lines.push('Latest real user message: ' + session.lastUserMessage);
+    if (session.lastUserWasFollowUp) {
+      lines.push('The latest user message is a FOLLOW-UP to the active session unless the user explicitly changed topics.');
+    }
+    if (session.lastActionSummary) lines.push('Last planned/executed actions: ' + session.lastActionSummary);
+    if (session.lastSystemDataSummary) lines.push('Recent real system/browser data: ' + session.lastSystemDataSummary);
+    if (browser.open) {
+      lines.push(`Active browser session: OPEN | ${browser.title || 'Untitled page'} | ${browser.url || 'unknown URL'}`);
+      lines.push('If the user refers to page items by ordinal or reference words (first, second, third, that video, this button, open it), stay in this browser session.');
+      lines.push('Prefer controlled browser actions like [ACTION:web_find_click:VISIBLE TEXT], [ACTION:web_read], [ACTION:web_back], or [ACTION:web_refresh] instead of opening a new site.');
+    } else {
+      lines.push('Active browser session: CLOSED');
+    }
+    if (recentTurns.length > 0) {
+      lines.push('Recent turns:');
+      recentTurns.slice(-3).forEach((turn) => {
+        lines.push('- ' + turn.role.toUpperCase() + ': ' + String(turn.content || '').substring(0, 140));
+      });
+    }
+
+    return lines.join('\n');
   }
 
   _parseActions(text) {

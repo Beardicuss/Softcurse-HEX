@@ -792,7 +792,9 @@ Rules:
   // ════════════════════════════════════════════════════════════════════════════════
   async compressCurrentSession() {
     const recentTurns = this.history.slice(-40);
-    if (recentTurns.length < 4) return;
+    if (recentTurns.length < 4) {
+      throw new Error(`Need at least 4 messages to compress (currently have ${recentTurns.length}).`);
+    }
 
     const transcript = recentTurns.map(t =>
       (t.role === 'user' ? 'User: ' : 'HEX: ') + (t.content || '').substring(0, 200)
@@ -802,7 +804,9 @@ Rules:
       'Summarize this conversation in 3-5 sentences. Focus on: what the user was working on, any problems encountered, outcomes or decisions made, and anything learned about the user.\n\n' + transcript.substring(0, 3000)
     );
 
-    if (!summary) return;
+    if (!summary) {
+      throw new Error(`AI failed to generate a summary. Check connection and AI provider configuration in Settings.`);
+    }
 
     const episode = {
       id: this._uid(),

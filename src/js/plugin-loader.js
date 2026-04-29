@@ -73,8 +73,9 @@ class PluginLoader {
 
     loadPlugin(manifest) {
         if (this.plugins.has(manifest.id)) {
-            this.log(`[Plugins] "${manifest.id}" already loaded, skipping`);
-            return false;
+            // Unload existing version before reloading (supports plugin updates)
+            this.unloadPlugin(manifest.id);
+            this.log(`[Plugins] Reloading "${manifest.id}" (was already loaded)`);
         }
 
         try {

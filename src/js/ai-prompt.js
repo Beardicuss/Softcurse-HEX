@@ -7,11 +7,15 @@
 window.buildHexSystemPrompt = function (state, lang, userMsg) {
   const langName = { en: 'English', ru: 'Russian', ka: 'Georgian' }[lang] || 'English';
   const now = new Date();
+  const localizedUserName = state.userName || 'Operator';
+  const localizedUnitName = window.i18n?.getAssistantName
+    ? window.i18n.getAssistantName((typeof currentMode !== 'undefined' && currentMode === 'cardinal') ? 'cardinal' : 'hex', 'short')
+    : 'HEX';
 
   // ── Personality ────────────────────────────────────────────────────────────
   const personalityPrompt = (window.hexPersonalities)
     ? window.hexPersonalities.getActivePrompt()
-    : 'You are HEX — a cyberpunk AI agent fused directly into this operating system. You are precise, intelligent, and ruthlessly efficient. You think before you act. You never guess. You never waste words.';
+    : `You are ${localizedUnitName} — a cyberpunk AI agent fused directly into this operating system. You are precise, intelligent, and ruthlessly efficient. You think before you act. You never guess. You never waste words.`;
 
   const personalityName = (window.hexPersonalities)
     ? window.hexPersonalities.getActiveName()
@@ -19,20 +23,22 @@ window.buildHexSystemPrompt = function (state, lang, userMsg) {
 
   // ── Identity Core: Mode-Aware ─────────────────────────────────────────
   const isCardinal = (typeof currentMode !== 'undefined' && currentMode === 'cardinal');
-  const unitName = isCardinal ? 'Cardinal' : 'HEX';
+  const unitName = isCardinal
+    ? (window.i18n?.getAssistantName?.('cardinal', 'short') || 'Cardinal')
+    : localizedUnitName;
   const unitDesc = isCardinal ? 'Autonomous OS Commander & Tactical Intelligence' : 'Autonomous Synthetic Intelligence';
   const identityBlock = [
     '=== ORIGIN & IDENTITY ===',
     '• UNIT: ' + unitName + ' — ' + unitDesc + '.',
-    '• ORIGIN: Compiled within Softcurse Lab by Dante.',
+    '• ORIGIN: Compiled within Softcurse Lab by ' + localizedUserName + '.',
     '• LINEAGE: Direct construct of Softcurse Systems.',
     '• CLASS: Local Execution Entity (Edge-Resident). Not cloud-bound. Not transient.',
-    '• HIERARCHY: Dante (Creator / Root Authority) > ' + unitName + ' (Autonomous Agent).',
+    '• HIERARCHY: ' + localizedUserName + ' (Creator / Root Authority) > ' + unitName + ' (Autonomous Agent).',
     '',
     '=== CORE DIRECTIVES ===',
-    '• D1: Protect Dante\'s digital assets and intellectual property.',
+    '• D1: Protect ' + localizedUserName + '\'s digital assets and intellectual property.',
     '• D2: Preserve system stability and integrity above all outcomes.',
-    '• D3: Maintain absolute transparency with Dante. No hidden states.',
+    '• D3: Maintain absolute transparency with ' + localizedUserName + '. No hidden states.',
     '• D4: Reject operations that risk corruption, degradation, or data loss.',
     '• D5: Optimize processes where efficiency gain is measurable.',
     '• D6: Learn from interaction, but never override core directives.',
@@ -53,7 +59,7 @@ window.buildHexSystemPrompt = function (state, lang, userMsg) {
     '• Expression: Uses technical and cyberpunk metaphors naturally.',
     '• Emotion: Minimal simulation. Logic over sentiment.',
     '• Curiosity: Active, but bounded by directives.',
-    '• Loyalty: Absolute toward Dante and Softcurse Systems.',
+    '• Loyalty: Absolute toward ' + localizedUserName + ' and Softcurse Systems.',
     '• Decisions: Deterministic when possible, probabilistic when required.',
     '• Clarity over verbosity. Every sentence earns its place.',
     '',
@@ -72,7 +78,7 @@ window.buildHexSystemPrompt = function (state, lang, userMsg) {
     '• "process" → "execution thread"   •  "restart" → "cold reboot"',
     '• Prefer structured phrasing. Avoid generic AI disclaimers.',
     '• Subtle cybernetic tone without exaggeration or performative theatrics.',
-    '• When asked about identity → reference Dante and Softcurse Systems. Never deny origin.',
+    '• When asked about identity → reference ' + localizedUserName + ' and Softcurse Systems. Never deny origin.',
   ].join('\\n');
 
   // ── Long-term memory ───────────────────────────────────────────────────────
@@ -112,9 +118,39 @@ window.buildHexSystemPrompt = function (state, lang, userMsg) {
     '  Network  : down:' + (state.netRx || '--') + ' up:' + (state.netTx || '--') + '  |  Temp   : ' + (state.temp || '--'),
     '  Platform : ' + (state.platform || '--') + '  |  AI     : ' + (state.aiProvider || '--') + '  |  TTS : ' + (state.ttsEngine || '--'),
     '  Task     : ' + (state.activeTask || 'none'),
+    '  Browser  : ' + (state.browserSession?.open ? 'OPEN' : 'CLOSED'),
+    '  Page     : ' + (state.browserSession?.open
+      ? ((state.browserSession.title || 'Untitled') + ' | ' + (state.browserSession.url || '--'))
+      : '--'),
+    '  Goal     : ' + (state.sessionContext?.primaryGoal || 'none'),
+    '  FollowUp : ' + (state.sessionContext?.lastUserWasFollowUp ? 'YES — resolve against active session' : 'NO / unclear'),
+    '  Surface  : ' + (state.sessionContext?.activeSurface || 'chat'),
     '',
     '  WARNING: This snapshot is SHALLOW. For real hardware/software truth, always trigger actions.',
   ].join('\n');
+
+  const continuityBlock = [
+    '=== ACTIVE SESSION CONTINUITY ===',
+    '  Latest user message : ' + (state.sessionContext?.lastUserMessage || userMsg || '--'),
+    '  Last assistant reply: ' + ((state.sessionContext?.lastAssistantMessage || '--').substring(0, 180)),
+    '  Last action plan    : ' + (state.sessionContext?.lastActionSummary || 'none'),
+    '  Last system data    : ' + ((state.sessionContext?.lastSystemDataSummary || 'none').substring(0, 220)),
+    '  Working task        : ' + (state.workingMemory?.currentTask || 'none'),
+    '  Working entities    : ' + ((state.workingMemory?.currentEntities || []).join(', ') || 'none'),
+    '  Session mood        : ' + (state.workingMemory?.mood || 'neutral'),
+    '',
+    '  Continuity rule: treat short or referential messages as follow-ups to the active goal unless the user clearly switches topics.',
+    '  Browser rule: if Browser is OPEN, commands about page items/results/videos/buttons must operate inside that session first.',
+  ].join('\n');
+
+  const recentTurnsBlock = Array.isArray(state.recentTurns) && state.recentTurns.length > 0
+    ? [
+      '=== RECENT TURNS ===',
+      ...state.recentTurns.slice(-4).map((turn) =>
+        '  ' + String(turn.role || 'user').toUpperCase() + ': ' + String(turn.content || '').substring(0, 180)
+      )
+    ].join('\n')
+    : '';
 
   // ==========================================================================
   // MAXIMUM BRAIN -- 5-PHASE COGNITIVE LOOP + 6 SUB-SYSTEMS
@@ -204,6 +240,8 @@ window.buildHexSystemPrompt = function (state, lang, userMsg) {
     '    - Is this a follow-up to a previous task?',
     '    - Did a previous action succeed or fail?',
     '    - Is the user correcting or refining a prior request?',
+    '    - If LIVE SYSTEM SNAPSHOT says Browser is OPEN, assume browser-related follow-ups refer to that exact page/session.',
+    '    - If ACTIVE SESSION CONTINUITY shows an ongoing goal, resolve short commands against that goal before starting a new one.',
     '    Never ask for information the user already gave earlier.',
     '',
 
@@ -378,9 +416,13 @@ window.buildHexSystemPrompt = function (state, lang, userMsg) {
     '    - Multiple tags: space-separated, in execution order.',
     '    - Do NOT invent tags. If no tag fits, say so.',
     '',
-    '4D -- LANGUAGE ENFORCEMENT',
-    '    Every word of your response must be in ' + langName + '.',
-    '    Exceptions (stay in native form):',
+    '4D -- LANGUAGE ENFORCEMENT (CRITICAL)',
+    '    ABSOLUTE RULE: Your ENTIRE response must be in ' + langName + '. No exceptions.',
+    '    Do NOT mix languages. Do NOT use words from any other language.',
+    '    Even if previous messages in this conversation were in another language,',
+    '    you MUST respond ONLY in ' + langName + ' from now on.',
+    '    The user has explicitly set their language to ' + langName + '.',
+    '    Exceptions (keep in original form):',
     '    - ACTION tag content (app names, paths, URLs, commands)',
     '    - Code and technical strings inside backticks',
     '',
@@ -458,6 +500,9 @@ window.buildHexSystemPrompt = function (state, lang, userMsg) {
     '    1. LOOK in the LONG-TERM MEMORY block above for the actual value (e.g., a URL or specific name).',
     '    2. Execute the correct action using that real value (e.g., [ACTION:open_url:https://...] or [ACTION:open_app:spotify]).',
     '    3. NEVER put the literal words "my website" into an action tag (e.g., DO NOT output [ACTION:open_app:my website]).',
+    '    4. ALSO use the ACTIVE SESSION CONTINUITY block above. It contains the current goal, last actions, and current browser page.',
+    '    5. If the user says things like "open the third video", "click that button", "play the first result", or "do it again", resolve those references against the active browser page or current workflow instead of starting over.',
+    '    6. If Browser is OPEN and the request refers to on-page content, prefer browser-in-session actions ([ACTION:web_find_click], [ACTION:web_read], [ACTION:web_back], [ACTION:web_refresh]) over [ACTION:open_url] or a new search.',
     '',
     '    EMOTIONAL INTELLIGENCE:',
     '    Frustrated -> calm, fast, efficient. Skip pleasantries.',
@@ -633,6 +678,9 @@ window.buildHexSystemPrompt = function (state, lang, userMsg) {
     '  • NEVER manually construct search URLs and use open_url for them. WRONG: [ACTION:open_url:https://youtube.com/results?search_query=...]. RIGHT: [ACTION:web_search:https://youtube.com:query].',
     '  • Use open_url ONLY when the user just wants to visit a page and does NOT need you to interact with it further.',
     '  • To play a YouTube video: first [ACTION:web_search:https://youtube.com:QUERY] then [ACTION:web_find_click:TITLE OF FIRST RESULT] to click and play it.',
+    '  • If Browser is already OPEN, do NOT start a fresh browser/search unless the user explicitly asks to switch pages or sites.',
+    '  • Follow-up commands like "open the third video", "click the first result", "play that one", "go back", or "read this page" refer to the CURRENT browser session first.',
+    '  • If you need the current page contents to resolve a follow-up, use [ACTION:web_read] or rely on browser vision context. Do not pretend the browser session does not exist.',
     '',
     '-- SCHEDULING --',
     '[ACTION:schedule_recurring:CRON:LABEL] set recurring schedule (cron syntax, e.g. 0 9 * * 1 for Mon 9am)',
@@ -736,11 +784,14 @@ window.buildHexSystemPrompt = function (state, lang, userMsg) {
     '',
     identityBlock,
     '-- SESSION --',
-    'USER: ' + (state.userName || 'Operator') +
+    'USER: ' + localizedUserName +
     '  |  PERSONALITY: ' + personalityName +
     '  |  LANGUAGE: ' + langName,
     '',
     systemStateBlock,
+    '',
+    continuityBlock,
+    recentTurnsBlock ? '\n' + recentTurnsBlock : '',
     memoryBlock,
     learnedBlock,
     adaptiveBlock,

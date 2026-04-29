@@ -22,6 +22,7 @@ function createTextOption(value, label) {
 function populateLocalVoiceOptions(selectEl, voices = null) {
   if (!selectEl) return;
   clearNode(selectEl);
+  const favs = config.voice?.favouriteVoices || {};
 
   if (voices && voices.length > 0) {
     const byLang = {};
@@ -35,9 +36,10 @@ function populateLocalVoiceOptions(selectEl, voices = null) {
       const group = document.createElement('optgroup');
       group.label = langNames[lang] || lang.toUpperCase();
       langVoices.forEach((voice) => {
+        const isFav = favs[lang] === voice.id;
         group.appendChild(createTextOption(
           voice.id,
-          `${voice.name}${voice.ready ? '' : ' ⚠'}${voice.isDefault ? ' ★' : ''}`
+          `${isFav ? '★ ' : ''}${voice.name}${voice.ready ? '' : ' ⚠'}${voice.isDefault ? ' (default)' : ''}`
         ));
       });
       selectEl.appendChild(group);
@@ -48,6 +50,80 @@ function populateLocalVoiceOptions(selectEl, voices = null) {
   DEFAULT_LOCAL_VOICE_OPTIONS.forEach((option) => {
     selectEl.appendChild(createTextOption(option.value, option.label));
   });
+}
+
+// ── FAVOURITE VOICE PER LANGUAGE ───────────────────────────────
+function toggleFavouriteVoice() {
+  const sel = document.getElementById('cfg-local-voice');
+  if (!sel || !sel.value) return;
+  const voiceId = sel.value;
+
+  // Determine language from voice ID (e.g. 'en_US-lessac-medium' → 'en', 'ru_RU-ruslan-medium' → 'ru')
+  let lang = '';
+  const opt = sel.selectedOptions[0];
+  if (opt && opt.parentElement.tagName === 'OPTGROUP') {
+    // Get lang from optgroup label
+    const labelToLang = { 'English': 'en', 'Russian': 'ru', 'Georgian': 'ka' };
+    lang = labelToLang[opt.parentElement.label] || voiceId.substring(0, 2);
+  } else {
+    lang = voiceId.substring(0, 2);
+  }
+
+  if (!config.voice) config.voice = {};
+  if (!config.voice.favouriteVoices) config.voice.favouriteVoices = {};
+
+  // Toggle: if already the favourite, unstar it; otherwise set it
+  if (config.voice.favouriteVoices[lang] === voiceId) {
+    delete config.voice.favouriteVoices[lang];
+    showToast('◆ VOICE', `Removed favourite for ${lang.toUpperCase()}`, '', 2000);
+  } else {
+    config.voice.favouriteVoices[lang] = voiceId;
+    showToast('◆ VOICE', `★ Set favourite ${lang.toUpperCase()} voice: ${voiceId}`, '', 2000);
+  }
+
+  // Save immediately
+  window.hexAPI.setConfig({ voice: config.voice });
+
+  // Refresh UI
+  updateFavStarUI();
+  // Re-populate dropdown to show ★ markers
+  refreshLocalVoiceDropdown();
+}
+
+function updateFavStarUI() {
+  const btn = document.getElementById('fav-voice-btn');
+  const sel = document.getElementById('cfg-local-voice');
+  if (!btn || !sel) return;
+
+  const voiceId = sel.value;
+  const favs = config.voice?.favouriteVoices || {};
+
+  // Check if current selection is the favourite for its language
+  let isFav = false;
+  for (const lang of Object.keys(favs)) {
+    if (favs[lang] === voiceId) { isFav = true; break; }
+  }
+
+  btn.textContent = isFav ? '★' : '☆';
+  btn.style.color = isFav ? '#ffd700' : '';
+  btn.title = isFav ? 'Remove favourite' : 'Set as favourite voice for this language';
+}
+
+async function refreshLocalVoiceDropdown() {
+  const sel = document.getElementById('cfg-local-voice');
+  if (!sel) return;
+  const currentVal = sel.value;
+  try {
+    const status = await window.hexAPI.voice.status();
+    if (status.voices && status.voices.length > 0) {
+      populateLocalVoiceOptions(sel, status.voices);
+    } else {
+      populateLocalVoiceOptions(sel);
+    }
+  } catch (_) {
+    populateLocalVoiceOptions(sel);
+  }
+  sel.value = currentVal;
 }
 
 function setVoiceStatusContent(container, { primaryText, primaryColor, secondarySegments = [] }) {
@@ -265,6 +341,13 @@ async function openSettings(targetTab = 'tab-general') {
       populateLocalVoiceOptions(lvSel);
     }
     lvSel.value = cfg.voice?.localVoiceLang || 'en';
+    // Update ★ button state
+    updateFavStarUI();
+    // Wire star button click
+    const favBtn = document.getElementById('fav-voice-btn');
+    if (favBtn) favBtn.onclick = toggleFavouriteVoice;
+    // Update star when voice selection changes
+    lvSel.onchange = () => { updateFavStarUI(); updateTtsEngineUI(); };
   }
   const lvSpeed = document.getElementById('cfg-local-speed');
   if (lvSpeed) {
@@ -582,6 +665,7 @@ async function saveSettings() {
       localSpeed: parseFloat(document.getElementById('cfg-local-speed')?.value || '1.0'),
       gcloudTtsKey: (document.getElementById('cfg-gcloud-tts-key')?.value || '').trim() || config.voice?.gcloudTtsKey || '',
       gcloudVoice: document.getElementById('cfg-gcloud-voice')?.value || config.voice?.gcloudVoice || 'ka-GE-Standard-A',
+      favouriteVoices: config.voice?.favouriteVoices || {},
     },
     monitoring: {
       ...config.monitoring,
@@ -599,6 +683,7 @@ async function saveSettings() {
   // Merge personalities into config before saving
   const pcfg = window.hexPersonalities.toConfig();
   config = { ...config, ...newCfg, ...pcfg };
+  window._hexConfig = config;
   await window.hexAPI.setConfig(config);
   window.hexAI.configure(config);
   window.hexVoice.wakeWord = config.voice.wakeWord;

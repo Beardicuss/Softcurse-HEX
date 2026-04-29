@@ -4,6 +4,10 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Rajdhani:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Chakra+Petch:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&display=swap');
 
+/* Multilingual — Cyrillic (RU) + Georgian (KA) */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Georgian:wght@300;400;500;600;700&display=swap');
+
 /* ── Reset & Base ─────────────────────────────────────────────── */
 *,
 *::before,
@@ -52,10 +56,10 @@
   --border-h: var(--c-border-hover);
 
   /* ═══ TYPOGRAPHY ═══ */
-  --font-display: 'Orbitron', 'Rajdhani', sans-serif;
-  --font-tactical: 'Rajdhani', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
-  --font-body: 'Chakra Petch', sans-serif;
+  --font-display: 'Orbitron', 'Rajdhani', 'Noto Sans Georgian', 'Noto Sans', sans-serif;
+  --font-tactical: 'Rajdhani', 'Noto Sans Georgian', 'Noto Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Noto Sans Georgian', 'Noto Sans', monospace;
+  --font-body: 'Chakra Petch', 'Noto Sans Georgian', 'Noto Sans', sans-serif;
 
   --font-d: var(--font-display);
   --font-m: var(--font-mono);
@@ -1392,10 +1396,26 @@ body {
   padding: 10px 14px;
   font-family: var(--font-body);
   font-size: 13px;
-  line-height: 1.75;
+  line-height: 1.85;
   border: 1px solid;
   position: relative;
   border-radius: 0;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+
+/* Georgian — taller line-height, Noto Georgian takes over */
+.chat-bubble:lang(ka) {
+  font-size: 13.5px;
+  line-height: 1.95;
+  font-family: 'Noto Sans Georgian', 'Noto Sans', sans-serif;
+}
+
+/* Russian/Cyrillic — Noto Sans Cyrillic is clean at small sizes */
+.chat-bubble:lang(ru) {
+  font-family: 'Noto Sans', sans-serif;
+  line-height: 1.85;
 }
 
 .chat-msg.hex .chat-bubble {
@@ -3011,6 +3031,11 @@ input[type="range"]::-webkit-slider-thumb {
   font-weight: 600;
   color: var(--c-cyan-soft);
   margin-top: 1px;
+  width: 100%;
+  max-width: 100%;
+  text-align: center;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 @keyframes hex-breathe {

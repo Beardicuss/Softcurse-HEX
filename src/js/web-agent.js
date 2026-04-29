@@ -467,6 +467,23 @@ async function readCurrentPage() {
   }
 }
 
+async function screenshotPage() {
+  const page = _ctrlPage;
+  if (!page || page.isClosed()) return { success: false, error: 'No active browser session.' };
+  try {
+    const buffer = await page.screenshot({ type: 'jpeg', quality: 70 });
+    const base64 = buffer.toString('base64');
+    return {
+      success: true,
+      image: 'data:image/jpeg;base64,' + base64,
+      url: page.url(),
+      title: await page.title(),
+    };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
 async function getSessionStatus() {
   const open = !!(_ctrlBrowser && _ctrlPage && !_ctrlPage.isClosed());
   return {
@@ -487,7 +504,7 @@ module.exports = {
   // Controlled visible
   navigateTo, smartSearch, typeText, clickElement,
   findAndClick, fillAndSubmit, goBack, goForward,
-  refreshPage, readCurrentPage, getSessionStatus, closeControlled,
+  refreshPage, readCurrentPage, screenshotPage, getSessionStatus, closeControlled,
   // Utilities
   closeBrowser, findBrowserPath,
 };

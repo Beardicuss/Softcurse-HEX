@@ -1,9 +1,50 @@
-﻿'use strict';
-// == actions.js == AI Action Dispatcher ========================================
+﻿// == actions.js == AI Action Dispatcher ========================================
 // Extracted from renderer.js -- handles all [ACTION:*] tags from AI responses.
 // Depends on globals: addLog, addHexMessage, showToast, speakWithConfig,
 //   runTask, openProcesses, openSettings, window.hexAPI, window.hexBrowser,
 //   window.reminders
+
+// ── Web Vision Helper ───────────────────────────────────────────────────────
+// Captures browser screenshot and stores for follow-up AI vision processing.
+// Returns a text description and sets window._webVisionData for the follow-up call.
+window._webVisionData = null;
+window._webVisionMeta = null;
+
+async function _captureWebVision(context = '') {
+  if (!window.hexAPI?.browser?.screenshot) return null;
+  try {
+    const snap = await window.hexAPI.browser.screenshot();
+    if (!snap.success || !snap.image) return null;
+    window._webVisionData = snap.image;
+    window._webVisionMeta = {
+      url: snap.url || null,
+      title: snap.title || null,
+      capturedAt: Date.now(),
+      context
+    };
+    addLog('VISION', `Browser screenshot captured: ${snap.title || snap.url}`);
+    return `[BROWSER VISION — screenshot captured of: ${snap.title || snap.url}${context ? ' | ' + context : ''}. Analyze the screenshot to see what is on the page. Use visible text/labels for clicks instead of CSS selectors.]`;
+  } catch (e) {
+    addLog('VISION', `Screenshot failed: ${e.message}`);
+    return null;
+  }
+}
+
+// Auto-enable vision when web surfing starts (if AI provider supports it)
+function _autoEnableWebVision() {
+  if (window.visionEnabled) return; // already on
+  // Only auto-enable if captureScreenBase64 or browser.screenshot is available
+  if (window.hexAPI?.browser?.screenshot || window.hexAPI?.captureScreenBase64) {
+    window.visionEnabled = true;
+    const btn = document.getElementById('vision-btn');
+    if (btn) {
+      btn.style.filter = 'drop-shadow(0 0 6px var(--cyan))';
+      btn.style.color = 'var(--cyan)';
+    }
+    addLog('VISION', 'Auto-enabled vision for web interaction.');
+  }
+}
+
 async function handleAIAction(action) {
   switch (action.type) {
     // ── System tasks ──
@@ -274,10 +315,14 @@ async function handleAIAction(action) {
       // [ACTION:web_navigate:URL]
       const url = action.args.join(':').trim();
       if (!url) break;
+      _autoEnableWebVision();
       addHexMessage(`🌐 Navigating to **${url}**...`);
       const r = await window.hexAPI.browser.navigate(url);
       if (r.success) {
         addHexMessage(`✅ Opened: **${r.title || r.url}**`);
+        // Auto-capture screenshot for AI vision feedback
+        const visionCtx = await _captureWebVision('after navigation');
+        if (visionCtx) return { data: `Navigated to ${r.title} (${r.url}). ${visionCtx}` };
       } else {
         addHexMessage(`❌ Navigation failed: ${r.error}`);
       }
@@ -298,13 +343,21 @@ async function handleAIAction(action) {
         query = parts.join(' ').trim();
       }
       if (!query) break;
+      _autoEnableWebVision();
       const label = siteUrl ? `**${new URL(siteUrl.startsWith('http') ? siteUrl : 'https://' + siteUrl).hostname}**` : 'current page';
       addHexMessage(`🔍 Searching ${label} for: **${query}**...`);
       const r = await window.hexAPI.browser.smartSearch(query, siteUrl);
       if (r.success) {
         addHexMessage(`✅ Search done — page: **${r.title || r.url}**`);
 
-        // Auto-play: if on YouTube, click the first video result
+        // Vision mode: capture screenshot and let AI decide what to click
+        const visionCtx = await _captureWebVision(`search results for "${query}"`);
+        if (visionCtx) {
+          // AI will see the screenshot and can choose which result to click
+          return { data: `Browser searched for "${query}" — now on page: ${r.title} (${r.url}). ${visionCtx}` };
+        }
+
+        // Fallback (no vision): auto-play first YouTube result blindly
         const currentUrl = r.url || '';
         if (currentUrl.includes('youtube.com')) {
           addHexMessage(`▶️ Clicking first video result...`);
@@ -345,7 +398,12 @@ async function handleAIAction(action) {
       } catch (_) { }
       addHexMessage(`🖱 Clicking: **${text}**...`);
       const r = await window.hexAPI.browser.findClick(text);
-      if (r.success) addHexMessage(`✅ Clicked "${text}"`);
+      if (r.success) {
+        addHexMessage(`✅ Clicked "${text}"`);
+        // Auto-capture screenshot after click for AI feedback
+        const visionCtx = await _captureWebVision(`after clicking "${text}"`);
+        if (visionCtx) return { data: `Clicked "${text}". ${visionCtx}` };
+      }
       else addHexMessage(`❌ Could not click "${text}": ${r.error}`);
       break;
     }
@@ -364,7 +422,11 @@ async function handleAIAction(action) {
     case 'web_back': {
       // [ACTION:web_back]
       const r = await window.hexAPI.browser.back();
-      if (r.success) addHexMessage(`⬅️ Back — now on: **${r.title || r.url}**`);
+      if (r.success) {
+        addHexMessage(`⬅️ Back — now on: **${r.title || r.url}**`);
+        const visionCtx = await _captureWebVision('after going back');
+        if (visionCtx) return { data: `Went back to ${r.title} (${r.url}). ${visionCtx}` };
+      }
       else addHexMessage(`❌ Back failed: ${r.error}`);
       break;
     }
@@ -401,7 +463,23 @@ async function handleAIAction(action) {
     case 'web_close': {
       // [ACTION:web_close]
       await window.hexAPI.browser.close();
+      window._webVisionData = null; // Clear vision data when browser closes
+      window._webVisionMeta = null;
       addHexMessage(`🔌 Browser session closed.`);
+      break;
+    }
+
+    case 'web_look': {
+      // [ACTION:web_look]  — capture browser screenshot for AI to analyze
+      _autoEnableWebVision();
+      addHexMessage(`👁 Looking at browser...`);
+      const visionCtx = await _captureWebVision('user requested visual inspection');
+      if (visionCtx) {
+        addHexMessage(`✅ Screenshot captured — analyzing...`);
+        return { data: visionCtx };
+      } else {
+        addHexMessage(`❌ No active browser session or screenshot failed.`);
+      }
       break;
     }
 
