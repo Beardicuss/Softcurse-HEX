@@ -1668,6 +1668,7 @@ body {
   background: var(--cyan);
   width: 0;
   transition: width 0.5s ease;
+  will-change: width;
 }
 
 .stat-bar-fill.mid {
@@ -2979,6 +2980,8 @@ input[type="range"]::-webkit-slider-thumb {
   cursor: pointer;
   min-height: 80px;
   overflow: hidden;
+  will-change: transform, opacity;
+  contain: layout style paint;
 }
 
 .hex-cell:hover {
@@ -3303,11 +3306,9 @@ input[type="range"]::-webkit-slider-thumb {
   background-image:
     radial-gradient(circle at 50% 0%, rgba(200, 255, 255, 0.06) 0%, transparent 55%),
     radial-gradient(ellipse at center, transparent 20%, rgba(0, 0, 0, 0.65) 100%),
-    repeating-linear-gradient(
-      0deg,
+    repeating-linear-gradient(0deg,
       rgba(0, 0, 0, 0.28), rgba(0, 0, 0, 0.28) 1px,
-      transparent 1px, transparent 3px
-    );
+      transparent 1px, transparent 3px);
 
   padding: 12px 14px;
   margin: 4px 24px;
@@ -3503,16 +3504,19 @@ input[type="range"]::-webkit-slider-thumb {
   color: #00e5ff;
   text-shadow: 0 0 20px rgba(0, 229, 255, 0.5);
 }
+
 #sleep-overlay.hex-sleep #sleep-mode-name {
   color: #00e5ff;
   text-shadow: 0 0 30px rgba(0, 229, 255, 0.4), 0 0 60px rgba(0, 229, 255, 0.15);
 }
+
 #sleep-overlay.hex-sleep #sleep-wake-btn {
   color: #00e5ff;
   border: 1px solid rgba(0, 229, 255, 0.3);
   background: rgba(0, 229, 255, 0.05);
   text-shadow: 0 0 8px rgba(0, 229, 255, 0.5);
 }
+
 #sleep-overlay.hex-sleep #sleep-wake-btn:hover {
   background: rgba(0, 229, 255, 0.12);
   box-shadow: 0 0 20px rgba(0, 229, 255, 0.3);
@@ -3523,22 +3527,32 @@ input[type="range"]::-webkit-slider-thumb {
   color: #dc143c;
   text-shadow: 0 0 20px rgba(220, 20, 60, 0.5);
 }
+
 #sleep-overlay.cardinal-sleep #sleep-mode-name {
   color: #ff8c00;
   text-shadow: 0 0 30px rgba(255, 140, 0, 0.4), 0 0 60px rgba(220, 20, 60, 0.15);
 }
+
 #sleep-overlay.cardinal-sleep #sleep-wake-btn {
   color: #dc143c;
   border: 1px solid rgba(220, 20, 60, 0.3);
   background: rgba(220, 20, 60, 0.05);
   text-shadow: 0 0 8px rgba(220, 20, 60, 0.5);
 }
+
 #sleep-overlay.cardinal-sleep #sleep-wake-btn:hover {
   background: rgba(220, 20, 60, 0.12);
   box-shadow: 0 0 20px rgba(220, 20, 60, 0.3);
 }
 
 @keyframes sleep-pulse {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
+
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+
+  50% {
+    opacity: 1;
+  }
 }

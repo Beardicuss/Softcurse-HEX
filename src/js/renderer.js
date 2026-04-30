@@ -478,19 +478,20 @@ async function init() {
 
   // Clock
   updateClock();
-  setInterval(updateClock, 1000);
+  window._hexIntervals = window._hexIntervals || [];
+  window._hexIntervals.push(setInterval(updateClock, 1000));
 
   // Hex canvas
   initHexCanvas();
   startHexAnimation();
 
   // Glitch tears (random)
-  setInterval(spawnGlitchTear, 12000);
+  window._hexIntervals.push(setInterval(spawnGlitchTear, 12000));
 
   // Uptime
-  setInterval(() => {
+  window._hexIntervals.push(setInterval(() => {
     document.getElementById('v-uptime').textContent = window.activityMonitor.getUptime();
-  }, 1000);
+  }, 1000));
 
   // Greeting
   const name = getLocalizedUserName(config.userName || 'Operator');

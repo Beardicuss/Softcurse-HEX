@@ -59,16 +59,16 @@ class HexAI {
       }
       this.history = window.hexMemory.getRecentHistory(20);
       messageHistory = persistUser
-        ? [...this.history]
-        : [...this.history, { role: 'user', content: userMsg }];
+        ? this.history
+        : this.history.concat({ role: 'user', content: userMsg });
     } else {
       if (persistUser) {
         this.history.push({ role: 'user', content: userMsg });
         this._trim();
       }
       messageHistory = persistUser
-        ? [...this.history]
-        : [...this.history, { role: 'user', content: userMsg }];
+        ? this.history
+        : this.history.concat({ role: 'user', content: userMsg });
     }
 
     window.hexTaskBus?.push('Building system prompt...');

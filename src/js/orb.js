@@ -52,8 +52,13 @@ function startHexAnimation() {
     return [x1, y2, z2];
   }
 
-  function frame() {
+  let _lastFrameTime = 0;
+  const FRAME_INTERVAL = 50; // 20fps — decorative orb doesn't need 60fps
+
+  function frame(timestamp) {
     hexRAF = requestAnimationFrame(frame);
+    if (timestamp - _lastFrameTime < FRAME_INTERVAL) return;
+    _lastFrameTime = timestamp;
     if (!hexCtx) return;
     tick++;
     rotY += 0.005;

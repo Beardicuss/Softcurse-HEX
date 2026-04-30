@@ -23,9 +23,12 @@ class ActivityMonitor {
   }
 
   start() {
-    // Track user interactions
+    // Track user interactions (throttled — idle detection only needs ±1s accuracy)
+    const throttledUpdate = window.HexSystem
+      ? window.HexSystem.throttle(() => { this.lastInteract = Date.now(); }, 1000)
+      : (() => { let _last = 0; return () => { const n = Date.now(); if (n - _last >= 1000) { _last = n; this.lastInteract = n; } }; })();
     ['mousemove', 'keydown', 'mousedown', 'touchstart'].forEach(ev => {
-      window.addEventListener(ev, () => { this.lastInteract = Date.now(); }, { passive: true });
+      window.addEventListener(ev, throttledUpdate, { passive: true });
     });
 
     // Check activity state every minute

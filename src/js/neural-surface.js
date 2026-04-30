@@ -445,6 +445,10 @@ window.nsTrackAction = function () { _ns.actionCount++; };
 
 // ── Master Refresh ────────────────────────────────────────────
 function nsRefreshAll() {
+    // Skip if neural surface panel is not visible (e.g. Chat tab active)
+    const nsPanel = document.getElementById('panel-left');
+    if (nsPanel && nsPanel.offsetParent === null) return;
+
     nsUpdateModules();
     nsUpdateCoherence();
     nsUpdatePersonality();

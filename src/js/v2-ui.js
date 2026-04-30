@@ -355,8 +355,11 @@ async function cancelRecurring(id) {
     }
 }
 
-// Refresh schedules automatically every 30s
-setInterval(refreshRecurring, 30000);
+// Refresh schedules only when settings panel is visible
+setInterval(() => {
+    const panel = document.getElementById('settings-panel');
+    if (panel && panel.style.display !== 'none') refreshRecurring();
+}, 30000);
 setTimeout(refreshRecurring, 2000);
 
 // Initialize settings state on load

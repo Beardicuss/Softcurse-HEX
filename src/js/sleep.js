@@ -189,8 +189,14 @@
             _suspended.activityTimer = window.activityMonitor._timer;
             window.activityMonitor._timer = null;
         }
+        // 5. Pause renderer intervals (clock, glitch, uptime)
+        if (window._hexIntervals && window._hexIntervals.length) {
+            window._hexIntervals.forEach(id => clearInterval(id));
+            _suspended.hexIntervals = [...window._hexIntervals];
+            window._hexIntervals = [];
+        }
 
-        // 5. Hide main UI to reduce rendering
+        // 6. Hide main UI to reduce rendering
         const mainUI = document.getElementById('app-container') || document.querySelector('.app-grid');
         if (mainUI) mainUI.style.display = 'none';
     }
@@ -220,8 +226,20 @@
             );
             _suspended.activityTimer = null;
         }
+        // 5. Resume renderer intervals
+        if (_suspended.hexIntervals) {
+            // Re-create the intervals since the old IDs were cleared
+            window._hexIntervals = window._hexIntervals || [];
+            if (typeof updateClock === 'function') window._hexIntervals.push(setInterval(updateClock, 1000));
+            if (typeof spawnGlitchTear === 'function') window._hexIntervals.push(setInterval(spawnGlitchTear, 12000));
+            window._hexIntervals.push(setInterval(() => {
+                const el = document.getElementById('v-uptime');
+                if (el) el.textContent = window.activityMonitor?.getUptime?.() || '';
+            }, 1000));
+            _suspended.hexIntervals = null;
+        }
 
-        // 5. Show main UI again
+        // 6. Show main UI again
         const mainUI = document.getElementById('app-container') || document.querySelector('.app-grid');
         if (mainUI) mainUI.style.display = '';
     }
