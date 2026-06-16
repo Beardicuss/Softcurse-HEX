@@ -55,12 +55,21 @@ module.exports = function registerSystemIPC({
   // ── System info ────────────────────────────────────────────────────────────
   ipcMain.handle('system:get-info', async () => {
     const [cpu, mem, osInfo] = await Promise.allSettled([si.cpu(), si.mem(), si.osInfo()]);
+    const netIfaces = os.networkInterfaces();
+    const localIps = [];
+    for (const iface of Object.values(netIfaces)) {
+      for (const addr of iface || []) {
+        if (addr && addr.family === 'IPv4' && !addr.internal) localIps.push(addr.address);
+      }
+    }
     return {
       cpu:      cpu.status      === 'fulfilled' ? cpu.value      : {},
       mem:      mem.status      === 'fulfilled' ? mem.value      : {},
       os:       osInfo.status   === 'fulfilled' ? osInfo.value   : {},
       uptime:   os.uptime(),
       platform: process.platform,
+      hostname: os.hostname(),
+      localIps,
     };
   });
 

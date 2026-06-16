@@ -153,8 +153,8 @@ async function buildAIContextState(userText) {
   updateSessionContextForUser(userText, browserSession);
 
   const recentTurns = window.hexMemory
-    ? window.hexMemory.getRecentHistory(4)
-    : window.hexAI.history.slice(-4);
+    ? window.hexMemory.getRecentHistory(8)
+    : window.hexAI.history.slice(-8);
   const working = window.hexMemory?.working || {};
 
   return {
@@ -323,10 +323,12 @@ async function init() {
   await window.i18n.load(lang);
   window.i18n.apply();
   refreshIdentityUI();
+  await window.hexOnboarding?.init?.();
 
   // ── Load persistent memory (before AI configure) ──
   window.hexMemory.onLog = (msg) => addLog('HEX', msg);
   await window.hexMemory.load();
+  await window.hexCloudSync?.init?.();
 
   // ── Adaptive Intelligence: Load brain profile + daily reflection ──
   if (window.hexBrain) {
@@ -552,6 +554,11 @@ window.toggleVision = function () {
 
 // ── SEND MESSAGE ──────────────────────────────────────────────
 async function sendMessage() {
+  if (config?.onboarding?.completed === false) {
+    window.hexOnboarding?.open?.();
+    showToast('◆ PROFILE REQUIRED', 'Complete first-run registration before chatting.', 'warn', 3000);
+    return;
+  }
   const ta = document.getElementById('chat-input');
   const text = ta.value.trim();
   if (!text) return;
@@ -584,6 +591,12 @@ async function sendMessage() {
   if (directResult.handled) return;
 
   const systemState = await buildAIContextState(text);
+  await window.hexCloudSync?.ensureSession?.(systemState);
+  await window.hexCloudSync?.pushLiveSessionSnapshot?.(systemState, { force: true });
+  await window.hexCloudSync?.pushTurn?.('user', text, systemState, {
+    kind: 'chat',
+    followUp: systemState.sessionContext?.lastUserWasFollowUp === true
+  });
 
   showTyping();
   window.hexTaskBus?.push('Sending message to AI...');
@@ -623,6 +636,12 @@ async function sendMessage() {
     updateSessionContextForAssistant(hexText, result.actions || []);
     addHexMessage(hexText);
     addLog('HEX', `→ ${String(hexText).substring(0, 100)}${hexText.length > 100 ? '…' : ''}`);
+    const postReplyState = await buildAIContextState(text);
+    await window.hexCloudSync?.pushLiveSessionSnapshot?.(postReplyState, { force: true });
+    await window.hexCloudSync?.pushTurn?.('assistant', hexText, postReplyState, {
+      kind: 'chat-response',
+      actionTypes: (result.actions || []).map((action) => action.type)
+    });
 
     // Trigger asynchronous memory extraction (non-blocking)
     if (window.hexMemory) {
@@ -690,6 +709,7 @@ async function sendMessage() {
     // about the ACTUAL data instead of having it appear as a raw system message
     if (infoResults.length > 0) {
       updateSessionContextForSystemData(infoResults);
+      await window.hexCloudSync?.pushLiveSessionSnapshot?.(await buildAIContextState(text), { force: true });
       showTyping();
       window.hexTaskBus?.push('Processing system data with AI...');
       try {

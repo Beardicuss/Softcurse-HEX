@@ -9,6 +9,7 @@ class HexAI {
     this.history = [];
     this._transientMessages = null;
     this._lastSystemState = null;
+    this._sessionProviderDemotions = {};
     this.MAX_HISTORY = 20;
     // Complexity-aware routing: fast models for simple queries
     this.FAST_MODELS = {
@@ -21,17 +22,24 @@ class HexAI {
       mistral: 'mistral-small-latest',
       groq: 'llama-3.1-8b-instant',
       together: 'meta-llama/Llama-3-8b-chat-hf',
-      cohere: 'command-light',
+      cohere: 'command-r',
       hf: 'mistralai/Mixtral-8x7B-Instruct-v0.1',
     };
     this.COMPLEXITY_THRESHOLD = 0.4;  // below this → use fast model
   }
 
-  configure(config) { this.config = config; }
+  configure(config) {
+    this.config = config;
+    this._sessionProviderDemotions = {};
+    window._hexProviderSessionDemotions = {};
+  }
 
   // ── System prompt ─────────────────────────────────────────
   _systemPrompt(state, lang) {
-    return window.buildHexSystemPrompt(state, lang, window._lastUserMsg || '');
+    const builder = this._shouldUseCompactPrompt()
+      ? (window.buildHexCompactSystemPrompt || window.buildHexSystemPrompt)
+      : window.buildHexSystemPrompt;
+    return builder(state, lang, window._lastUserMsg || '');
   }
 
   _trim() {
@@ -57,7 +65,7 @@ class HexAI {
         // Update working memory mood immediately (before LLM call)
         window.hexMemory.working.mood = window.hexMemory._detectMood(userMsg);
       }
-      this.history = window.hexMemory.getRecentHistory(20);
+      this.history = window.hexMemory.getRecentHistory(40);
       messageHistory = persistUser
         ? this.history
         : this.history.concat({ role: 'user', content: userMsg });
@@ -111,18 +119,26 @@ class HexAI {
       // Smart fallback: if the user's chosen provider has no live key AND isn't local (ollama),
       // auto-route to the first provider in the cascade that HAS keys.
       const providerQueue = [];
+      const skippedSessionProviders = [];
 
       // Check if user's selected provider has a live key or is local
       const selectedHasKey = routeProvider === 'ollama' || (liveKeys[routeProvider] && liveKeys[routeProvider].length > 0);
 
-      if (selectedHasKey) {
+      if (selectedHasKey && !this._isSessionDemoted(routeProvider)) {
         providerQueue.push(routeProvider);
+      } else if (selectedHasKey && this._isSessionDemoted(routeProvider)) {
+        skippedSessionProviders.push(this._getSessionDemotionSummary(routeProvider));
+        window.hexTaskBus?.push(`Skipping ${routeProvider}: session-demoted (${this._getSessionDemotionReason(routeProvider)})`);
       } else if (routeProvider !== 'none') {
         window.hexTaskBus?.push(`No key for ${routeProvider}. Smart fallback activating...`);
       }
 
       // Build the backup pipeline by picking the highest priority providers that HAVE known valid keys
       for (const pri of PRIORITY) {
+        if (this._isSessionDemoted(pri)) {
+          skippedSessionProviders.push(this._getSessionDemotionSummary(pri));
+          continue;
+        }
         if (!providerQueue.includes(pri) && liveKeys[pri] && liveKeys[pri].length > 0) {
           providerQueue.push(pri);
         }
@@ -130,14 +146,21 @@ class HexAI {
 
       // If queue is completely empty, still try ollama as last resort
       if (providerQueue.length === 0) {
-        providerQueue.push(routeProvider !== 'none' ? routeProvider : 'ollama');
+        const emergencyProvider = routeProvider !== 'none' ? routeProvider : 'ollama';
+        providerQueue.push(emergencyProvider);
+        if (this._isSessionDemoted(emergencyProvider)) {
+          window.hexTaskBus?.push(`No healthy providers left. Re-testing session-demoted ${emergencyProvider} as emergency fallback.`);
+        }
       }
 
       let success = false;
       let lastErr = null;
-      let allErrors = [];
+      const allErrors = [];
+      const providerSummaries = [];
+      const permanentProviderFailures = new Set();
 
       for (const currProvider of providerQueue) {
+        if (permanentProviderFailures.has(currProvider)) continue;
         // Build an array of keys to test for this provider
         let keysToTry = [];
         if (currProvider === 'ollama') {
@@ -151,6 +174,8 @@ class HexAI {
         }
 
         // Exhaust every key before giving up on the provider
+        const providerFailures = [];
+        let providerSucceeded = false;
         for (let i = 0; i < keysToTry.length; i++) {
           const testKey = keysToTry[i];
           try {
@@ -196,22 +221,44 @@ class HexAI {
 
             if (text && typeof text === 'string') {
               success = true;
+              providerSucceeded = true;
               break; // Break inner key loop!
             }
           } catch (err) {
             lastErr = err;
-            allErrors.push(`[${currProvider.toUpperCase()}] ${err.message}`);
-            console.warn(`Softcurse LLM: ${currProvider} [Key ${i + 1}] failed:`, err.message);
+            const summary = this._classifyProviderError(currProvider, err);
+            providerFailures.push(summary);
+            allErrors.push(`[${currProvider.toUpperCase()}] ${summary.raw}`);
+            console.warn(`Softcurse LLM: ${currProvider} [Key ${i + 1}] failed:`, summary.raw);
+            if (summary.skipRemainingKeys) {
+              permanentProviderFailures.add(currProvider);
+              if (summary.demoteForSession) {
+                this._rememberProviderDemotion(currProvider, summary);
+              }
+              break;
+            }
           }
         } // end key loop
 
+        if (!providerSucceeded && providerFailures.length > 0) {
+          providerSummaries.push(this._summarizeProviderFailures(currProvider, providerFailures));
+        } else if (providerSucceeded) {
+          this._clearProviderDemotion(currProvider);
+        }
         if (success) break; // Break outer provider loop!
       }
 
       if (!success) {
-        let msg = 'All available LLM auto-fallback providers failed. Full trace:\n' + allErrors.join('\n');
+        const mergedSummaries = this._mergeProviderSummaries(providerSummaries, skippedSessionProviders);
+        window._hexLastProviderFailures = mergedSummaries;
+        const compact = mergedSummaries.length > 0
+          ? mergedSummaries.map((item) => `- ${item.label}: ${item.reason}`).join('\n')
+          : allErrors.join('\n');
+        let msg = 'All available LLM auto-fallback providers failed.\n\nProvider status:\n' + compact;
         throw new Error(msg);
       }
+
+      window._hexLastProviderFailures = [];
 
       // Guard: some providers return null content
       if (!text || typeof text !== 'string') text = '…';
@@ -235,7 +282,7 @@ class HexAI {
         window.hexTaskBus?.push('Extracting facts from response...');
         window.hexMemory.extractFromExchange(userMsg || '', text || '');
       }
-      this.history = window.hexMemory.getRecentHistory(20);
+      this.history = window.hexMemory.getRecentHistory(40);
     } else {
       if (persistAssistant) {
         this.history.push({ role: 'assistant', content: text });
@@ -507,22 +554,21 @@ class HexAI {
   // ── Helpers ───────────────────────────────────────────────
   _msgs() {
     const source = this._transientMessages || this.history;
-    const raw = source.map(m => ({ role: m.role, content: m.content }));
+    const historyWindow = this._historyWindowForCurrentModel();
+    const raw = source.slice(-historyWindow).map(m => ({ role: m.role, content: m.content }));
 
-    // ── Memory Reminder Injection ──────────────────────────────
-    // Small models (Llama 3.1 8B) suffer from "lost in the middle" —
-    // they ignore facts buried deep in the system prompt. Injecting a
-    // compact memory summary as a system message right before the user's
-    // latest message ensures it lands in the model's attention window.
     const reminderParts = [this._buildMemoryReminder(), this._buildContinuityReminder()].filter(Boolean);
     const reminder = reminderParts.join('\n\n');
     if (reminder) {
-      // Insert right before the last user message
-      const lastUserIdx = raw.length - 1;
-      if (lastUserIdx >= 0 && raw[lastUserIdx].role === 'user') {
-        raw.splice(lastUserIdx, 0, { role: 'system', content: reminder });
+      const lastUserIdx = [...raw].reverse().findIndex((m) => m.role === 'user');
+      if (lastUserIdx !== -1) {
+        const idx = raw.length - 1 - lastUserIdx;
+        raw[idx] = {
+          ...raw[idx],
+          content: `[SESSION MEMORY]\n${reminder}\n\n[CURRENT USER MESSAGE]\n${raw[idx].content}`
+        };
       } else {
-        raw.push({ role: 'system', content: reminder });
+        raw.push({ role: 'user', content: `[SESSION MEMORY]\n${reminder}` });
       }
     }
 
@@ -544,7 +590,7 @@ class HexAI {
     // Pick the top facts by tier (protected first) and confidence
     const top = active
       .sort((a, b) => (a.tier - b.tier) || (b.confidence - a.confidence))
-      .slice(0, 15)
+      .slice(0, this._shouldUseCompactPrompt() ? 8 : 12)
       .map(n => '• ' + n.content);
 
     if (!top.length) return null;
@@ -592,12 +638,24 @@ class HexAI {
     }
     if (recentTurns.length > 0) {
       lines.push('Recent turns:');
-      recentTurns.slice(-3).forEach((turn) => {
+      recentTurns.slice(-(this._shouldUseCompactPrompt() ? 4 : 3)).forEach((turn) => {
         lines.push('- ' + turn.role.toUpperCase() + ': ' + String(turn.content || '').substring(0, 140));
       });
     }
 
     return lines.join('\n');
+  }
+
+  _shouldUseCompactPrompt() {
+    const provider = this.config?.llm?.provider || 'none';
+    const model = String(this.config?.llm?.model || '').toLowerCase();
+    return provider === 'ollama' ||
+      provider === 'hf' ||
+      /(7b|8b|mini|small|instant|haiku|flash-lite|command-r)/i.test(model);
+  }
+
+  _historyWindowForCurrentModel() {
+    return this._shouldUseCompactPrompt() ? 14 : 24;
   }
 
   _parseActions(text) {
@@ -800,6 +858,97 @@ class HexAI {
     if (/\b(then|after that|also|and then|next|finally|first|second)\b/i.test(m)) score += 0.15;
 
     return Math.min(1, score);
+  }
+
+  _classifyProviderError(provider, err) {
+    const raw = String(err?.message || err || 'Unknown error');
+    const lower = raw.toLowerCase();
+
+    if (provider === 'anthropic' && /401|invalid x-api-key|authentication/i.test(lower)) {
+      return { raw, reason: 'invalid API key', skipRemainingKeys: true, demoteForSession: true, kind: 'invalid_key' };
+    }
+    if (provider === 'openai' && /401|incorrect api key|invalid api key/i.test(lower)) {
+      return { raw, reason: 'invalid API key', skipRemainingKeys: true, demoteForSession: true, kind: 'invalid_key' };
+    }
+    if (provider === 'mistral' && /401|unauthorized|forbidden/i.test(lower)) {
+      return { raw, reason: 'invalid or unauthorized API key', skipRemainingKeys: true, demoteForSession: true, kind: 'invalid_key' };
+    }
+    if (provider === 'grok' && /403|no credits|licenses/i.test(lower)) {
+      return { raw, reason: 'account has no credits or license', skipRemainingKeys: true, demoteForSession: true, kind: 'billing' };
+    }
+    if (provider === 'gemini' && /403|api has not been used|disabled|blocked/i.test(lower)) {
+      return { raw, reason: 'API disabled or blocked in Google project', skipRemainingKeys: true, demoteForSession: true, kind: 'api_disabled' };
+    }
+    if (provider === 'cohere' && /404|removed|model/i.test(lower)) {
+      return { raw, reason: 'configured model is unavailable', skipRemainingKeys: true, demoteForSession: true, kind: 'model_removed' };
+    }
+    if (provider === 'hf' && /failed to fetch|fetch/i.test(lower)) {
+      return { raw, reason: 'network or provider fetch failure', skipRemainingKeys: true, demoteForSession: false, kind: 'network' };
+    }
+    if (/429|rate limit|too many requests/i.test(lower)) {
+      return { raw, reason: 'rate limited', skipRemainingKeys: true, demoteForSession: false, kind: 'rate_limit' };
+    }
+
+    return { raw, reason: raw, skipRemainingKeys: false, demoteForSession: false, kind: 'unknown' };
+  }
+
+  _summarizeProviderFailures(provider, failures) {
+    const first = failures[0] || { reason: 'unknown failure' };
+    return {
+      provider,
+      label: provider.toUpperCase(),
+      reason: first.reason,
+      attempts: failures.length
+    };
+  }
+
+  _rememberProviderDemotion(provider, summary) {
+    this._sessionProviderDemotions[provider] = {
+      provider,
+      label: provider.toUpperCase(),
+      reason: summary.reason,
+      kind: summary.kind,
+      timestamp: Date.now()
+    };
+    window._hexProviderSessionDemotions = { ...this._sessionProviderDemotions };
+  }
+
+  _clearProviderDemotion(provider) {
+    if (!this._sessionProviderDemotions[provider]) return;
+    delete this._sessionProviderDemotions[provider];
+    window._hexProviderSessionDemotions = { ...this._sessionProviderDemotions };
+  }
+
+  _isSessionDemoted(provider) {
+    return !!this._sessionProviderDemotions[provider];
+  }
+
+  _getSessionDemotionReason(provider) {
+    return this._sessionProviderDemotions[provider]?.reason || 'session-demoted';
+  }
+
+  _getSessionDemotionSummary(provider) {
+    const item = this._sessionProviderDemotions[provider];
+    if (!item) return null;
+    return {
+      provider,
+      label: item.label,
+      reason: `${item.reason} (skipped in this session)`,
+      attempts: 0
+    };
+  }
+
+  _mergeProviderSummaries(runtimeSummaries, skippedSummaries) {
+    const merged = [];
+    const seen = new Set();
+
+    [...runtimeSummaries, ...skippedSummaries].forEach((item) => {
+      if (!item || seen.has(item.provider)) return;
+      seen.add(item.provider);
+      merged.push(item);
+    });
+
+    return merged;
   }
 }
 

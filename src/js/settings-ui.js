@@ -15,6 +15,50 @@ function appendText(parent, text) {
   parent.appendChild(document.createTextNode(text));
 }
 
+function renderProviderFailurePanel() {
+  const panel = document.getElementById('provider-failure-panel');
+  const summaryEl = document.getElementById('provider-failure-summary');
+  const listEl = document.getElementById('provider-failure-list');
+  if (!panel || !summaryEl || !listEl) return;
+
+  const failures = Array.isArray(window._hexLastProviderFailures) ? window._hexLastProviderFailures : [];
+  clearNode(listEl);
+
+  if (!failures.length) {
+    panel.style.display = 'none';
+    summaryEl.textContent = '';
+    return;
+  }
+
+  summaryEl.textContent = 'Last fallback run failed after checking these providers:';
+  failures.forEach((failure) => {
+    const row = window.hexRenderUtils.createEl('div');
+    row.style.display = 'flex';
+    row.style.justifyContent = 'space-between';
+    row.style.gap = '10px';
+    row.style.padding = '6px 8px';
+    row.style.border = '1px solid rgba(255,255,255,0.06)';
+    row.style.background = 'rgba(0,0,0,0.16)';
+
+    const provider = window.hexRenderUtils.createEl('strong', {
+      text: failure.label || String(failure.provider || 'UNKNOWN').toUpperCase()
+    });
+    provider.style.color = 'var(--orange)';
+
+    const reason = window.hexRenderUtils.createEl('span', {
+      text: failure.reason || 'unknown failure'
+    });
+    reason.style.color = 'var(--text)';
+    reason.style.textAlign = 'right';
+
+    row.appendChild(provider);
+    row.appendChild(reason);
+    listEl.appendChild(row);
+  });
+
+  panel.style.display = 'block';
+}
+
 function createTextOption(value, label) {
   return window.hexRenderUtils.createEl('option', { attrs: { value }, text: label });
 }
@@ -265,6 +309,15 @@ async function openSettings(targetTab = 'tab-general') {
   refreshVoiceStatus();
   document.getElementById('cfg-username').value = cfg.userName || '';
   document.getElementById('cfg-language').value = cfg.language || 'ka';
+  document.getElementById('cfg-cloud-enabled').value = String(cfg.cloud?.enabled === true);
+  document.getElementById('cfg-cloud-url').value = cfg.cloud?.serverUrl || '';
+  document.getElementById('cfg-cloud-token').value = cfg.cloud?.accessToken || '';
+  const cloudStatus = document.getElementById('cfg-cloud-status');
+  if (cloudStatus) {
+    cloudStatus.textContent = cfg.cloud?.profileId
+      ? `Profile: ${cfg.cloud.profileId}${cfg.cloud.sessionId ? ` | Session: ${cfg.cloud.sessionId}` : ''}`
+      : 'No cloud profile resolved yet.';
+  }
   // -- API KEY MIGRATION & INIT --
   if (!cfg.llm) cfg.llm = {};
   if (!cfg.llm.apiKeys) {
@@ -360,6 +413,7 @@ async function openSettings(targetTab = 'tab-general') {
   }
   updateTtsEngineUI();
   updateProviderUI();
+  renderProviderFailurePanel();
   // Start on the requested tab
   switchSettingsTab(targetTab);
   // Auto-show voice status info when general is loaded (shows in voice tab when switched)
@@ -370,6 +424,53 @@ async function openSettings(targetTab = 'tab-general') {
   // Auto-sync provider dropdown to best available from live pool
   autoSyncProvider();
   document.getElementById('settings-overlay').classList.add('open');
+}
+
+async function testCloudConnection() {
+  const enabled = document.getElementById('cfg-cloud-enabled')?.value === 'true';
+  const statusEl = document.getElementById('cfg-cloud-status');
+  if (!statusEl) return;
+
+  if (!enabled) {
+    statusEl.textContent = 'Cloud continuity is disabled.';
+    statusEl.style.color = 'var(--muted)';
+    return;
+  }
+
+  const draftConfig = {
+    ...config,
+    cloud: {
+      ...(config.cloud || {}),
+      enabled,
+      serverUrl: (document.getElementById('cfg-cloud-url')?.value || '').trim(),
+      accessToken: (document.getElementById('cfg-cloud-token')?.value || '').trim(),
+    }
+  };
+
+  const prevConfig = config;
+  config = draftConfig;
+  window._hexConfig = draftConfig;
+  await window.hexAPI.setConfig(draftConfig);
+
+  statusEl.textContent = 'Checking cloud server...';
+  statusEl.style.color = 'var(--accent)';
+
+  try {
+    const health = await window.hexAPI.cloud.health();
+    if (!health?.success) throw new Error(health?.error || 'Health check failed');
+    statusEl.textContent = `Online: ${health.service || 'hex-server'} | version ${health.version || 'dev'}`;
+    statusEl.style.color = 'var(--green)';
+  } catch (error) {
+    statusEl.textContent = 'Cloud check failed: ' + error.message;
+    statusEl.style.color = 'var(--orange)';
+  } finally {
+    config = draftConfig;
+    window._hexConfig = draftConfig;
+    if (prevConfig !== draftConfig) {
+      // Keep the draft values because the user explicitly tested them.
+      await window.hexAPI.setConfig(draftConfig);
+    }
+  }
 }
 
 function populateVoiceSelect(selectedName) {
@@ -500,6 +601,7 @@ async function fetchAvailableModels() {
   if (provider === 'none') {
     statusEl.textContent = 'Select a provider first.';
     statusEl.style.display = '';
+    renderProviderFailurePanel();
     return;
   }
 
@@ -517,13 +619,14 @@ async function fetchAvailableModels() {
         apiKey = res.keys[provider][0];
       }
     } catch (_) { }
-    if (!apiKey) {
-      statusEl.textContent = `⚠ No valid key for ${provider}. Waiting for background hunter...`;
-      statusEl.style.display = '';
-      btn.textContent = '⬇ FETCH';
-      btn.disabled = false;
-      return;
-    }
+      if (!apiKey) {
+        statusEl.textContent = `⚠ No valid key for ${provider}. Waiting for background hunter...`;
+        statusEl.style.display = '';
+        btn.textContent = '⬇ FETCH';
+        btn.disabled = false;
+        renderProviderFailurePanel();
+        return;
+      }
   }
 
   try {
@@ -533,6 +636,7 @@ async function fetchAvailableModels() {
     statusEl.textContent = '⚠ ' + (err?.message || String(err));
     statusEl.style.display = '';
   } finally {
+    renderProviderFailurePanel();
     btn.textContent = '⬇ FETCH';
     btn.disabled = false;
   }
@@ -678,6 +782,12 @@ async function saveSettings() {
       ...config.system,
       autostart: document.getElementById('cfg-autostart')?.value === 'true',
       minimizeToTray: document.getElementById('cfg-minimize-tray')?.value === 'true'
+    },
+    cloud: {
+      ...(config.cloud || {}),
+      enabled: document.getElementById('cfg-cloud-enabled')?.value === 'true',
+      serverUrl: (document.getElementById('cfg-cloud-url')?.value || '').trim(),
+      accessToken: (document.getElementById('cfg-cloud-token')?.value || '').trim() || config.cloud?.accessToken || '',
     },
     sleepTimeoutMin: parseInt(document.getElementById('cfg-sleep-timeout')?.value) || 0,
   };
@@ -902,3 +1012,5 @@ async function autoSyncProvider() {
 window.hexAPI.on('ai:live-keys-updated', (keys) => {
   renderLiveArsenal(keys);
 });
+
+document.getElementById('cfg-cloud-test')?.addEventListener('click', testCloudConnection);

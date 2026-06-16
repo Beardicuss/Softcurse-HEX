@@ -49,10 +49,12 @@ class HexMemory {
     this._lastReflection = null;  // cooldown timestamp
     this.onLog = null;
 
-    // ── Suppress mechanism (session-scoped) ──────────────────────────────
+    // ── Prompt shaping (session-scoped) ──────────────────────────────────
     this._sessionMentions = new Map();  // nodeId → mention count this session
-    this.SUPPRESS_THRESHOLD = 3;        // hide from prompt after N mentions
-    this.SUPPRESS_WINDOW_MS = 5 * 60 * 60 * 1000;  // 5h window
+    this.SUPPRESS_THRESHOLD = 9999;     // continuity > anti-repeat for assistant memory
+    this.SUPPRESS_WINDOW_MS = 5 * 60 * 60 * 1000;
+    this.MAX_CONTEXT_FACTS = 24;
+    this.MAX_CONTEXT_CHARS = 3200;
 
     // ── Content hash index (fast dedup) ──────────────────────────────────
     this._contentHashes = new Map();  // hash → nodeId (built on load)
@@ -890,9 +892,11 @@ Rules:
   // ════════════════════════════════════════════════════════════════════════════════
   //  HYBRID RETRIEVAL — relevance-scored context injection
   // ════════════════════════════════════════════════════════════════════════════════
-  getContext(currentMessage) {
+  getContext(currentMessage, options = {}) {
     const parts = [];
     const activeNodes = this.nodes.filter(n => n.status === 'active');
+    const maxFacts = options.maxFacts || this.MAX_CONTEXT_FACTS;
+    const maxChars = options.maxChars || this.MAX_CONTEXT_CHARS;
 
     // 1. Working memory — highest priority, always injected
     const wm = this.working;
@@ -912,20 +916,17 @@ Rules:
       const scored = activeNodes.map(n => ({
         node: n,
         score: this._relevanceScore(n, currentMessage || '')
-      })).sort((a, b) => b.score - a.score).slice(0, 24);
+      })).sort((a, b) => b.score - a.score).slice(0, maxFacts);
 
-      // ── Suppress filter: hide facts mentioned too many times this session ──
-      const unsuppressed = scored.filter(({ node }) => {
+      // Track mentions for telemetry only. Do not hide relevant facts mid-session.
+      scored.forEach(({ node }) => {
         const mentions = this._sessionMentions.get(node.id) || 0;
-        if (mentions >= this.SUPPRESS_THRESHOLD) return false;
-        // Track this mention
         this._sessionMentions.set(node.id, mentions + 1);
-        return true;
       });
 
       // Group by type
       const groups = {};
-      for (const { node } of unsuppressed) {
+      for (const { node } of scored) {
         const t = node.type || 'general';
         if (!groups[t]) groups[t] = [];
         const conf = node.confidence;
@@ -976,7 +977,21 @@ Rules:
       parts.push('[CONVERSATION SUMMARY]\n' + this.summary);
     }
 
-    return parts.join('\n\n');
+    const joined = parts.join('\n\n');
+    return joined.length > maxChars ? joined.substring(0, maxChars) : joined;
+  }
+
+  getConversationDigest(n = 8, maxChars = 900) {
+    const turns = this.history.slice(-Math.max(2, n));
+    if (!turns.length) return '';
+
+    const lines = turns.map((turn) => {
+      const label = turn.role === 'assistant' ? 'HEX' : 'USER';
+      return label + ': ' + String(turn.content || '').replace(/\s+/g, ' ').trim().substring(0, 180);
+    });
+
+    const digest = lines.join('\n');
+    return digest.length > maxChars ? digest.substring(digest.length - maxChars) : digest;
   }
 
   _relevanceScore(node, message) {
@@ -1025,6 +1040,7 @@ Rules:
     if (this.history.length > this.MAX_HISTORY_KEEP * 2) {
       this.history = this.history.slice(-this.MAX_HISTORY_KEEP);
     }
+    this.summary = this.getConversationDigest(10, 1200);
     this._scheduleSave();
   }
 

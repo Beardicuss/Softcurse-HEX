@@ -89,6 +89,52 @@
     </div>
   </div>
 
+  <div id="welcome-overlay" style="display:none;position:fixed;inset:0;z-index:99998;background:rgba(3,7,12,0.96);align-items:center;justify-content:center;padding:24px;">
+    <div id="welcome-modal" style="width:min(900px,100%);max-height:90vh;overflow:auto;border:1px solid var(--accent);background:linear-gradient(180deg,var(--surface2),var(--surface));box-shadow:var(--glow);padding:24px;">
+      <div class="settings-section-label">◆ FIRST LINK</div>
+      <h2 style="margin:0 0 10px;font-family:var(--font-d);letter-spacing:0.08em;">WELCOME / REGISTER</h2>
+      <p class="form-hint" style="margin-bottom:18px;">This runs once on a new installation. HEX will create your profile and bind this device for continuity.</p>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;">
+        <div class="form-group">
+          <label class="form-label">NAME *</label>
+          <input id="welcome-name" class="form-control" type="text" placeholder="DanTe">
+        </div>
+        <div class="form-group">
+          <label class="form-label">AGE *</label>
+          <input id="welcome-age" class="form-control" type="number" min="1" max="120" placeholder="24">
+        </div>
+        <div class="form-group">
+          <label class="form-label">COUNTRY *</label>
+          <input id="welcome-country" class="form-control" type="text" placeholder="Georgia">
+        </div>
+        <div class="form-group">
+          <label class="form-label">REGION *</label>
+          <input id="welcome-region" class="form-control" type="text" placeholder="Tbilisi">
+        </div>
+        <div class="form-group">
+          <label class="form-label">CITY / TOWN / VILLAGE *</label>
+          <input id="welcome-city" class="form-control" type="text" placeholder="Tbilisi">
+        </div>
+        <div class="form-group">
+          <label class="form-label">OCCUPATION</label>
+          <input id="welcome-occupation" class="form-control" type="text" placeholder="Developer, designer, student...">
+        </div>
+        <div class="form-group" style="grid-column:1 / -1;">
+          <label class="form-label">INTERESTS</label>
+          <input id="welcome-interests" class="form-control" type="text" placeholder="Games, coding, music, cars...">
+        </div>
+        <div class="form-group" style="grid-column:1 / -1;">
+          <label class="form-label">ABOUT YOU</label>
+          <textarea id="welcome-bio" class="form-control" rows="4" placeholder="Anything you want HEX to know about you."></textarea>
+        </div>
+      </div>
+      <div id="welcome-status" class="form-hint" style="min-height:18px;margin-top:12px;">Awaiting registration data.</div>
+      <div style="display:flex;justify-content:flex-end;margin-top:18px;">
+        <button id="welcome-submit" class="btn btn-primary">CREATE PROFILE</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Settings Modal ───────────────────────────────── -->
   <div id="settings-overlay">
     <div id="settings-modal">
@@ -118,6 +164,28 @@
             <option value="en">English</option>
             <option value="ru">Русский (Russian)</option>
           </select>
+        </div>
+
+        <div class="settings-section-label">◆ CLOUD CONTINUITY</div>
+        <div class="form-group">
+          <label class="form-label">CLOUD SESSION SYNC</label>
+          <select id="cfg-cloud-enabled" class="form-control">
+            <option value="false">Disabled</option>
+            <option value="true">Enabled</option>
+          </select>
+          <span class="form-hint">Keeps profile and live conversation/session continuity synced to your HEX server.</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">SERVER URL</label>
+          <input type="text" id="cfg-cloud-url" class="form-control" placeholder="https://hex-server.your-domain.workers.dev">
+        </div>
+        <div class="form-group">
+          <label class="form-label">ACCESS TOKEN (optional)</label>
+          <input type="password" id="cfg-cloud-token" class="form-control" placeholder="Bearer token if you protect the server later">
+        </div>
+        <div class="form-group">
+          <button type="button" id="cfg-cloud-test" class="btn btn-secondary">TEST CONNECTION</button>
+          <div id="cfg-cloud-status" class="form-hint" style="margin-top:6px;"></div>
         </div>
 
         <div class="settings-section-label">◆ BROWSER</div>
@@ -219,13 +287,21 @@
               style="flex-shrink:0;padding:0 10px;height:36px;background:var(--surface2);border:1px solid var(--accent);color:var(--accent);cursor:pointer;font-size:13px;letter-spacing:.05em;white-space:nowrap;">
               ⬇ FETCH
             </button>
+            </div>
+            <div id="model-hint" class="form-hint"></div>
+            <div id="model-fetch-status" class="form-hint" style="color:var(--accent);display:none;"></div>
+            <div id="provider-failure-panel"
+              style="display:none;margin-top:8px;border:1px solid rgba(255,140,0,0.45);background:rgba(255,140,0,0.08);padding:10px 12px;border-radius:3px;">
+              <div style="color:var(--orange);font-family:var(--font-d);font-size:12px;letter-spacing:0.08em;margin-bottom:6px;">
+                ◆ PROVIDER DIAGNOSTICS
+              </div>
+              <div id="provider-failure-summary" class="form-hint" style="color:var(--text);margin-bottom:6px;"></div>
+              <div id="provider-failure-list" style="display:grid;gap:6px;"></div>
+            </div>
+            <div id="model-picker"
+              style="display:none;max-height:180px;overflow-y:auto;border:1px solid var(--accent);background:var(--surface2);margin-top:4px;border-radius:3px;">
+            </div>
           </div>
-          <div id="model-hint" class="form-hint"></div>
-          <div id="model-fetch-status" class="form-hint" style="color:var(--accent);display:none;"></div>
-          <div id="model-picker"
-            style="display:none;max-height:180px;overflow-y:auto;border:1px solid var(--accent);background:var(--surface2);margin-top:4px;border-radius:3px;">
-          </div>
-        </div>
 
         <!-- ── LIVE CAPABILITIES POOL ─────────────────────────── -->
         <div class="settings-section-label" style="margin-top:14px;">◆ LIVE CAPABILITIES POOL (<span id="ai-pool-count"
@@ -1092,6 +1168,8 @@
   <script src="js/actions.js"></script>
   <script src="js/hex-brain.js"></script>
   <script src="js/sleep.js"></script>
+  <script src="js/onboarding.js"></script>
+  <script src="js/cloud-sync.js"></script>
   <script src="js/renderer.js"></script>
   <script src="js/event-wiring.js"></script>
   <!-- ── V3 Custom Cursor Tracking & Drag Hooks ──────────── -->

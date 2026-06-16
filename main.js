@@ -104,6 +104,11 @@ require('./src/main/ipc-config')({
   ipcMain, getConfig, setConfig, saveConfig, applySystemSettings, localVoice,
 });
 
+// ── Cloud continuity IPC ─────────────────────────────────────────────────────
+require('./src/main/ipc-cloud')({
+  ipcMain, getConfig, setConfig, saveConfig, sendLog,
+});
+
 // ── System IPC ────────────────────────────────────────────────────────────────
 const SAFE_COMMANDS = ['echo', 'date', 'hostname', 'whoami', 'uptime', 'df', 'free', 'top', 'ps'];
 require('./src/main/ipc-system')({

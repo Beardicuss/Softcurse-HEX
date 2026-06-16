@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HEX Server Core</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&family=Chakra+Petch:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="noise"></div>
+  <div class="glow glow-cyan"></div>
+  <div class="glow glow-red"></div>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">◆</div>
+      <div>
+        <div class="brand-title">HEX SERVER</div>
+        <div class="brand-sub">Cardinal-grade memory, identity, and session core</div>
+      </div>
+    </div>
+    <div class="status-pill" id="health-pill">BOOTING</div>
+  </header>
+
+  <section class="auth-shell" id="auth-shell">
+    <div class="auth-panel panel">
+      <div class="panel-kicker">SECURE LINK</div>
+      <h2>Authorize control-plane access.</h2>
+      <p>Server APIs are locked behind a HEX access token. Enter the token locally in this browser to load profiles, continuity, and memory.</p>
+      <form id="token-form" class="token-form">
+        <input id="token-input" type="password" placeholder="HEX server token">
+        <button type="submit" class="forge-btn">Unlock</button>
+      </form>
+      <div id="token-status" class="form-status">Waiting for authorization.</div>
+    </div>
+  </section>
+
+  <main class="layout">
+    <section class="hero panel">
+      <div class="panel-kicker">CONTROL PLANE</div>
+      <h1>Hybrid brain for HEX and Cardinal.</h1>
+      <p>
+        Keep desktop control local. Move profiles, memory, session continuity, and provider routing into a Cloudflare-hosted server core.
+      </p>
+      <div class="hero-grid">
+        <div class="hero-card">
+          <span class="hero-label">Profiles</span>
+          <strong>ID-based identity</strong>
+          <small>Name, language, persona, device links</small>
+        </div>
+        <div class="hero-card">
+          <span class="hero-label">Sessions</span>
+          <strong>Continuity</strong>
+          <small>Browser state, goal tracking, live follow-ups</small>
+        </div>
+        <div class="hero-card">
+          <span class="hero-label">Memory</span>
+          <strong>Long-term recall</strong>
+          <small>D1 + queue-based summarization pipeline</small>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel metrics-panel">
+      <div class="panel-kicker">BOOTSTRAP</div>
+      <div class="stack" id="bootstrap-box">
+        <div class="metric-row">
+          <span>Version</span>
+          <strong id="version-value">--</strong>
+        </div>
+        <div class="metric-row">
+          <span>Profiles</span>
+          <strong id="profiles-state">--</strong>
+        </div>
+        <div class="metric-row">
+          <span>Active sessions</span>
+          <strong id="sessions-state">--</strong>
+        </div>
+        <div class="metric-row">
+          <span>Messages</span>
+          <strong id="messages-state">--</strong>
+        </div>
+        <div class="metric-row">
+          <span>Memories</span>
+          <strong id="memory-state">--</strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel wide">
+      <div class="panel-kicker">ARCHITECTURE</div>
+      <div class="route-grid">
+        <article class="route-card">
+          <h2>Local Client</h2>
+          <ul>
+            <li>Electron UI</li>
+            <li>Voice I/O</li>
+            <li>Desktop actions</li>
+            <li>Browser automation</li>
+          </ul>
+        </article>
+        <article class="route-card active">
+          <h2>Cloudflare Server Core</h2>
+          <ul>
+            <li>Profiles + IDs</li>
+            <li>Conversation history</li>
+            <li>Memory retrieval</li>
+            <li>Session continuity</li>
+          </ul>
+        </article>
+        <article class="route-card cardinal">
+          <h2>AI Routing Layer</h2>
+          <ul>
+            <li>AI Gateway</li>
+            <li>Fallback providers</li>
+            <li>Usage logging</li>
+            <li>Rate-limit control</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="panel wide">
+      <div class="panel-kicker">API PREVIEW</div>
+      <pre class="api-box"><code>GET  /api/health
+GET  /api/bootstrap
+GET  /api/profiles
+POST /api/profiles/resolve
+POST /api/profiles
+GET  /api/profiles/:id
+GET  /api/profiles/:id/continuity
+POST /api/sessions
+POST /api/sessions/:id/messages
+GET  /api/live-session/:profileId
+POST /api/live-session/:profileId</code></pre>
+    </section>
+
+    <section class="panel wide split-panel">
+      <div>
+        <div class="panel-kicker">PROFILE FORGE</div>
+        <form id="profile-create-form" class="create-form">
+          <label>
+            <span>Display Name</span>
+            <input id="profile-name" type="text" placeholder="DanTe">
+          </label>
+          <label>
+            <span>Language</span>
+            <select id="profile-language">
+              <option value="ka">Georgian</option>
+              <option value="ru">Russian</option>
+              <option value="en">English</option>
+            </select>
+          </label>
+          <label>
+            <span>Mode</span>
+            <select id="profile-mode">
+              <option value="hex">HEX</option>
+              <option value="cardinal">Cardinal</option>
+            </select>
+          </label>
+          <button type="submit" class="forge-btn">Resolve Profile</button>
+        </form>
+        <div id="profile-create-status" class="form-status">Ready.</div>
+        <div id="profiles-list" class="profiles-list"></div>
+      </div>
+
+      <div>
+        <div class="panel-kicker">LIVE CONTINUITY</div>
+        <div id="continuity-box" class="stack"></div>
+      </div>
+    </section>
+
+    <section class="panel wide">
+      <div class="panel-kicker">MEMORY FEED</div>
+      <div id="memory-box" class="memory-grid"></div>
+    </section>
+  </main>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

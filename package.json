@@ -8,7 +8,9 @@
     "start": "electron .",
     "build": "electron-builder",
     "rebuild": "node scripts/rebuild.js",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "electron-builder install-app-deps",
+    "cf:dev": "npx wrangler dev cloudflare/hex-server/src/index.js --config cloudflare/hex-server/wrangler.jsonc",
+    "cf:deploy": "npx wrangler deploy --config cloudflare/hex-server/wrangler.jsonc"
   },
   "dependencies": {
     "cheerio": "^1.2.0",

@@ -22,6 +22,7 @@
     bindSel('#face-lock-overlay .btn-secondary', 'click', () => {
         document.getElementById('lock-pin-area').style.display = 'flex';
     });
+    bindSel('#welcome-submit', 'click', () => window.hexOnboarding?.submit?.());
     bind('lock-pin', 'keydown', (e) => { if (e.key === 'Enter') attemptPinUnlock(); });
     // The "ENTER" button next to pin input — select by context
     document.querySelectorAll('#lock-pin-area .btn-secondary').forEach(btn => {

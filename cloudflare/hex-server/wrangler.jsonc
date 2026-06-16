@@ -1,0 +1,56 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hex-server",
+  "main": "src/index.js",
+  "compatibility_date": "2026-06-16",
+  "assets": {
+    "directory": "public",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "hex-server-db",
+      "database_id": "3c309a58-3e8e-471c-8dd4-29642ef74748"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "CACHE",
+      "id": "4d9a1c43246d4d92a209bb6dfdc8cdc3"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "hex-server-files"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "MEMORY_QUEUE",
+        "queue": "hex-memory-jobs"
+      }
+    ]
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "PROFILE_SESSIONS",
+        "class_name": "ProfileSession"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "ProfileSession"
+      ]
+    }
+  ],
+  "vars": {
+    "HEX_SERVER_VERSION": "0.1.0"
+  }
+}
