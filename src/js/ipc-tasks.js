@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 // == ipc-tasks.js == System Hardware & OS Tasks ==============================
 // Extracted from main.js
 
@@ -24,6 +24,30 @@ module.exports = function registerTasksIPC({ formatBytes, sendLog, safeSend }) {
       const cmd = process.platform === 'win32' ? `taskkill /PID ${pid} /F` : `kill -9 ${pid}`;
       exec(cmd, (err) => resolve({ success: !err, error: err?.message }));
     });
+  });
+
+  ipcMain.handle('system:kill-process-by-name', async (_, payload = {}) => {
+    const target = String(payload?.name || '').trim().toLowerCase();
+    if (!target) return { success: false, error: 'No process name provided.' };
+
+    const procs = await si.processes();
+    const matches = (procs.list || []).filter((proc) => String(proc.name || '').toLowerCase() === target);
+    if (!matches.length) {
+      return { success: false, error: `No running process found for ${payload?.name || target}` };
+    }
+
+    const results = await Promise.all(matches.map((proc) => new Promise((resolve) => {
+      const cmd = process.platform === 'win32' ? `taskkill /PID ${proc.pid} /F` : `kill -9 ${proc.pid}`;
+      exec(cmd, (err) => resolve({ pid: proc.pid, success: !err, error: err?.message || '' }));
+    })));
+
+    const succeeded = results.filter((item) => item.success);
+    return {
+      success: succeeded.length > 0,
+      killed: succeeded.length,
+      attempted: results.length,
+      error: succeeded.length > 0 ? '' : (results[0]?.error || 'Kill failed')
+    };
   });
 
   // ─── IPC: SYSTEM TASKS ───────────────────────────────────────────────────────
@@ -212,3 +236,4 @@ Write-Host "Task complete. You may review the output and safely close this windo
   }
 
 };
+

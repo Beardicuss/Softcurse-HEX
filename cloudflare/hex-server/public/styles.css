@@ -92,6 +92,14 @@ body {
   color: var(--cyan);
   box-shadow: var(--shadow-cyan);
   font-size: 20px;
+  overflow: hidden;
+}
+
+.brand-icon {
+  width: 42px;
+  height: 42px;
+  display: block;
+  object-fit: contain;
 }
 
 .brand-title {

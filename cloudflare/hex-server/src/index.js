@@ -1,3 +1,4 @@
+import { isHunterApiConfigured, fetchHunterAuditLogs, fetchHunterKeySummary, fetchHunterProviderStats, fetchHunterValidKeys } from './hunter-api';
 export class ProfileSession {
   constructor(state, env) {
     this.state = state;
@@ -56,6 +57,63 @@ async function handleApi(request, env, url) {
       version: env.HEX_SERVER_VERSION || 'dev',
       now: nowIso()
     });
+  }
+
+  if (url.pathname === '/api/hunter/status' && request.method === 'GET') {
+    return json({
+      success: true,
+      configured: isHunterApiConfigured(env),
+      source: 'remote-hunter-api'
+    });
+  }
+
+  if (url.pathname === '/api/hunter/provider-stats' && request.method === 'GET') {
+    if (!isHunterApiConfigured(env)) {
+      return json({ success: false, error: 'Hunter API is not configured' }, 503);
+    }
+    try {
+      const stats = await fetchHunterProviderStats(env);
+      return json({ success: true, stats });
+    } catch (error) {
+      return json({ success: false, error: error?.message || 'Failed to read hunter provider stats' }, 502);
+    }
+  }
+
+  if (url.pathname === '/api/hunter/audit' && request.method === 'GET') {
+    if (!isHunterApiConfigured(env)) {
+      return json({ success: false, error: 'Hunter API is not configured' }, 503);
+    }
+    try {
+      const limit = parseInt(url.searchParams.get('limit') || '20', 10) || 20;
+      const logs = await fetchHunterAuditLogs(env, limit);
+      return json({ success: true, logs });
+    } catch (error) {
+      return json({ success: false, error: error?.message || 'Failed to read hunter audit logs' }, 502);
+    }
+  }
+
+  if (url.pathname === '/api/hunter/key-summary' && request.method === 'GET') {
+    if (!isHunterApiConfigured(env)) {
+      return json({ success: false, error: 'Hunter API is not configured' }, 503);
+    }
+    try {
+      const summary = await fetchHunterKeySummary(env);
+      return json({ success: true, summary });
+    } catch (error) {
+      return json({ success: false, error: error?.message || 'Failed to read hunter key summary' }, 502);
+    }
+  }
+
+  if (url.pathname === '/api/hunter/valid-keys' && request.method === 'GET') {
+    if (!isHunterApiConfigured(env)) {
+      return json({ success: false, error: 'Hunter API is not configured' }, 503);
+    }
+    try {
+      const keys = await fetchHunterValidKeys(env);
+      return json({ success: true, keys });
+    } catch (error) {
+      return json({ success: false, error: error?.message || 'Failed to read hunter valid keys' }, 502);
+    }
   }
 
   if (url.pathname === '/api/bootstrap' && request.method === 'GET') {
@@ -181,7 +239,6 @@ async function handleApi(request, env, url) {
       sessions: sessions.results || []
     });
   }
-
   if (url.pathname === '/api/sessions' && request.method === 'POST') {
     const body = await readJson(request);
     const profileId = String(body.profileId || '').trim();
@@ -705,3 +762,4 @@ function isAuthorizedRequest(request, env, pathname) {
   const alt = (request.headers.get('x-hex-token') || '').trim();
   return bearer === expected || alt === expected;
 }
+

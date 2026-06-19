@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 // == settings-ui.js == System Settings UI ====================================
 // Extracted from renderer.js
 const DEFAULT_LOCAL_VOICE_OPTIONS = [
@@ -452,22 +452,49 @@ async function testCloudConnection() {
   window._hexConfig = draftConfig;
   await window.hexAPI.setConfig(draftConfig);
 
-  statusEl.textContent = 'Checking cloud server...';
+  statusEl.textContent = 'Checking cloud server and hunter bridge...';
   statusEl.style.color = 'var(--accent)';
 
   try {
     const health = await window.hexAPI.cloud.health();
     if (!health?.success) throw new Error(health?.error || 'Health check failed');
-    statusEl.textContent = `Online: ${health.service || 'hex-server'} | version ${health.version || 'dev'}`;
+
+    const hunterStatus = await window.hexAPI.cloud.hunterStatus();
+    if (!hunterStatus?.success) {
+      throw new Error(hunterStatus?.error || 'Hunter status check failed');
+    }
+
+    if (!hunterStatus.configured) {
+      statusEl.textContent = `Online: ${health.service || 'hex-server'} | Hunter bridge not configured yet.`;
+      statusEl.style.color = 'var(--orange)';
+      return;
+    }
+
+    const [providerStats, keySummary] = await Promise.all([
+      window.hexAPI.cloud.hunterProviderStats(),
+      window.hexAPI.cloud.hunterKeySummary()
+    ]);
+
+    if (!providerStats?.success) {
+      throw new Error(providerStats?.error || 'Hunter provider stats failed');
+    }
+    if (!keySummary?.success) {
+      throw new Error(keySummary?.error || 'Hunter key summary failed');
+    }
+
+    const providerCount = Array.isArray(providerStats.stats) ? providerStats.stats.length : 0;
+    const totalKeys = Number(keySummary.summary?.totals?.total_keys || 0);
+    const validKeys = Number(keySummary.summary?.totals?.valid_keys || 0);
+
+    statusEl.textContent = `Online: ${health.service || 'hex-server'} | Hunter bridge OK | Providers: ${providerCount} | Keys: ${validKeys}/${totalKeys} valid`;
     statusEl.style.color = 'var(--green)';
   } catch (error) {
-    statusEl.textContent = 'Cloud check failed: ' + error.message;
+    statusEl.textContent = 'Cloud/Hunter check failed: ' + error.message;
     statusEl.style.color = 'var(--orange)';
   } finally {
     config = draftConfig;
     window._hexConfig = draftConfig;
     if (prevConfig !== draftConfig) {
-      // Keep the draft values because the user explicitly tested them.
       await window.hexAPI.setConfig(draftConfig);
     }
   }
@@ -1014,3 +1041,4 @@ window.hexAPI.on('ai:live-keys-updated', (keys) => {
 });
 
 document.getElementById('cfg-cloud-test')?.addEventListener('click', testCloudConnection);
+

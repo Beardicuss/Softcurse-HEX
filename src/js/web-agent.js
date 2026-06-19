@@ -484,6 +484,74 @@ async function screenshotPage() {
   }
 }
 
+async function extractVisibleCandidates() {
+  const page = _ctrlPage;
+  if (!page || page.isClosed()) return { success: false, error: 'No active browser session.' };
+  try {
+    await page.waitForTimeout(600);
+    const results = await page.evaluate(() => {
+      const textOf = (el) => (el?.innerText || el?.textContent || '').replace(/\s+/g, ' ').trim();
+      const isVisible = (el) => {
+        if (!el) return false;
+        const style = window.getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        return style.visibility !== 'hidden' &&
+          style.display !== 'none' &&
+          rect.width > 0 &&
+          rect.height > 0;
+      };
+
+      const items = [];
+      const push = (entry) => {
+        if (!entry.text || entry.text.length < 2) return;
+        if (items.some((item) => item.text === entry.text && item.url === entry.url)) return;
+        items.push(entry);
+      };
+
+      const host = location.hostname.replace(/^www\./, '');
+
+      if (host.includes('youtube.com')) {
+        document.querySelectorAll('ytd-video-renderer a#video-title, a#video-title').forEach((el) => {
+          if (!isVisible(el)) return;
+          push({
+            text: textOf(el),
+            label: textOf(el),
+            url: el.href || null,
+            kind: 'video'
+          });
+        });
+      }
+
+      document.querySelectorAll('a[href], button, [role="button"]').forEach((el) => {
+        if (!isVisible(el)) return;
+        const text = textOf(el);
+        if (!text || text.length < 2) return;
+        push({
+          text,
+          label: text,
+          url: el.href || null,
+          kind: el.tagName.toLowerCase() === 'a' ? 'link' : 'button'
+        });
+      });
+
+      return items.slice(0, 16).map((item, index) => ({
+        index: index + 1,
+        ...item
+      }));
+    });
+
+    return {
+      success: true,
+      url: page.url(),
+      title: await page.title(),
+      candidates: results,
+      count: results.length
+    };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
 async function getSessionStatus() {
   const open = !!(_ctrlBrowser && _ctrlPage && !_ctrlPage.isClosed());
   return {
@@ -504,7 +572,7 @@ module.exports = {
   // Controlled visible
   navigateTo, smartSearch, typeText, clickElement,
   findAndClick, fillAndSubmit, goBack, goForward,
-  refreshPage, readCurrentPage, screenshotPage, getSessionStatus, closeControlled,
+  refreshPage, readCurrentPage, screenshotPage, extractVisibleCandidates, getSessionStatus, closeControlled,
   // Utilities
   closeBrowser, findBrowserPath,
 };

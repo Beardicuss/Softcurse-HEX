@@ -41,6 +41,7 @@ function encryptApiKeys(safeStorage, cfg) {
   }
   if (c.llm?.geminiVisionKey) c.llm.geminiVisionKey = encryptKey(safeStorage, c.llm.geminiVisionKey);
   if (c.voice?.gcloudTtsKey)  c.voice.gcloudTtsKey  = encryptKey(safeStorage, c.voice.gcloudTtsKey);
+  if (c.cloud?.accessToken)   c.cloud.accessToken   = encryptKey(safeStorage, c.cloud.accessToken);
   return c;
 }
 
@@ -54,6 +55,7 @@ function decryptApiKeys(safeStorage, cfg) {
   }
   if (c.llm?.geminiVisionKey) c.llm.geminiVisionKey = decryptKey(safeStorage, c.llm.geminiVisionKey);
   if (c.voice?.gcloudTtsKey)  c.voice.gcloudTtsKey  = decryptKey(safeStorage, c.voice.gcloudTtsKey);
+  if (c.cloud?.accessToken)   c.cloud.accessToken   = decryptKey(safeStorage, c.cloud.accessToken);
   return c;
 }
 
@@ -99,7 +101,8 @@ function loadConfig(safeStorage, app, configPath) {
 
       const hasPlainKeys =
         (raw.llm?.apiKey && !raw.llm.apiKey.startsWith(ENC_PREFIX)) ||
-        (raw.llm?.apiKeys && Object.values(raw.llm.apiKeys).some(v => v && !v.startsWith(ENC_PREFIX)));
+        (raw.llm?.apiKeys && Object.values(raw.llm.apiKeys).some(v => v && !v.startsWith(ENC_PREFIX))) ||
+        (raw.cloud?.accessToken && !raw.cloud.accessToken.startsWith(ENC_PREFIX));
 
       if ((hasPlainKeys && safeStorage.isEncryptionAvailable()) || hasConfigChange) {
         fs.writeFileSync(configPath, JSON.stringify(encryptApiKeys(safeStorage, raw), null, 2));

@@ -22,6 +22,7 @@ module.exports = function createBrowserBridge(ipcRenderer) {
       refresh: () => ipcRenderer.invoke('web:refresh'),
       readPage: () => ipcRenderer.invoke('web:read-page'),
       screenshot: () => ipcRenderer.invoke('web:screenshot'),
+      extractCandidates: () => ipcRenderer.invoke('web:extract-candidates'),
       status: () => ipcRenderer.invoke('web:session-status'),
       close: () => ipcRenderer.invoke('web:close-browser'),
     },

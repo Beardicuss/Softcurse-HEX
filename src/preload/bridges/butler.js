@@ -25,8 +25,14 @@ module.exports = function createButlerBridge(ipcRenderer) {
       listDir: (dirPath) => ipcRenderer.invoke('butler:list-dir', { dirPath }),
       fileInfo: (filePath) => ipcRenderer.invoke('butler:file-info', { filePath }),
 
-      listProcesses: () => ipcRenderer.invoke('butler:list-processes'),
-      killByName: (name) => ipcRenderer.invoke('butler:kill-by-name', { name }),
+      listProcesses: async () => {
+        const processes = await ipcRenderer.invoke('system:get-processes');
+        return { success: true, processes: Array.isArray(processes) ? processes : [] };
+      },
+      killByName: async (name) => {
+        const result = await ipcRenderer.invoke('system:kill-process-by-name', { name });
+        return result && typeof result === 'object' ? result : { success: false, error: 'Kill failed.' };
+      },
       sysInfo: () => ipcRenderer.invoke('butler:sys-info'),
       battery: () => ipcRenderer.invoke('butler:battery'),
       diskUsage: (drivePath) => ipcRenderer.invoke('butler:disk-usage', { drivePath }),
@@ -106,3 +112,5 @@ module.exports = function createButlerBridge(ipcRenderer) {
     },
   };
 };
+
+

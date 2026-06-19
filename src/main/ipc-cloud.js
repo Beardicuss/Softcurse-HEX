@@ -30,7 +30,10 @@ module.exports = function registerCloudIPC({
       'Content-Type': 'application/json',
       'Accept': 'application/json'
     };
-    if (cloud.accessToken) headers.Authorization = `Bearer ${cloud.accessToken}`;
+    if (cloud.accessToken) {
+      headers.Authorization = `Bearer ${cloud.accessToken}`;
+      headers['x-hex-token'] = cloud.accessToken;
+    }
     return headers;
   }
 
@@ -43,6 +46,19 @@ module.exports = function registerCloudIPC({
       saveConfig(cfg);
     }
     return cfg.cloud.deviceId;
+  }
+
+  function explainCloudError(response, payload) {
+    if (payload?.error) {
+      if (response?.status === 401) {
+        return `Unauthorized: check cloud access token (HEX_API_TOKEN). Remote said: ${payload.error}`;
+      }
+      return payload.error;
+    }
+    if (response?.status === 401) {
+      return 'Unauthorized: cloud access token is missing or invalid.';
+    }
+    return `${response.status} ${response.statusText}`;
   }
 
   async function request(pathname, options = {}) {
@@ -65,7 +81,7 @@ module.exports = function registerCloudIPC({
     } catch (_) {}
 
     if (!response.ok || payload.success === false) {
-      throw new Error(payload.error || `${response.status} ${response.statusText}`);
+      throw new Error(explainCloudError(response, payload));
     }
     return payload;
   }
@@ -78,6 +94,7 @@ module.exports = function registerCloudIPC({
       profileId: cloud.profileId || '',
       sessionId: cloud.sessionId || '',
       deviceId: cloud.deviceId || '',
+      hasAccessToken: !!cloud.accessToken,
       ready: !!(cloud.enabled && cloud.serverUrl && cloud.profileId)
     };
   });
@@ -95,6 +112,33 @@ module.exports = function registerCloudIPC({
     try {
       const result = await request('/api/bootstrap');
       return { success: true, ...result };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('cloud:hunter-status', async () => {
+    try {
+      const result = await request('/api/hunter/status');
+      return { success: true, ...result };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('cloud:hunter-provider-stats', async () => {
+    try {
+      const result = await request('/api/hunter/provider-stats');
+      return { success: true, stats: result.stats || [] };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('cloud:hunter-key-summary', async () => {
+    try {
+      const result = await request('/api/hunter/key-summary');
+      return { success: true, summary: result.summary || {} };
     } catch (error) {
       return { success: false, error: error.message };
     }

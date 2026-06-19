@@ -99,6 +99,12 @@ module.exports = function registerBrowserIPC({
     catch (e) { return { success: false, error: e.message }; }
   });
 
+  ipcMain.handle('web:extract-candidates', async () => {
+    sendLog('WEB', 'Extracting visible browser candidates', 'info');
+    try { return await webAgent.extractVisibleCandidates(); }
+    catch (e) { return { success: false, error: e.message }; }
+  });
+
   ipcMain.handle('web:close-browser', async () => {
     try { await webAgent.closeControlled(); return { success: true }; }
     catch (e) { return { success: false, error: e.message }; }

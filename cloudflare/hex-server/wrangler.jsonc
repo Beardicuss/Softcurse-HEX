@@ -51,6 +51,7 @@
     }
   ],
   "vars": {
-    "HEX_SERVER_VERSION": "0.1.0"
+    "HEX_SERVER_VERSION": "0.1.0",
+    "HUNTER_API_BASE_URL": "https://your-hunter-server.example.workers.dev"
   }
 }

@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 // ── HexAI: LLM conversation engine ───────────────────────────────────────────
 // Providers: Ollama · OpenAI · Anthropic · Google Gemini · Grok (xAI)
 //            OpenRouter · Mistral · Cohere · Together AI · Groq
@@ -11,6 +11,7 @@ class HexAI {
     this._lastSystemState = null;
     this._sessionProviderDemotions = {};
     this.MAX_HISTORY = 20;
+    this.REQUEST_TIMEOUT_MS = 20000;
     // Complexity-aware routing: fast models for simple queries
     this.FAST_MODELS = {
       ollama: 'qwen2.5:7b',  // default local model (overridden by user config)
@@ -110,7 +111,12 @@ class HexAI {
 
       // ── Multi-Provider Auto Fallback Queue (PHASE 13) ───────────────
       // Fetch the LIVE valid keys mapped by the background hunter script
-      const liveKeysFallbackRes = await window.hexAPI.getLiveKeys();
+      const liveKeysFallbackRes = await Promise.race([
+        window.hexAPI.getLiveKeys(),
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Live key lookup timeout after 5s')), 5000);
+        })
+      ]);
       const liveKeys = liveKeysFallbackRes.success ? liveKeysFallbackRes.keys : {};
 
       // Strict cascade order per Phase 13 requirements:
@@ -309,7 +315,7 @@ class HexAI {
       return part;
     });
 
-    const res = await fetch(baseUrl + '/api/chat', {
+    const res = await this._fetchWithTimeout(baseUrl + '/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -325,7 +331,7 @@ class HexAI {
 
   // ── OpenAI ────────────────────────────────────────────────
   async _openai(system) {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const res = await this._fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.config.llm.apiKey },
       body: JSON.stringify({
@@ -340,7 +346,7 @@ class HexAI {
 
   // ── Anthropic ─────────────────────────────────────────────
   async _anthropic(system) {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await this._fetchWithTimeout('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -388,12 +394,12 @@ class HexAI {
       body: JSON.stringify({ contents, generationConfig: { maxOutputTokens: this._maxTokens || 800, temperature: 0.75 } })
     };
 
-    let res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, payload);
+    let res = await this._fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, payload);
     if (!res.ok) {
       let e = await this._safeJson(res).catch(() => ({}));
       if ((res.status === 404 || res.status === 429 || res.status === 400) && model !== 'gemini-2.5-flash') {
         window.hexTaskBus?.push(`Gemini ${res.status} on ${model}. Rerouting to gemini-2.5-flash...`);
-        res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, payload);
+        res = await this._fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, payload);
         if (!res.ok) e = await this._safeJson(res).catch(() => ({}));
       }
       if (!res.ok) throw new Error(`Gemini ${res.status}: ${e.error?.message || e.error?.status || JSON.stringify(e.error) || res.statusText}`);
@@ -407,7 +413,7 @@ class HexAI {
   async _grok(system) {
     const rawModel = this.config.llm.model || '';
     const model = (rawModel && rawModel !== 'grok') ? rawModel : 'grok-3-mini';
-    const res = await fetch('https://api.x.ai/v1/chat/completions', {
+    const res = await this._fetchWithTimeout('https://api.x.ai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.config.llm.apiKey },
       body: JSON.stringify({
@@ -425,7 +431,7 @@ class HexAI {
     const rawModel = this.config.llm.model || '';
     // If model has no slash (not a real openrouter model id), use a known free default
     const model = rawModel.includes('/') ? rawModel : 'meta-llama/llama-3.1-8b-instruct:free';
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const res = await this._fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -445,7 +451,7 @@ class HexAI {
 
   // ── Mistral ───────────────────────────────────────────────
   async _mistral(system) {
-    const res = await fetch('https://api.mistral.ai/v1/chat/completions', {
+    const res = await this._fetchWithTimeout('https://api.mistral.ai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.config.llm.apiKey },
       body: JSON.stringify({
@@ -460,7 +466,7 @@ class HexAI {
 
   // ── Groq (ultra-fast inference) ───────────────────────────
   async _groq(system) {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    const res = await this._fetchWithTimeout('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.config.llm.apiKey },
       body: JSON.stringify({
@@ -475,7 +481,7 @@ class HexAI {
 
   // ── Together AI ────────────────────────────────────────────
   async _together(system) {
-    const res = await fetch('https://api.together.xyz/v1/chat/completions', {
+    const res = await this._fetchWithTimeout('https://api.together.xyz/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.config.llm.apiKey },
       body: JSON.stringify({
@@ -496,7 +502,7 @@ class HexAI {
       chatHistory.push({ role: hist[i].role === 'user' ? 'USER' : 'CHATBOT', message: hist[i].content });
     }
     const lastMsg = hist.length ? hist[hist.length - 1].content : '';
-    const res = await fetch('https://api.cohere.com/v1/chat', {
+    const res = await this._fetchWithTimeout('https://api.cohere.com/v1/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.config.llm.apiKey },
       body: JSON.stringify({
@@ -512,7 +518,7 @@ class HexAI {
   // ── Hugging Face ──────────────────────────────────────────
   async _hf(system) {
     const defaultModel = 'mistralai/Mixtral-8x7B-Instruct-v0.1'; // HF free inference api default
-    const res = await fetch(`https://api-inference.huggingface.co/models/${this.config.llm.model || defaultModel}`, {
+    const res = await this._fetchWithTimeout(`https://api-inference.huggingface.co/models/${this.config.llm.model || defaultModel}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.config.llm.apiKey },
       body: JSON.stringify({
@@ -549,7 +555,22 @@ class HexAI {
       // Return a mocked error object with the first 200 chars of the HTML payload
       return { error: { message: text.substring(0, 200) + '... (Invalid JSON)' } };
     }
+  }  async _fetchWithTimeout(url, options = {}, timeoutMs = this.REQUEST_TIMEOUT_MS) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        throw new Error(`Request timeout after ${Math.round(timeoutMs / 1000)}s`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
   }
+
+
 
   // ── Helpers ───────────────────────────────────────────────
   _msgs() {
@@ -609,6 +630,7 @@ class HexAI {
     const state = this._lastSystemState || {};
     const session = state.sessionContext || {};
     const browser = state.browserSession || {};
+    const desktop = state.desktopContext || {};
     const recentTurns = Array.isArray(state.recentTurns) ? state.recentTurns : [];
     const lines = [];
 
@@ -617,7 +639,14 @@ class HexAI {
       session.lastActionSummary ||
       session.lastSystemDataSummary ||
       session.lastUserWasFollowUp ||
-      browser.open
+      browser.open ||
+      (desktop.recent && desktop.recent.length) ||
+      (desktop.windowCandidates && desktop.windowCandidates.length) ||
+      (desktop.processCandidates && desktop.processCandidates.length) ||
+      (desktop.appCandidates && desktop.appCandidates.length) ||
+      (desktop.fileCandidates && desktop.fileCandidates.length) ||
+      (desktop.gameCandidates && desktop.gameCandidates.length) ||
+      (desktop.promotedRecent && desktop.promotedRecent.length)
     );
     if (!hasContext) return null;
 
@@ -635,6 +664,16 @@ class HexAI {
       lines.push('Prefer controlled browser actions like [ACTION:web_find_click:VISIBLE TEXT], [ACTION:web_read], [ACTION:web_back], or [ACTION:web_refresh] instead of opening a new site.');
     } else {
       lines.push('Active browser session: CLOSED');
+    }
+    if (desktop.recentSummary && desktop.recentSummary !== 'none') lines.push('Recent desktop target: ' + desktop.recentSummary);
+    if (desktop.windowCandidates?.length) lines.push('Open windows in focus context: ' + desktop.windowCandidates.join(' | '));
+    if (desktop.processCandidates?.length) lines.push('Process context: ' + desktop.processCandidates.join(' | '));
+    if (desktop.appCandidates?.length) lines.push('App context: ' + desktop.appCandidates.join(' | '));
+    if (desktop.fileCandidates?.length) lines.push('File context: ' + desktop.fileCandidates.join(' | '));
+    if (desktop.gameCandidates?.length) lines.push('Game context: ' + desktop.gameCandidates.join(' | '));
+    if (desktop.promotedRecent?.length) lines.push('Promoted desktop targets: ' + desktop.promotedRecent.join(' | '));
+    if (desktop.recentSummary && desktop.recentSummary !== 'none') {
+      lines.push('If the user says open it, close that, launch the second one, focus that window, or kill that process, resolve it against this desktop context before treating it as a new request.');
     }
     if (recentTurns.length > 0) {
       lines.push('Recent turns:');
@@ -953,3 +992,5 @@ class HexAI {
 }
 
 window.hexAI = new HexAI();
+
+

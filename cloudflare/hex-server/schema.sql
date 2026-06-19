@@ -107,3 +107,4 @@ CREATE TABLE IF NOT EXISTS personas (
 
 CREATE INDEX IF NOT EXISTS idx_personas_profile_active
 ON personas(profile_id, is_active DESC, updated_at DESC);
+

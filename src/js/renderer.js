@@ -1,189 +1,21 @@
-﻿'use strict';
+'use strict';
 // ════════════════════════════════════════════════════════════════════════════════
 //  Softcurse H.E.X. — Renderer Logic
 // ════════════════════════════════════════════════════════════════════════════════
 // ── State ─────────────────────────────────────────────────────
 let config = null;
 let sysStats = { cpu: 0, ram: 0, disk: 0 };
+window.sysStats = sysStats;
 let taskState = {}; // taskId → { status, startTime }
 let prevAlerts = {}; // prevent duplicate proactive alerts
 let currentMode = 'hex'; // 'hex' or 'cardinal'
-window.hexSessionContext = {
-  primaryGoal: '',
-  lastUserMessage: '',
-  lastAssistantMessage: '',
-  lastUserWasFollowUp: false,
-  lastActionTypes: [],
-  lastActionSummary: '',
-  lastSystemDataSummary: '',
-  activeSurface: 'chat',
-  lastTouchedAt: null
-};
-
-function getLocalizedUserName(name = config?.userName) {
-  return window.i18n?.getLocalizedUserName
-    ? window.i18n.getLocalizedUserName(name || 'Operator')
-    : (name || 'Operator');
-}
-
-function getLocalizedUnitName(mode = currentMode, style = 'short') {
-  if (window.i18n?.getAssistantName) {
-    return window.i18n.getAssistantName(mode, style);
-  }
-  if (mode === 'cardinal') return 'CARDINAL';
-  return style === 'display' ? 'H.E.X.' : 'HEX';
-}
+window.currentMode = currentMode;
 
 function refreshIdentityUI() {
   const label = document.getElementById('mode-label');
-  if (label) label.textContent = getLocalizedUnitName(currentMode, 'short');
-  document.title = 'Softcurse ' + getLocalizedUnitName(currentMode, 'display');
+  if (label) label.textContent = window.getLocalizedUnitName(currentMode, 'short');
+  document.title = 'Softcurse ' + window.getLocalizedUnitName(currentMode, 'display');
   buildModeLogo(currentMode);
-}
-
-function isLikelyFollowUpMessage(text) {
-  const raw = (text || '').trim();
-  if (!raw) return false;
-  const lower = raw.toLowerCase();
-  const words = lower.split(/\s+/).filter(Boolean);
-
-  if (/^(and|also|then|now|again|next|continue|go on|keep going)\b/.test(lower)) return true;
-  if (/^(open|play|click|read|scroll|focus|select|choose|use|try)\s+(it|that|this|them|those|these|one|ones|first|second|third|fourth|fifth|last|next|previous)\b/.test(lower)) return true;
-  if (/^(open|play|click|read)\s+(the\s+)?(first|second|third|fourth|fifth|last|next)\b/.test(lower)) return true;
-  if (/^(go back|back|forward|refresh|reload|scroll down|scroll up|read the page|close it|click it|open it|play it)$/.test(lower)) return true;
-  if (words.length <= 6 && /\b(it|that|this|them|those|these|one|ones|first|second|third|fourth|fifth|last|next|previous|same|there)\b/.test(lower)) return true;
-  return false;
-}
-
-function extractSessionEntities(text) {
-  const source = String(text || '');
-  const entities = [];
-  const seen = new Set();
-
-  const pushEntity = (value) => {
-    const clean = String(value || '').trim();
-    if (!clean) return;
-    const key = clean.toLowerCase();
-    if (seen.has(key)) return;
-    seen.add(key);
-    entities.push(clean);
-  };
-
-  (source.match(/https?:\/\/[^\s]+/gi) || []).forEach(pushEntity);
-  (source.match(/"([^"]+)"/g) || []).forEach((value) => pushEntity(value.slice(1, -1)));
-  (source.match(/\b[A-Z][a-z0-9_-]{2,}\b/g) || []).forEach(pushEntity);
-
-  if (entities.length === 0) {
-    const stop = new Set(['open', 'play', 'click', 'read', 'show', 'the', 'this', 'that', 'with', 'from', 'into', 'then', 'also', 'please']);
-    source.toLowerCase().split(/[^a-z0-9]+/).forEach((word) => {
-      if (word.length >= 4 && !stop.has(word)) pushEntity(word);
-    });
-  }
-
-  return entities.slice(0, 8);
-}
-
-function summarizeActionPlan(actions) {
-  if (!Array.isArray(actions) || actions.length === 0) return '';
-  return actions.map((action) => {
-    const argText = Array.isArray(action.args) && action.args.length > 0
-      ? ':' + action.args.join(':')
-      : '';
-    return action.type + argText;
-  }).join(' | ').substring(0, 400);
-}
-
-function updateSessionContextForUser(text, browserStatus) {
-  const ctx = window.hexSessionContext;
-  const followUp = isLikelyFollowUpMessage(text) && (!!ctx.primaryGoal || !!browserStatus?.open);
-  const baseGoal = followUp && ctx.primaryGoal ? ctx.primaryGoal : text;
-
-  ctx.lastUserMessage = text;
-  ctx.lastUserWasFollowUp = followUp;
-  ctx.lastTouchedAt = Date.now();
-  ctx.activeSurface = browserStatus?.open ? 'browser' : 'chat';
-  if (!followUp || !ctx.primaryGoal) ctx.primaryGoal = text;
-
-  if (window.hexMemory) {
-    const taskLine = followUp && ctx.primaryGoal
-      ? `${ctx.primaryGoal} | follow-up: ${text}`
-      : text;
-    window.hexMemory.updateWorking({
-      currentTask: taskLine,
-      currentEntities: extractSessionEntities(browserStatus?.open
-        ? `${baseGoal} ${text} ${browserStatus.title || ''} ${browserStatus.url || ''}`
-        : `${baseGoal} ${text}`)
-    });
-  }
-}
-
-function updateSessionContextForAssistant(text, actions) {
-  const ctx = window.hexSessionContext;
-  ctx.lastAssistantMessage = String(text || '').substring(0, 400);
-  ctx.lastActionTypes = Array.isArray(actions) ? actions.map((action) => action.type) : [];
-  ctx.lastActionSummary = summarizeActionPlan(actions);
-  if (ctx.lastActionTypes.some((type) => type.startsWith('web_') || type.startsWith('browser_'))) {
-    ctx.activeSurface = 'browser';
-  }
-  ctx.lastTouchedAt = Date.now();
-}
-
-function updateSessionContextForSystemData(infoResults) {
-  const ctx = window.hexSessionContext;
-  ctx.lastSystemDataSummary = (infoResults || []).join('\n').substring(0, 700);
-  ctx.lastTouchedAt = Date.now();
-}
-
-async function getBrowserSessionState() {
-  try {
-    if (!window.hexAPI?.browser?.status) return { open: false, url: null, title: null };
-    const status = await window.hexAPI.browser.status();
-    return {
-      open: !!status?.open,
-      url: status?.url || null,
-      title: status?.title || null
-    };
-  } catch (_) {
-    return { open: false, url: null, title: null };
-  }
-}
-
-async function buildAIContextState(userText) {
-  const browserSession = await getBrowserSessionState();
-  updateSessionContextForUser(userText, browserSession);
-
-  const recentTurns = window.hexMemory
-    ? window.hexMemory.getRecentHistory(8)
-    : window.hexAI.history.slice(-8);
-  const working = window.hexMemory?.working || {};
-
-  return {
-    cpu: sysStats.cpu,
-    ram: sysStats.ram,
-    disk: sysStats.disk,
-    diskUsed: sysStats.diskUsed,
-    diskFree: sysStats.diskFree,
-    netRx: sysStats.netRx,
-    netTx: sysStats.netTx,
-    temp: sysStats.temp,
-    platform: navigator.platform,
-    uptime: document.getElementById('v-uptime')?.textContent,
-    userName: getLocalizedUserName(config.userName),
-    activeTask: getActiveTask(),
-    ttsEngine: config.voice?.ttsEngine || 'os',
-    aiProvider: config.llm?.provider || 'none',
-    browserSession,
-    sessionContext: { ...window.hexSessionContext },
-    workingMemory: {
-      currentTask: working.currentTask || null,
-      currentEntities: Array.isArray(working.currentEntities) ? [...working.currentEntities] : [],
-      mood: working.mood || 'neutral'
-    },
-    recentTurns: recentTurns.map((turn) => ({
-      role: turn.role || 'user',
-      content: String(turn.content || '').substring(0, 180)
-    }))
-  };
 }
 
 // ── Mode Switcher ─────────────────────────────────────────────
@@ -192,6 +24,7 @@ function switchMode(mode) {
   if (mode !== 'hex' && mode !== 'cardinal') return;
   if (mode === currentMode) return;
   currentMode = mode;
+  window.currentMode = currentMode;
 
   const body = document.body;
   const wakeInput = document.getElementById('cfg-wakeword');
@@ -260,7 +93,7 @@ function buildModeLogo(mode) {
 
   // Name text
   const name = document.createElement('span');
-  name.textContent = getLocalizedUnitName(mode, 'display');
+  name.textContent = window.getLocalizedUnitName(mode, 'display');
   name.style.cssText = 'letter-spacing:4px;';
   title.appendChild(name);
 
@@ -496,7 +329,7 @@ async function init() {
   }, 1000));
 
   // Greeting
-  const name = getLocalizedUserName(config.userName || 'Operator');
+  const name = window.getLocalizedUserName(config.userName || 'Operator');
   const greet = window.i18n.getRandomWelcomePhrase ? window.i18n.getRandomWelcomePhrase(name) : window.i18n.t('hex_greeting', { name });
   addHexMessage(greet);
   addLog('HEX', 'System initialized. All subsystems nominal.');
@@ -553,313 +386,11 @@ window.toggleVision = function () {
 };
 
 // ── SEND MESSAGE ──────────────────────────────────────────────
-async function sendMessage() {
-  if (config?.onboarding?.completed === false) {
-    window.hexOnboarding?.open?.();
-    showToast('◆ PROFILE REQUIRED', 'Complete first-run registration before chatting.', 'warn', 3000);
-    return;
-  }
-  const ta = document.getElementById('chat-input');
-  const text = ta.value.trim();
-  if (!text) return;
-  ta.value = ''; ta.style.height = '36px';
-
-  addUserMessage(text);
-  if (window.nsTrackCommand) window.nsTrackCommand();
-  if (window.hexSleep) window.hexSleep.resetIdle(); // Reset sleep timer on interaction
-  addLog('VOICE', `User: ${text}`);
-  window.hexAudio.play('action', 0.6);
-
-  const preflightBrowserState = await getBrowserSessionState();
-  updateSessionContextForUser(text, preflightBrowserState);
-
-  // Check for reminder intent first
-  const ri = window.reminders.parseReminderIntent(text);
-  if (ri.found) {
-    const r = await window.reminders.set(ri.label, ri.delayMs);
-    const minLeft = Math.round(ri.delayMs / 60000);
-    const msg = window.i18n.t('reminder_set', { label: ri.label, min: minLeft });
-    addHexMessage(msg);
-    addLog('HEX', `Reminder set: "${ri.label}" in ${minLeft} min`);
-    window.hexVoice.speak(msg);
-    return;
-  }
-
-  // ── Direct command shortcut — executes butler actions instantly without AI ──
-  // Handles unambiguous commands so they work even if the LLM forgets the tag
-  const directResult = await tryDirectCommand(text);
-  if (directResult.handled) return;
-
-  const systemState = await buildAIContextState(text);
-  await window.hexCloudSync?.ensureSession?.(systemState);
-  await window.hexCloudSync?.pushLiveSessionSnapshot?.(systemState, { force: true });
-  await window.hexCloudSync?.pushTurn?.('user', text, systemState, {
-    kind: 'chat',
-    followUp: systemState.sessionContext?.lastUserWasFollowUp === true
-  });
-
-  showTyping();
-  window.hexTaskBus?.push('Sending message to AI...');
-  window.hexAudio.play('processing', 0.5);
-
-  try {
-    let visionData = null;
-    const browserFollowUp = systemState.browserSession?.open && systemState.sessionContext?.lastUserWasFollowUp;
-    if (browserFollowUp && window.hexAPI?.browser?.screenshot) {
-      addLog('VISION', 'Capturing active browser session for follow-up reasoning...');
-      window.hexTaskBus?.push('Capturing browser session...');
-      const snap = await window.hexAPI.browser.screenshot().catch(() => null);
-      if (snap?.success && snap.image) {
-        visionData = snap.image;
-        window._webVisionData = snap.image;
-        window._webVisionMeta = {
-          url: snap.url || systemState.browserSession.url || null,
-          title: snap.title || systemState.browserSession.title || null,
-          capturedAt: Date.now(),
-          source: 'follow-up'
-        };
-      }
-    }
-    if (!visionData && browserFollowUp && window._webVisionData) {
-      visionData = window._webVisionData;
-    }
-    if (!visionData && window.visionEnabled && window.hexAPI && window.hexAPI.captureScreenBase64) {
-      addLog('SYS', 'Capturing visual sensor data...');
-      window.hexTaskBus?.push('Capturing screen...');
-      visionData = await window.hexAPI.captureScreenBase64();
-    }
-
-    const result = await window.hexAI.chat(text, systemState, config.language || 'en', visionData);
-    hideTyping();
-    window.hexAudio.stop('processing');
-    const hexText = result.text || '…';
-    updateSessionContextForAssistant(hexText, result.actions || []);
-    addHexMessage(hexText);
-    addLog('HEX', `→ ${String(hexText).substring(0, 100)}${hexText.length > 100 ? '…' : ''}`);
-    const postReplyState = await buildAIContextState(text);
-    await window.hexCloudSync?.pushLiveSessionSnapshot?.(postReplyState, { force: true });
-    await window.hexCloudSync?.pushTurn?.('assistant', hexText, postReplyState, {
-      kind: 'chat-response',
-      actionTypes: (result.actions || []).map((action) => action.type)
-    });
-
-    // Trigger asynchronous memory extraction (non-blocking)
-    if (window.hexMemory) {
-      window.hexMemory.extractFromExchange(text, hexText).catch(console.error);
-    }
-
-    // Speak response
-    if (config.voice?.enabled !== false) speakWithConfig(hexText);
-
-    // Execute actions — batch independent actions in parallel
-    const infoResults = [];
-    const SEQUENTIAL_ACTIONS = new Set(['shutdown', 'restart', 'logoff', 'lock_screen',
-      'web_navigate', 'web_search', 'web_click', 'web_find_click', 'web_type',
-      'web_back', 'web_forward', 'web_refresh', 'web_read', 'web_close', 'web_look']); // must run in order
-    const actions = result.actions || [];
-    const parallelBatch = [];
-    const sequentialQueue = [];
-    for (const action of actions) {
-      if (SEQUENTIAL_ACTIONS.has(action.type)) sequentialQueue.push(action);
-      else parallelBatch.push(action);
-    }
-
-    // ActionResult — inline because require() is unavailable in renderer
-    const ActionResult = class {
-      constructor({ success, action, data, durationMs }) {
-        this.success = success; this.action = action;
-        this.data = data; this.durationMs = durationMs;
-      }
-    };
-
-    // Fire parallel batch first
-    if (parallelBatch.length > 0) {
-      const batchStart = Date.now();
-      const promises = parallelBatch.map(async (action) => {
-        window.hexTaskBus?.push(`Executing: ${action.type} ${(action.args || []).join(' ')}`);
-        const start = Date.now();
-        const rawResult = await handleAIAction(action);
-        const actionResult = new ActionResult({
-          success: rawResult ? (rawResult.success !== false) : true,
-          action: action.type,
-          data: rawResult?.data || rawResult,
-          durationMs: Date.now() - start
-        });
-
-        if (actionResult && actionResult.data && typeof actionResult.data === 'string') {
-          infoResults.push('[' + action.type.toUpperCase() + ' RESULT]: ' + actionResult.data);
-        }
-        return actionResult;
-      });
-      await Promise.allSettled(promises);
-      const elapsed = Date.now() - batchStart;
-      if (parallelBatch.length > 1) addLog('HEX', `${parallelBatch.length} actions executed in parallel (${elapsed}ms)`);
-    }
-
-    // Then sequential actions
-    for (const action of sequentialQueue) {
-      window.hexTaskBus?.push(`Executing: ${action.type} ${(action.args || []).join(' ')}`);
-      const actionResult = await handleAIAction(action);
-      if (actionResult && actionResult.data) {
-        infoResults.push('[' + action.type.toUpperCase() + ' RESULT]: ' + actionResult.data);
-      }
-    }
-
-    // If we got real PC data back, do a follow-up AI call so HEX responds intelligently
-    // about the ACTUAL data instead of having it appear as a raw system message
-    if (infoResults.length > 0) {
-      updateSessionContextForSystemData(infoResults);
-      await window.hexCloudSync?.pushLiveSessionSnapshot?.(await buildAIContextState(text), { force: true });
-      showTyping();
-      window.hexTaskBus?.push('Processing system data with AI...');
-      try {
-        const followUp = await window.hexAI.chat(
-          'SYSTEM DATA (just retrieved from this PC — use this to answer the user):\n' + infoResults.join('\n'),
-          await buildAIContextState(text),
-          config.language || 'en',
-          window._webVisionData || null,
-          800,
-          { persistUser: false, persistAssistant: true, extractFacts: false }
-        );
-        hideTyping();
-        const followText = followUp.text || '';
-        if (followText && followText !== '…') {
-          updateSessionContextForAssistant(followText, followUp.actions || []);
-          addHexMessage(followText);
-          if (config.voice?.enabled !== false) speakWithConfig(followText);
-        }
-      } catch (_) { hideTyping(); }
-    }
-  } catch (e) {
-    hideTyping();
-    window.hexAudio.stop('processing');
-    const errMsg = `Neural link disrupted: ${e?.message || String(e)}`;
-    addHexMessage(errMsg);
-    addLog('ERROR', errMsg);
-  }
-}
-
-function getActiveTask() {
-  for (const [id, s] of Object.entries(taskState)) {
-    if (s.status === 'running') return id;
-  }
-  return null;
-}
+async function sendMessage() { return window.sendHexMessage(); }
 
 // handleAIAction() → moved to actions.js
 
-function handleInputKey(e) {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendMessage();
-  }
-}
-
-// ── TASKS ─────────────────────────────────────────────────────
-async function runTask(taskId) {
-  if (taskState[taskId]?.status === 'running') return;
-
-  const isBrowserCache = taskId === 'browser_cache';
-  taskState[taskId] = { status: 'running', startTime: Date.now() };
-  setTaskStatus(taskId, 'running');
-  addLog('SYSTEM', `Task started: ${taskId}`);
-
-  // Speak the start phrase if it exists
-  let startPhrase = window.i18n.t(`${taskId}_start_phrase`);
-  if (startPhrase && startPhrase !== `${taskId}_start_phrase`) {
-    if (typeof speakWithConfig === 'function') speakWithConfig(startPhrase);
-    addHexMessage(startPhrase);
-  }
-
-  try {
-    let result;
-    if (isBrowserCache) {
-      result = await window.hexAPI.clearBrowserCache();
-    } else if (taskId === 'hunter_scan') {
-      result = await window.hexAPI.runHunterNow();
-    } else {
-      result = await window.hexAPI.runTask(taskId);
-    }
-
-    const dur = ((Date.now() - taskState[taskId].startTime) / 1000).toFixed(1) + 's';
-    taskState[taskId] = { status: result.success ? 'success' : 'error', dur };
-    setTaskStatus(taskId, result.success ? 'success' : 'error', dur);
-
-    if (result.success) {
-      window.activityMonitor.recordTaskResult(taskId, result, dur);
-      updateHealthStats();
-      addLog('SYSTEM', `Task ${taskId} completed in ${dur}`);
-
-      const msg = `${taskId.replace(/_/g, ' ')} completed in ${dur}.` +
-        (result.freed ? ` Freed: ${result.freed}.` : '') +
-        (result.warning ? ` ⚠ ${result.warning}` : '');
-      addHexMessage(`**Task complete.** ${msg}`);
-
-      if (result.warning) showToast('◆ ADMIN REQUIRED', result.warning, 'warn', 8000);
-
-      // Speak completion phrase randomly
-      let endKey = taskId === 'defender_scan' ? 'scan_complete_clean_phrases' : 'task_complete_phrases';
-      let endArr = window.i18n.t(endKey);
-      if (Array.isArray(endArr) && endArr.length > 0) {
-        let p = endArr[Math.floor(Math.random() * endArr.length)];
-        if (typeof speakWithConfig === 'function') speakWithConfig(p);
-      }
-
-    } else {
-      addLog('ERROR', `Task ${taskId} failed: ${result.error || 'unknown'}`);
-
-      let errArr = window.i18n.t('task_error_phrases');
-      if (Array.isArray(errArr) && errArr.length > 0) {
-        let p = errArr[Math.floor(Math.random() * errArr.length)];
-        if (typeof speakWithConfig === 'function') speakWithConfig(p);
-        addHexMessage(`**Warning.** ${taskId.replace(/_/g, ' ')}: ${p}`);
-      } else {
-        addHexMessage(`**Warning.** ${taskId.replace(/_/g, ' ')} encountered an error. Check the terminal log.`);
-      }
-    }
-  } catch (e) {
-    taskState[taskId] = { status: 'error' };
-    setTaskStatus(taskId, 'error', '—');
-    addLog('ERROR', `Task ${taskId}: ${e?.message || String(e)}`);
-  }
-}
-
-function setTaskStatus(taskId, status, dur) {
-  const badge = document.getElementById(`badge-${taskId}`);
-  const prog = document.getElementById(`prog-${taskId}`);
-  const btn = document.getElementById(`btn-${taskId}`);
-  const lastEl = document.getElementById(`last-${taskId}`);
-  const durEl = document.getElementById(`dur-${taskId}`);
-
-  if (badge) {
-    badge.className = `status-badge ${status}`;
-    badge.textContent = window.i18n.t(status) || status.toUpperCase();
-  }
-
-  if (prog) {
-    if (status === 'running') {
-      prog.className = 'task-progress-bar indeterminate';
-    } else if (status === 'success') {
-      prog.className = 'task-progress-bar';
-      prog.style.width = '100%';
-      setTimeout(() => { if (prog) prog.style.width = '0%'; }, 2000);
-    } else {
-      prog.className = 'task-progress-bar';
-      prog.style.width = '0%';
-    }
-  }
-
-  if (btn) {
-    btn.disabled = status === 'running';
-    btn.classList.toggle('active', status === 'running');
-    btn.textContent = status === 'running' ? window.i18n.t('running') : window.i18n.t('run');
-  }
-
-  if (lastEl && status !== 'running') {
-    lastEl.textContent = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-  }
-  if (durEl && dur) durEl.textContent = dur;
-}
+function handleInputKey(e) { return window.handleInputKey(e); }
 
 // == 3D ORB & GLITCH EFFECTS ==
 // Extracted to orb.js

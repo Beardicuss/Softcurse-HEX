@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 // == commands.js == Direct Command Parser ====================================
 // Extracted from renderer.js
 //  DIRECT COMMAND PARSER
@@ -17,6 +17,50 @@ async function tryDirectCommand(text) {
     await handleAIAction({ type, args: args || [] });
     return { handled: true };
   };
+
+  const tryDesktopReference = async () => {
+    if (!window.hexReferenceResolver?.isDesktopReferenceCommand?.(raw)) return null;
+    const lower = raw.toLowerCase();
+    const preferredKind = /\b(process|task|service|pid)\b/.test(lower)
+      ? 'process'
+      : /\b(window|tab)\b/.test(lower)
+        ? 'window'
+        : /\b(game|steam|epic)\b/.test(lower)
+          ? 'game'
+          : /\b(app|program|software|browser)\b/.test(lower)
+            ? 'app'
+            : null;
+    const resolved = window.hexReferenceResolver.resolveDesktopReference(raw, preferredKind);
+    if (!resolved) return null;
+
+    const resolvedKind = resolved.kind || preferredKind || 'file';
+    if (resolvedKind === 'game') {
+      return do_('launch_game', [resolved.label], `Opening ${resolved.label}...`);
+    }
+    if (resolvedKind === 'app') {
+      return do_('open_app', [resolved.label], `Opening ${resolved.label}...`);
+    }
+    if (resolvedKind === 'window') {
+      const verb = /^(close)\b/i.test(raw) ? 'close' : 'focus';
+      const msg = verb === 'close' ? `Closing ${resolved.label}...` : `Focusing ${resolved.label}...`;
+      return do_('window', [verb, resolved.label], msg);
+    }
+    if (resolvedKind === 'process') {
+      return do_('kill_process', [resolved.label], `Terminating ${resolved.label}...`);
+    }
+
+    if (/^(show|reveal|locate)\b/i.test(raw)) {
+      const folderPath = String(resolved.path || '')
+        .substring(0, Math.max(String(resolved.path || '').lastIndexOf('\\'), String(resolved.path || '').lastIndexOf('/')));
+      if (folderPath) {
+        return do_('open_folder', [folderPath], `Opening folder for ${resolved.label}...`);
+      }
+    }
+    return do_('open_file', [resolved.path || resolved.value || resolved.label], `Opening ${resolved.label}...`);
+  };
+
+  const resolvedDesktopRef = await tryDesktopReference();
+  if (resolvedDesktopRef) return resolvedDesktopRef;
 
   // ── Learn ─────────────────────────────────────────────────────────────────
   // Syntax: "hex learn [topic]"  |  "learn [topic]"  |  "study [topic]"
@@ -163,3 +207,4 @@ async function tryDirectCommand(text) {
 
   return { handled: false };
 }
+
