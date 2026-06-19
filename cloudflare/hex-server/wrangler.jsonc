@@ -1,5 +1,5 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
+  "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "hex-server",
   "main": "src/index.js",
   "compatibility_date": "2026-06-16",
@@ -52,6 +52,8 @@
   ],
   "vars": {
     "HEX_SERVER_VERSION": "0.1.0",
-    "HUNTER_API_BASE_URL": "https://your-hunter-server.example.workers.dev"
+    "HUNTER_API_BASE_URL": "https://credential-hunter.pages.dev"
   }
 }
+
+
