@@ -33,29 +33,43 @@ function decryptKey(safeStorage, stored) {
 
 function encryptApiKeys(safeStorage, cfg) {
   const c = JSON.parse(JSON.stringify(cfg)); // deep clone
-  if (c.llm?.apiKey)         c.llm.apiKey         = encryptKey(safeStorage, c.llm.apiKey);
+  if (c.llm?.apiKey) c.llm.apiKey = encryptKey(safeStorage, c.llm.apiKey);
   if (c.llm?.apiKeys) {
     for (const [k, v] of Object.entries(c.llm.apiKeys)) {
       c.llm.apiKeys[k] = encryptKey(safeStorage, v);
     }
   }
+  if (c.llm?.manualApiKeys) {
+    for (const [k, values] of Object.entries(c.llm.manualApiKeys)) {
+      c.llm.manualApiKeys[k] = Array.isArray(values)
+        ? values.map((value) => encryptKey(safeStorage, value))
+        : [];
+    }
+  }
   if (c.llm?.geminiVisionKey) c.llm.geminiVisionKey = encryptKey(safeStorage, c.llm.geminiVisionKey);
-  if (c.voice?.gcloudTtsKey)  c.voice.gcloudTtsKey  = encryptKey(safeStorage, c.voice.gcloudTtsKey);
-  if (c.cloud?.accessToken)   c.cloud.accessToken   = encryptKey(safeStorage, c.cloud.accessToken);
+  if (c.voice?.gcloudTtsKey) c.voice.gcloudTtsKey = encryptKey(safeStorage, c.voice.gcloudTtsKey);
+  if (c.cloud?.accessToken) c.cloud.accessToken = encryptKey(safeStorage, c.cloud.accessToken);
   return c;
 }
 
 function decryptApiKeys(safeStorage, cfg) {
   const c = JSON.parse(JSON.stringify(cfg));
-  if (c.llm?.apiKey)         c.llm.apiKey         = decryptKey(safeStorage, c.llm.apiKey);
+  if (c.llm?.apiKey) c.llm.apiKey = decryptKey(safeStorage, c.llm.apiKey);
   if (c.llm?.apiKeys) {
     for (const [k, v] of Object.entries(c.llm.apiKeys)) {
       c.llm.apiKeys[k] = decryptKey(safeStorage, v);
     }
   }
+  if (c.llm?.manualApiKeys) {
+    for (const [k, values] of Object.entries(c.llm.manualApiKeys)) {
+      c.llm.manualApiKeys[k] = Array.isArray(values)
+        ? values.map((value) => decryptKey(safeStorage, value)).filter(Boolean)
+        : [];
+    }
+  }
   if (c.llm?.geminiVisionKey) c.llm.geminiVisionKey = decryptKey(safeStorage, c.llm.geminiVisionKey);
-  if (c.voice?.gcloudTtsKey)  c.voice.gcloudTtsKey  = decryptKey(safeStorage, c.voice.gcloudTtsKey);
-  if (c.cloud?.accessToken)   c.cloud.accessToken   = decryptKey(safeStorage, c.cloud.accessToken);
+  if (c.voice?.gcloudTtsKey) c.voice.gcloudTtsKey = decryptKey(safeStorage, c.voice.gcloudTtsKey);
+  if (c.cloud?.accessToken) c.cloud.accessToken = decryptKey(safeStorage, c.cloud.accessToken);
   return c;
 }
 
@@ -64,8 +78,8 @@ function decryptApiKeys(safeStorage, cfg) {
 // ---------------------------------------------------------------------------
 function defaultConfig() {
   return {
-    language:   'ka',
-    userName:   'Operator',
+    language: 'ka',
+    userName: 'Operator',
     onboarding: {
       completed: false,
       age: '',
@@ -76,11 +90,11 @@ function defaultConfig() {
       interests: '',
       occupation: ''
     },
-    llm:        { provider: 'ollama', model: 'qwen2.5:7b', apiKey: '', baseUrl: 'http://localhost:11434' },
-    voice:      { enabled: true, wakeWord: 'hey hex', volume: 0.9, rate: 0.95, pitch: 0.85, voiceName: '' },
+    llm: { provider: 'ollama', model: 'qwen2.5:7b', apiKey: '', baseUrl: 'http://localhost:11434', manualApiKeys: {} },
+    voice: { enabled: true, wakeWord: 'hey hex', volume: 0.9, rate: 0.95, pitch: 0.85, voiceName: '' },
     monitoring: { breaks: true, breakIntervalMin: 90, idleThresholdMin: 5, proactiveAdvice: true },
-    ui:         { theme: 'cyber', notifications: true },
-    cloud:      { enabled: false, serverUrl: '', accessToken: '', profileId: '', sessionId: '', deviceId: '' },
+    ui: { theme: 'cyber', notifications: true },
+    cloud: { enabled: false, serverUrl: '', accessToken: '', profileId: '', sessionId: '', deviceId: '' },
   };
 }
 
@@ -102,6 +116,7 @@ function loadConfig(safeStorage, app, configPath) {
       const hasPlainKeys =
         (raw.llm?.apiKey && !raw.llm.apiKey.startsWith(ENC_PREFIX)) ||
         (raw.llm?.apiKeys && Object.values(raw.llm.apiKeys).some(v => v && !v.startsWith(ENC_PREFIX))) ||
+        (raw.llm?.manualApiKeys && Object.values(raw.llm.manualApiKeys).some(values => Array.isArray(values) && values.some(v => v && !v.startsWith(ENC_PREFIX)))) ||
         (raw.cloud?.accessToken && !raw.cloud.accessToken.startsWith(ENC_PREFIX));
 
       if ((hasPlainKeys && safeStorage.isEncryptionAvailable()) || hasConfigChange) {

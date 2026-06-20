@@ -15,6 +15,123 @@ function appendText(parent, text) {
   parent.appendChild(document.createTextNode(text));
 }
 
+const LIVE_PROVIDER_PRIORITY = ['ollama', 'anthropic', 'openai', 'mistral', 'together', 'grok', 'gemini', 'cohere', 'hf', 'replicate', 'groq', 'openrouter'];
+const AUTO_MODEL_PROVIDERS = new Set(['anthropic', 'openai', 'mistral', 'together', 'grok', 'gemini', 'cohere', 'hf', 'replicate', 'groq', 'openrouter']);
+const LIVE_PROVIDER_LABELS = {
+  ollama: 'OLLAMA',
+  anthropic: 'ANTHROPIC',
+  openai: 'OPENAI',
+  mistral: 'MISTRAL',
+  together: 'TOGETHER AI',
+  grok: 'GROK (xAI)',
+  gemini: 'GEMINI',
+  cohere: 'COHERE',
+  hf: 'HUGGING FACE',
+  replicate: 'REPLICATE',
+  groq: 'GROQ',
+  openrouter: 'OPENROUTER',
+  none: 'OFFLINE'
+};
+
+const STALE_PROVIDER_MODELS = {
+  cohere: ['command-light'],
+  openai: ['gpt-4-turbo-preview'],
+};
+
+let _lastLiveKeysMap = {};
+let _lastManualKeysMap = {};
+
+function getProviderLabel(provider) {
+  return LIVE_PROVIDER_LABELS[provider] || String(provider || '').trim().toUpperCase();
+}
+
+function getPreferredProviderFromKeys(keysMap) {
+  return LIVE_PROVIDER_PRIORITY.find((provider) => provider !== 'ollama' && keysMap[provider] && keysMap[provider].length > 0) || 'ollama';
+}
+
+function getPreferredModelForProvider(provider) {
+  const models = Array.isArray(_allFetchedModels) ? _allFetchedModels : [];
+  const preferred = models.find((model) => model.free) || models[0];
+  if (preferred?.id) return preferred.id;
+  return window.hexAI?.FAST_MODELS?.[provider] || '';
+}
+
+function setModelSelectOptions(models = [], selectedValue = '') {
+  const modelSelect = document.getElementById('cfg-model');
+  if (!modelSelect) return;
+
+  const currentValue = String(selectedValue || modelSelect.value || '').trim();
+  clearNode(modelSelect);
+
+  const safeModels = Array.isArray(models) ? models.filter((model) => model?.id) : [];
+  if (safeModels.length === 0) {
+    modelSelect.appendChild(createTextOption('', 'No models detected yet'));
+    modelSelect.value = '';
+    return;
+  }
+
+  safeModels.forEach((model) => {
+    const option = document.createElement('option');
+    option.value = model.id;
+    option.textContent = model.free ? `${model.id}  FREE` : model.id;
+    modelSelect.appendChild(option);
+  });
+
+  const fallbackValue = safeModels.find((model) => model.id === currentValue)?.id
+    || getPreferredModelForProvider(document.getElementById('cfg-provider')?.value || '')
+    || safeModels[0]?.id
+    || '';
+  modelSelect.value = fallbackValue;
+}
+
+function isStaleProviderModel(provider, modelName) {
+  const model = String(modelName || '').trim().toLowerCase();
+  if (!model) return true;
+  return (STALE_PROVIDER_MODELS[provider] || []).some((item) => model.includes(item));
+}
+
+function maskApiKey(apiKey) {
+  const key = String(apiKey || '').trim();
+  if (!key) return 'empty';
+  if (key.length <= 10) return key;
+  return key.slice(0, 4) + '...' + key.slice(-4);
+}
+
+function ensureProviderOption(selectEl, provider) {
+  if (!selectEl || !provider) return;
+  const existing = [...selectEl.options].find((option) => option.value === provider);
+  const count = (_lastLiveKeysMap[provider] || []).length;
+  const label = provider === 'ollama'
+    ? '🖥 Ollama (Local / Free)'
+    : getProviderLabel(provider) + ' (' + count + ' key' + (count === 1 ? '' : 's') + ')';
+  if (existing) {
+    existing.textContent = label;
+    return;
+  }
+  const option = document.createElement('option');
+  option.value = provider;
+  option.textContent = label;
+  selectEl.appendChild(option);
+}
+
+function syncProviderOptions(keysMap = {}) {
+  const sel = document.getElementById('cfg-provider');
+  if (!sel) return;
+  ensureProviderOption(sel, 'none');
+  ensureProviderOption(sel, 'ollama');
+  for (const provider of LIVE_PROVIDER_PRIORITY) {
+    if (provider !== 'ollama' && keysMap[provider] && keysMap[provider].length > 0) ensureProviderOption(sel, provider);
+  }
+  for (const provider of Object.keys(keysMap)) ensureProviderOption(sel, provider);
+}
+
+function getSelectedProviderStatus(provider) {
+  if (provider === 'ollama') return 'Local provider is available.';
+  const count = (_lastLiveKeysMap[provider] || []).length;
+  if (count > 0) return count + ' live key' + (count === 1 ? '' : 's') + ' available for ' + getProviderLabel(provider) + '.';
+  return getProviderLabel(provider) + ' has no live keys yet. HEX will fall back automatically.';
+}
+
 function renderProviderFailurePanel() {
   const panel = document.getElementById('provider-failure-panel');
   const summaryEl = document.getElementById('provider-failure-summary');
@@ -305,19 +422,25 @@ async function downloadVoiceModels() {
 }
 
 async function openSettings(targetTab = 'tab-general') {
-  const cfg = config;
-  refreshVoiceStatus();
-  document.getElementById('cfg-username').value = cfg.userName || '';
-  document.getElementById('cfg-language').value = cfg.language || 'ka';
-  document.getElementById('cfg-cloud-enabled').value = String(cfg.cloud?.enabled === true);
-  document.getElementById('cfg-cloud-url').value = cfg.cloud?.serverUrl || '';
-  document.getElementById('cfg-cloud-token').value = cfg.cloud?.accessToken || '';
-  const cloudStatus = document.getElementById('cfg-cloud-status');
-  if (cloudStatus) {
-    cloudStatus.textContent = cfg.cloud?.profileId
-      ? `Profile: ${cfg.cloud.profileId}${cfg.cloud.sessionId ? ` | Session: ${cfg.cloud.sessionId}` : ''}`
-      : 'No cloud profile resolved yet.';
-  }
+  try {
+    const cfg = config || {};
+    refreshVoiceStatus();
+    const userNameEl = document.getElementById('cfg-username');
+    const languageEl = document.getElementById('cfg-language');
+    const cloudEnabledEl = document.getElementById('cfg-cloud-enabled');
+    const cloudUrlEl = document.getElementById('cfg-cloud-url');
+    const cloudTokenEl = document.getElementById('cfg-cloud-token');
+    if (userNameEl) userNameEl.value = cfg.userName || '';
+    if (languageEl) languageEl.value = cfg.language || 'ka';
+    if (cloudEnabledEl) cloudEnabledEl.value = String(cfg.cloud?.enabled === true);
+    if (cloudUrlEl) cloudUrlEl.value = cfg.cloud?.serverUrl || '';
+    if (cloudTokenEl) cloudTokenEl.value = cfg.cloud?.accessToken || '';
+    const cloudStatus = document.getElementById('cfg-cloud-status');
+    if (cloudStatus) {
+      cloudStatus.textContent = cfg.cloud?.profileId
+        ? `Profile: ${cfg.cloud.profileId}${cfg.cloud.sessionId ? ` | Session: ${cfg.cloud.sessionId}` : ''}`
+        : 'No cloud profile resolved yet.';
+    }
   // -- API KEY MIGRATION & INIT --
   if (!cfg.llm) cfg.llm = {};
   if (!cfg.llm.apiKeys) {
@@ -330,6 +453,7 @@ async function openSettings(targetTab = 'tab-general') {
 
   const p = cfg.llm.provider || 'none';
   window._currentProvider = p;
+  ensureProviderOption(document.getElementById('cfg-provider'), p);
   document.getElementById('cfg-provider').value = p;
   const autoEl = document.getElementById('cfg-autoollama');
   if (autoEl) autoEl.value = String(cfg.llm?.autoOllama === true);
@@ -353,8 +477,6 @@ async function openSettings(targetTab = 'tab-general') {
 
   document.getElementById('cfg-model').value = cfg.llm?.model || '';
   if (document.getElementById('cfg-visionkey')) document.getElementById('cfg-visionkey').value = cfg.llm?.visionApiKey || '';
-  if (document.getElementById('cfg-hunter-limit')) document.getElementById('cfg-hunter-limit').value = cfg.llm?.hunterLimitMinutes || 1440;
-
   // Voice rate/pitch sliders
   const rate = cfg.voice?.rate ?? 0.95;
   const pitch = cfg.voice?.pitch ?? 0.85;
@@ -420,11 +542,19 @@ async function openSettings(targetTab = 'tab-general') {
   // Pre-populate personality active display
   updatePersonaBadge();
   refreshPersonaList();
-  loadLiveArsenal(); // Phase 13: Fetch visual live keys immediately
-  // Auto-sync provider dropdown to best available from live pool
-  autoSyncProvider();
-  document.getElementById('settings-overlay').classList.add('open');
+  await loadLiveArsenal();
+  await autoSyncProvider();
+  if (AUTO_MODEL_PROVIDERS.has(document.getElementById('cfg-provider')?.value || '')) {
+    await fetchAvailableModels().catch(() => {});
+  }
+  document.getElementById('settings-overlay')?.classList.add('open');
+  } catch (error) {
+    console.error('openSettings failed:', error);
+    addLog?.('ERROR', 'Settings open failed: ' + (error?.message || String(error)));
+    showToast?.('◆ SETTINGS', 'Failed to open settings: ' + (error?.message || String(error)), 'alert', 4000);
+  }
 }
+window.openSettings = openSettings;
 
 async function testCloudConnection() {
   const enabled = document.getElementById('cfg-cloud-enabled')?.value === 'true';
@@ -603,16 +733,31 @@ function updateProviderUI() {
   const p = document.getElementById('cfg-provider').value;
 
   window._currentProvider = p;
-  const hints = PROVIDER_HINTS[p] || PROVIDER_HINTS.none;
+  const autoOllamaEnabled = document.getElementById('cfg-autoollama')?.value === 'true';
+  const baseUrlGroup = document.getElementById('cfg-baseurl-group');
+  if (baseUrlGroup) baseUrlGroup.style.display = p === 'ollama' && autoOllamaEnabled ? '' : 'none';
 
-  document.getElementById('cfg-baseurl-group').style.display = p === 'ollama' ? '' : 'none';
+  const providerHint = document.getElementById('provider-auto-hint');
+  if (providerHint) providerHint.textContent = getSelectedProviderStatus(p);
 
   const mh = document.getElementById('model-hint');
-  if (mh) mh.textContent = hints.model ? `e.g. ${hints.model}` : '';
+  if (mh) mh.textContent = p === 'ollama' ? 'Local models come from your Ollama server.' : 'Models are discovered automatically from the selected provider key.';
 
-  // Update model placeholder
-  const mInput = document.getElementById('cfg-model');
-  if (mInput && hints.model) mInput.placeholder = hints.model.split('/')[0].trim();
+  const modelSelect = document.getElementById('cfg-model');
+  if (modelSelect) {
+    if (Array.isArray(_allFetchedModels) && _allFetchedModels.length > 0) {
+      setModelSelectOptions(_allFetchedModels, modelSelect.value);
+    } else {
+      const preferred = window.hexAI?.FAST_MODELS?.[p] || '';
+      clearNode(modelSelect);
+      modelSelect.appendChild(createTextOption(preferred || '', preferred || 'Model will be detected automatically'));
+      modelSelect.value = preferred || '';
+    }
+    if ((p === 'ollama' && !modelSelect.value) || isStaleProviderModel(p, modelSelect.value)) {
+      const bestModel = getPreferredModelForProvider(p);
+      if (bestModel) modelSelect.value = bestModel;
+    }
+  }
 }
 
 
@@ -624,6 +769,7 @@ async function fetchAvailableModels() {
   const statusEl = document.getElementById('model-fetch-status');
   const btn = document.getElementById('fetch-models-btn');
   const picker = document.getElementById('model-picker');
+  const modelInput = document.getElementById('cfg-model');
 
   if (provider === 'none') {
     statusEl.textContent = 'Select a provider first.';
@@ -632,41 +778,72 @@ async function fetchAvailableModels() {
     return;
   }
 
+  if (provider === 'ollama') {
+    btn.textContent = '⏳ ...';
+    btn.disabled = true;
+    statusEl.style.display = 'none';
+    picker.style.display = 'none';
+    try {
+      _allFetchedModels = await window.hexAI.fetchModels(provider, '', baseUrl);
+      setModelSelectOptions(_allFetchedModels, modelInput?.value || '');
+      renderModelPicker(false);
+    } catch (err) {
+      statusEl.textContent = '⚠ ' + (err?.message || String(err));
+      statusEl.style.display = '';
+    } finally {
+      btn.textContent = '⬇ FETCH';
+      btn.disabled = false;
+    }
+    return;
+  }
+
   btn.textContent = '⏳ ...';
   btn.disabled = true;
   statusEl.style.display = 'none';
   picker.style.display = 'none';
 
-  // Fetch the real API key from the live pool
-  let apiKey = '';
-  if (provider !== 'ollama') {
-    try {
-      const res = await window.hexAPI.getLiveKeys();
-      if (res && res.success && res.keys[provider] && res.keys[provider].length > 0) {
-        apiKey = res.keys[provider][0];
-      }
-    } catch (_) { }
-      if (!apiKey) {
-        statusEl.textContent = `⚠ No valid key for ${provider}. Waiting for background hunter...`;
-        statusEl.style.display = '';
-        btn.textContent = '⬇ FETCH';
-        btn.disabled = false;
-        renderProviderFailurePanel();
-        return;
-      }
-  }
-
+  let providerKeys = [];
   try {
-    _allFetchedModels = await window.hexAI.fetchModels(provider, apiKey, baseUrl);
-    renderModelPicker(true);   // default: FREE only
-  } catch (err) {
-    statusEl.textContent = '⚠ ' + (err?.message || String(err));
+    const res = await window.hexAPI.getLiveKeys();
+    if (res && res.success) {
+      _lastLiveKeysMap = res.keys || {};
+      _lastManualKeysMap = res.manualKeys || {};
+      providerKeys = _lastLiveKeysMap[provider] || [];
+    }
+  } catch (_) { }
+
+  if (!providerKeys.length) {
+    statusEl.textContent = '⚠ No live key for ' + getProviderLabel(provider) + ' yet.';
     statusEl.style.display = '';
-  } finally {
-    renderProviderFailurePanel();
     btn.textContent = '⬇ FETCH';
     btn.disabled = false;
+    renderProviderFailurePanel();
+    return;
   }
+
+  let lastError = null;
+  for (const apiKey of providerKeys) {
+    try {
+      _allFetchedModels = await window.hexAI.fetchModels(provider, apiKey, baseUrl);
+      setModelSelectOptions(_allFetchedModels, modelInput?.value || '');
+      renderModelPicker(false);
+      statusEl.textContent = '✅ ' + _allFetchedModels.length + ' models detected for ' + getProviderLabel(provider) + '.';
+      statusEl.style.display = '';
+      lastError = null;
+      break;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  if (lastError) {
+    statusEl.textContent = '⚠ ' + (lastError?.message || String(lastError));
+    statusEl.style.display = '';
+  }
+
+  renderProviderFailurePanel();
+  btn.textContent = '⬇ FETCH';
+  btn.disabled = false;
 }
 
 function renderModelPicker(freeOnly) {
@@ -684,6 +861,7 @@ function renderModelPicker(freeOnly) {
     const firstFree = _allFetchedModels.find(m => m.free);
     mi.value = (firstFree || _allFetchedModels[0] || {}).id || '';
   }
+  setModelSelectOptions(list.length > 0 ? list : _allFetchedModels, mi.value);
 
   clearNode(statusEl);
   appendText(statusEl, `✅ Showing ${list.length} models — click to select | `);
@@ -776,10 +954,11 @@ async function saveSettings() {
       autoOllama: document.getElementById('cfg-autoollama')?.value === 'true',
       baseUrl: document.getElementById('cfg-baseurl').value,
       model: document.getElementById('cfg-model').value,
-      // Manual API keys deprecated from UI by Phase 13 automation. Preserving internal signature for local router override/fallback.
       apiKey: '',
+      apiKeys: config.llm?.apiKeys || {},
+      manualApiKeys: config.llm?.manualApiKeys || {},
       visionApiKey: document.getElementById('cfg-visionkey')?.value || '',
-      hunterLimitMinutes: parseInt(document.getElementById('cfg-hunter-limit')?.value, 10) || 1440
+      hunterLimitMinutes: config.llm?.hunterLimitMinutes || 1440
     },
     browser: {
       searchEngine: document.getElementById('cfg-searchengine')?.value || 'google'
@@ -847,10 +1026,7 @@ async function saveSettings() {
 
   closeSettings();
   addLog('SYSTEM', 'Configuration saved.');
-  showToast('◆ CONFIG SAVED', 'Settings updated and applied.', '', 3000);
-
-  // Kick the credential hunter scheduler with the new timing
-  try { window.hexAPI.rescheduleHunter(); } catch (_) { }
+  showToast('◆ CONFIG SAVED', 'Settings updated and applied.', '', 3000);  // Local hunter disabled; remote hunter sync is managed by hex-server.
 }
 
 // ─── PLUGIN LOCAL INSTALL UI ─────────────────────────────────────────────────
@@ -906,8 +1082,14 @@ window.addEventListener('click', (e) => {
 
 async function loadLiveArsenal() {
   try {
-    const res = await window.hexAPI.getLiveKeys();
-    if (res && res.success) renderLiveArsenal(res.keys);
+    const res = await window.hexAPI.refreshLiveKeys();
+    if (res && res.success) {
+      _lastLiveKeysMap = res.keys || {};
+      _lastManualKeysMap = res.manualKeys || {};
+      syncProviderOptions(_lastLiveKeysMap);
+      renderLiveArsenal(_lastLiveKeysMap);
+      renderManualKeyList(_lastManualKeysMap);
+    }
   } catch (e) {
     console.warn('Failed to load initial live AI arsenal', e);
   }
@@ -918,15 +1100,12 @@ function renderLiveArsenal(keysMap) {
   const countEl = document.getElementById('ai-pool-count');
   if (!container || !countEl) return;
 
-  const PRIORITY = ['anthropic', 'openai', 'mistral', 'together', 'grok', 'gemini', 'cohere', 'hf', 'replicate'];
-  const LABELS = { anthropic: 'ANTHROPIC', openai: 'OPENAI', mistral: 'MISTRAL', together: 'TOGETHER AI', grok: 'GROK (xAI)', gemini: 'GEMINI', cohere: 'COHERE', hf: 'HUGGING FACE', replicate: 'REPLICATE' };
+  _lastLiveKeysMap = keysMap || {};
+  syncProviderOptions(_lastLiveKeysMap);
   const activeProvider = document.getElementById('cfg-provider')?.value || '';
-
-  // Sort by priority order, then append any extras
-  const sortedProviders = PRIORITY.filter(p => keysMap[p] && keysMap[p].length > 0);
-  // Add any other providers not in our list
-  for (const p of Object.keys(keysMap)) {
-    if (!sortedProviders.includes(p) && keysMap[p].length > 0) sortedProviders.push(p);
+  const sortedProviders = LIVE_PROVIDER_PRIORITY.filter((provider) => keysMap[provider] && keysMap[provider].length > 0);
+  for (const provider of Object.keys(keysMap)) {
+    if (!sortedProviders.includes(provider) && keysMap[provider].length > 0) sortedProviders.push(provider);
   }
 
   let total = 0;
@@ -937,21 +1116,21 @@ function renderLiveArsenal(keysMap) {
     emptyState.style.color = 'var(--orange)';
     emptyState.style.textAlign = 'center';
     emptyState.style.padding = '20px';
-    emptyState.appendChild(window.hexRenderUtils.createEl('div', { text: 'No verified keys found.' }));
-    emptyState.appendChild(window.hexRenderUtils.createEl('div', { text: 'Background hunter is running...' }));
+    emptyState.appendChild(window.hexRenderUtils.createEl('div', { text: 'No live providers detected yet.' }));
+    emptyState.appendChild(window.hexRenderUtils.createEl('div', { text: 'Hunter sync is online, but no usable keys are loaded.' }));
     container.appendChild(emptyState);
   } else {
     sortedProviders.forEach((provider) => {
       const count = keysMap[provider].length;
       total += count;
       const isActive = provider === activeProvider;
-      const activeColor = count > 0 ? '#00ffc8' : 'var(--muted)';
+      const manualCount = (_lastManualKeysMap[provider] || []).length;
       const row = window.hexRenderUtils.createEl('div', {
         dataset: { liveProvider: provider }
       });
-      row.style.display = 'flex';
-      row.style.justifyContent = 'space-between';
-      row.style.alignItems = 'center';
+      row.style.display = 'grid';
+      row.style.gridTemplateColumns = '1fr auto';
+      row.style.gap = '4px 12px';
       row.style.padding = '8px 10px';
       row.style.borderBottom = '1px solid var(--border)';
       row.style.cursor = 'pointer';
@@ -959,77 +1138,167 @@ function renderLiveArsenal(keysMap) {
       row.style.borderLeft = isActive ? '3px solid var(--cyan)' : '3px solid transparent';
       row.style.background = isActive ? 'rgba(0,255,200,0.06)' : '';
 
-      const label = window.hexRenderUtils.createEl('span', {
-        text: LABELS[provider] || provider.toUpperCase()
+      const title = window.hexRenderUtils.createEl('div', {
+        text: getProviderLabel(provider)
       });
-      if (isActive) {
-        label.appendChild(document.createTextNode(' '));
-        const activeBadge = window.hexRenderUtils.createEl('span', { text: '● ACTIVE' });
-        activeBadge.style.color = 'var(--cyan)';
-        activeBadge.style.fontSize = '13px';
-        label.appendChild(activeBadge);
-      }
-      row.appendChild(label);
+      title.style.color = isActive ? 'var(--cyan)' : 'var(--text)';
+      if (isActive) title.textContent += '  ACTIVE';
 
-      const countBadge = window.hexRenderUtils.createEl('span', {
-        text: `${count} valid key${count !== 1 ? 's' : ''}`
+      const stats = window.hexRenderUtils.createEl('div', {
+        text: `${count} live key${count === 1 ? '' : 's'}${manualCount ? ` • ${manualCount} manual` : ''}`
       });
-      countBadge.style.color = activeColor;
-      countBadge.style.textShadow = `0 0 5px ${activeColor}`;
-      row.appendChild(countBadge);
+      stats.style.color = 'var(--muted)';
+      stats.style.fontSize = '12px';
 
+      const badge = window.hexRenderUtils.createEl('div', {
+        text: count > 0 ? 'READY' : 'EMPTY'
+      });
+      badge.style.color = count > 0 ? '#00ffc8' : 'var(--muted)';
+      badge.style.textShadow = count > 0 ? '0 0 5px #00ffc8' : 'none';
+      badge.style.alignSelf = 'center';
+      badge.style.gridRow = '1 / span 2';
+      badge.style.gridColumn = '2';
+
+      row.appendChild(title);
+      row.appendChild(stats);
+      row.appendChild(badge);
       container.appendChild(row);
     });
   }
 
   countEl.textContent = total;
+  updateProviderUI();
 }
 
+function renderManualKeyList(manualKeysMap) {
+  const container = document.getElementById('manual-key-list');
+  if (!container) return;
+  clearNode(container);
+
+  const providers = Object.keys(manualKeysMap || {}).filter((provider) => Array.isArray(manualKeysMap[provider]) && manualKeysMap[provider].length > 0);
+  if (providers.length === 0) {
+    const empty = window.hexRenderUtils.createEl('div', { text: 'No manual keys added yet.' });
+    empty.style.color = 'var(--muted)';
+    empty.style.fontSize = '13px';
+    container.appendChild(empty);
+    return;
+  }
+
+  providers.sort((a, b) => a.localeCompare(b));
+  providers.forEach((provider) => {
+    (manualKeysMap[provider] || []).forEach((apiKey) => {
+      const row = window.hexRenderUtils.createEl('div');
+      row.style.display = 'flex';
+      row.style.justifyContent = 'space-between';
+      row.style.alignItems = 'center';
+      row.style.gap = '8px';
+      row.style.padding = '6px 8px';
+      row.style.border = '1px solid rgba(255,255,255,0.08)';
+      row.style.background = 'rgba(0,0,0,0.12)';
+
+      const label = window.hexRenderUtils.createEl('span', {
+        text: `${getProviderLabel(provider)}  ${maskApiKey(apiKey)}`
+      });
+      label.style.fontFamily = 'var(--font-m)';
+      label.style.fontSize = '12px';
+
+      const removeBtn = window.hexRenderUtils.createEl('button', {
+        text: 'REMOVE',
+        dataset: { manualKeyProvider: provider, manualKeyValue: apiKey }
+      });
+      removeBtn.className = 'text-btn';
+      removeBtn.style.cursor = 'pointer';
+      removeBtn.style.color = 'var(--orange)';
+      removeBtn.style.background = 'transparent';
+      removeBtn.style.border = '0';
+      removeBtn.style.padding = '0';
+      removeBtn.style.font = 'inherit';
+
+      row.appendChild(label);
+      row.appendChild(removeBtn);
+      container.appendChild(row);
+    });
+  });
+}
+
+async function addManualApiKey() {
+  const input = document.getElementById('cfg-manual-api-key');
+  const statusEl = document.getElementById('manual-key-status');
+  const apiKey = String(input?.value || '').trim();
+  if (!apiKey) {
+    if (statusEl) statusEl.textContent = 'Paste an API key first.';
+    return;
+  }
+
+  if (statusEl) statusEl.textContent = 'Detecting provider and registering key...';
+  try {
+    const res = await window.hexAPI.addManualApiKey({ apiKey });
+    if (!res?.success) throw new Error(res?.error || 'Could not add API key.');
+    _lastLiveKeysMap = res.keys || {};
+    _lastManualKeysMap = res.manualKeys || {};
+    syncProviderOptions(_lastLiveKeysMap);
+    renderLiveArsenal(_lastLiveKeysMap);
+    renderManualKeyList(_lastManualKeysMap);
+    input.value = '';
+    if (statusEl) statusEl.textContent = `${getProviderLabel(res.provider)} key added.`;
+    selectLiveProvider(res.provider);
+    setTimeout(() => { fetchAvailableModels().catch(() => {}); }, 150);
+  } catch (error) {
+    if (statusEl) statusEl.textContent = '⚠ ' + (error?.message || String(error));
+  }
+}
+
+async function removeManualApiKey(provider, apiKey) {
+  const statusEl = document.getElementById('manual-key-status');
+  if (statusEl) statusEl.textContent = 'Removing manual key...';
+  try {
+    const res = await window.hexAPI.removeManualApiKey({ provider, apiKey });
+    if (!res?.success) throw new Error(res?.error || 'Could not remove API key.');
+    _lastLiveKeysMap = res.keys || {};
+    _lastManualKeysMap = res.manualKeys || {};
+    renderLiveArsenal(_lastLiveKeysMap);
+    renderManualKeyList(_lastManualKeysMap);
+    if (statusEl) statusEl.textContent = `${getProviderLabel(provider)} key removed.`;
+  } catch (error) {
+    if (statusEl) statusEl.textContent = '⚠ ' + (error?.message || String(error));
+  }
+}
 function selectLiveProvider(providerName) {
   const sel = document.getElementById('cfg-provider');
   if (sel) {
-    // Check if the option exists in the dropdown
-    const option = [...sel.options].find(o => o.value === providerName);
-    if (option) {
-      sel.value = providerName;
-    } else {
-      // Add it dynamically
-      const opt = document.createElement('option');
-      opt.value = providerName;
-      opt.textContent = providerName.toUpperCase();
-      sel.appendChild(opt);
-      sel.value = providerName;
-    }
+    ensureProviderOption(sel, providerName);
+    sel.value = providerName;
     updateProviderUI();
   }
-  // Re-render to update the active highlight
-  loadLiveArsenal();
+  renderLiveArsenal(_lastLiveKeysMap);
 }
 
 // Auto-sync provider dropdown to the best available provider and auto-fetch models
 async function autoSyncProvider() {
   try {
-    const res = await window.hexAPI.getLiveKeys();
+    const res = await window.hexAPI.refreshLiveKeys();
     if (!res || !res.success) return;
-    const PRIORITY = ['anthropic', 'openai', 'mistral', 'together', 'grok', 'gemini', 'cohere', 'hf', 'replicate'];
+    _lastLiveKeysMap = res.keys || {};
+    _lastManualKeysMap = res.manualKeys || {};
+    syncProviderOptions(_lastLiveKeysMap);
+    renderManualKeyList(_lastManualKeysMap);
+
     const sel = document.getElementById('cfg-provider');
     const current = sel?.value || 'none';
-
-    // If current provider has no key and isn't ollama, auto-switch
-    const hasKey = current === 'ollama' || (res.keys[current] && res.keys[current].length > 0);
-    if (!hasKey && current !== 'ollama') {
-      const best = PRIORITY.find(p => res.keys[p] && res.keys[p].length > 0);
+    const hasKey = current === 'ollama' || (_lastLiveKeysMap[current] && _lastLiveKeysMap[current].length > 0);
+    if ((!hasKey && current !== 'ollama') || current === 'none') {
+      const best = getPreferredProviderFromKeys(_lastLiveKeysMap);
       if (best && sel) {
+        ensureProviderOption(sel, best);
         sel.value = best;
         updateProviderUI();
       }
     }
 
-    // Auto-fetch models after a short delay (don't block UI)
     setTimeout(() => {
       const provider = document.getElementById('cfg-provider')?.value;
       if (provider && provider !== 'none') {
-        fetchAvailableModels();
+        fetchAvailableModels().catch(() => {});
       }
     }, 300);
   } catch (_) { }
@@ -1037,8 +1306,47 @@ async function autoSyncProvider() {
 
 // Hook IPC continuous updater for hot-reloads
 window.hexAPI.on('ai:live-keys-updated', (keys) => {
-  renderLiveArsenal(keys);
+  _lastLiveKeysMap = keys || {};
+  syncProviderOptions(_lastLiveKeysMap);
+  renderLiveArsenal(_lastLiveKeysMap);
+  renderManualKeyList(_lastManualKeysMap);
+});
+
+window.addEventListener('click', (event) => {
+  const providerRow = event.target.closest('[data-live-provider]');
+  if (providerRow) {
+    selectLiveProvider(providerRow.dataset.liveProvider);
+    return;
+  }
+  const modelToggle = event.target.closest('[data-model-picker-toggle]');
+  if (modelToggle) {
+    renderModelPicker(modelToggle.dataset.modelPickerToggle !== 'free');
+    return;
+  }
+  const removeBtn = event.target.closest('[data-manual-key-provider][data-manual-key-value]');
+  if (removeBtn) {
+    removeManualApiKey(removeBtn.dataset.manualKeyProvider, removeBtn.dataset.manualKeyValue);
+  }
 });
 
 document.getElementById('cfg-cloud-test')?.addEventListener('click', testCloudConnection);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

@@ -43,7 +43,7 @@ window.hexPcInventory = (() => {
     const q = String(query || '').trim().toLowerCase();
     if (!q) return [];
     const snapshot = getSnapshot();
-    const all = ['apps', 'files', 'games', 'windows', 'processes', 'promoted']
+    const all = ['apps', 'files', 'folders', 'games', 'windows', 'processes', 'promoted']
       .flatMap((key) => snapshot[key] || []);
     return all
       .map((item) => {
@@ -63,3 +63,4 @@ window.hexPcInventory = (() => {
     search
   };
 })();
+

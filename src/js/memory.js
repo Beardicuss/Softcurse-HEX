@@ -287,15 +287,46 @@ class HexMemory {
       return null;
     }
 
+    if (window.__hexMemoryQuickLLMInFlight) {
+      return null;
+    }
+
+    window.__hexMemoryQuickLLMInFlight = true;
     try {
-      const systemState = window.hexAI._lastSystemState
-        || (typeof window.buildAIContextState === 'function'
-          ? await window.buildAIContextState('[memory-internal]', {
-            config: window._hexConfig || {},
-            sysStats: window.sysStats || {},
-            skipUserUpdate: true
-          })
-          : {});
+      const systemState = window.hexAI._lastSystemState || {
+        userName: window.getLocalizedUserName ? window.getLocalizedUserName(window._hexConfig?.userName) : (window._hexConfig?.userName || 'Operator'),
+        aiProvider: window._hexConfig?.llm?.provider || 'none',
+        ttsEngine: window._hexConfig?.voice?.ttsEngine || 'os',
+        browserSession: { open: false, url: null, title: null },
+        sessionContext: {
+          primaryGoal: '[memory-internal]',
+          lastUserMessage: '',
+          lastAssistantMessage: '',
+          lastUserWasFollowUp: false,
+          lastActionSummary: '',
+          lastSystemDataSummary: '',
+          activeSurface: 'chat',
+          activeTopics: [],
+          recentEntities: [],
+          referenceCandidates: []
+        },
+        desktopContext: {
+          recent: [],
+          recentSummary: 'none',
+          promotedRecent: [],
+          fileCandidates: [],
+          appCandidates: [],
+          gameCandidates: [],
+          windowCandidates: [],
+          processCandidates: []
+        },
+        workingMemory: {
+          currentTask: null,
+          currentEntities: [],
+          mood: 'neutral'
+        },
+        recentTurns: []
+      };
 
       const lang = window._hexConfig?.language || 'en';
       const result = await window.hexAI.chat(
@@ -312,6 +343,8 @@ class HexMemory {
       return text;
     } catch (_) {
       return null;
+    } finally {
+      window.__hexMemoryQuickLLMInFlight = false;
     }
   }
 
@@ -331,6 +364,7 @@ class HexMemory {
 }
 
 window.hexMemory = new HexMemory();
+
 
 
 

@@ -18,6 +18,11 @@ window.hexFileActionHandler = (() => {
           if (r && r.success) {
             if (r.count > 0) {
               publishFileCandidates(r.files);
+              const folderCandidates = r.files.map(function (f) {
+                const folderPath = f.path.substring(0, Math.max(f.path.lastIndexOf('\\'), f.path.lastIndexOf('/')));
+                return { name: folderPath.split(/[\\/]/).pop() || folderPath, path: folderPath, value: folderPath, meta: { targetType: 'folder', sourceQuery: query } };
+              }).filter(function (f) { return f.path; });
+              window.hexCandidatePublishers?.publishFolders?.(folderCandidates);
               let msg = `**Found ${r.count} result(s) for "${query}":**\n\n`;
               const actions = [];
               r.files.forEach(f => {
@@ -191,6 +196,7 @@ window.hexFileActionHandler = (() => {
         const r = await window.hexAPI.butler.listDir(targetDir);
         if (r.success) {
           const dirs = r.items.filter(function (i) { return i.type === 'dir'; }).map(function (i) { return '[DIR] ' + i.name; });
+          window.hexCandidatePublishers?.publishFolders?.((r.items || []).filter(function (i) { return i.type === 'dir'; }).map(function (i) { return { name: i.name, path: i.path || [r.path, i.name].join(/[\\/]$/.test(r.path) ? '' : '\\'), value: i.path || [r.path, i.name].join(/[\\/]$/.test(r.path) ? '' : '\\'), meta: { parent: r.path, targetType: 'folder' } }; }));
           const files = r.items.filter(function (i) { return i.type === 'file'; }).map(function (i) { return '[FILE] ' + i.name; });
           const preview = dirs.slice(0, 8).concat(files.slice(0, 8));
           const more = r.count > 16 ? ('..and ' + (r.count - 16) + ' more') : '';
@@ -286,5 +292,7 @@ window.hexFileActionHandler = (() => {
 
   return { handle, publishFileCandidates };
 })();
+
+
 
 

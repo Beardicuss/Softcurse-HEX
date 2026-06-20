@@ -30,3 +30,4 @@ window.buildHexDesktopContext = function buildHexDesktopContext() {
     ].join(' | ')
   };
 };
+

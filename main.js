@@ -97,7 +97,7 @@ const { createWindow, applySystemSettings } = require('./src/main/window')({
 });
 
 // ── Live AI keys ───────────────────────────────────────────────────────────────
-require('./src/main/live-keys')({ ipcMain, app, safeSend, sendLog, getConfig });
+require('./src/main/live-keys')({ ipcMain, app, safeSend, sendLog, getConfig, setConfig, saveConfig });
 
 // ── Config IPC ────────────────────────────────────────────────────────────────
 require('./src/main/ipc-config')({
@@ -253,4 +253,5 @@ app.on('will-quit', () => {
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (!mainWindow) createWindow(); });
+
 

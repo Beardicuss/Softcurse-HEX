@@ -1,11 +1,8 @@
 'use strict';
 // ── main/ipc-hunter.js ────────────────────────────────────────────────────────
-// Background credential-hunter scheduling.
-// Fixes the packaged-build ENOENT crash:
-//   In a packaged app __dirname resolves inside the ASAR archive.
-//   spawn() cannot launch a script from inside an ASAR — it needs a real
-//   filesystem path. We copy the script to userData on first run so the
-//   path is always valid regardless of packaging.
+// Local credential-hunter scheduling is disabled.
+// The implementation is intentionally kept here for fallback/reference,
+// but HEX now uses the remote hunter service via hex-server.
 
 const fs = require('fs');
 const path = require('path');
@@ -16,21 +13,17 @@ module.exports = function registerHunterIPC({
   getConfig,
   sendLog,
 }) {
+  const LOCAL_HUNTER_ENABLED = false;
   const userDataPath = app.getPath('userData');
   const hunterTimestampFile = path.join(userDataPath, 'hunter-last-run.json');
 
-  // ── Resolve a real-filesystem path for the hunter script ──────────────────
-  // Source location inside the repo / ASAR
+  // Legacy local hunter paths retained for fallback/reference only.
   const hunterSrc = path.join(__dirname, '..', '..', 'ai', 'credential-hunter.js');
-
-  // Destination outside the ASAR — always accessible to spawn()
   const hunterDest = path.join(userDataPath, 'credential-hunter.js');
 
   function ensureHunterScript() {
-    // Nothing to do if the source doesn't exist (feature disabled / not shipped)
     if (!fs.existsSync(hunterSrc)) return false;
     try {
-      // Copy whenever the source is newer than the destination
       const srcMtime = fs.statSync(hunterSrc).mtimeMs;
       const destMtime = fs.existsSync(hunterDest) ? fs.statSync(hunterDest).mtimeMs : 0;
       if (srcMtime > destMtime) {
@@ -44,11 +37,16 @@ module.exports = function registerHunterIPC({
     }
   }
 
-  // ── Scheduler ─────────────────────────────────────────────────────────────
   let _hunterTimer = null;
   let _hunterRunning = false;
 
   function runHunterNow() {
+    if (!LOCAL_HUNTER_ENABLED) {
+      sendLog('HUNTER', 'Local hunter is disabled. Using remote hunter service instead.', 'info');
+      return false;
+    }
+
+    // Legacy local hunter flow retained but currently disabled.
     if (_hunterRunning) {
       sendLog('HUNTER', 'Hunter is already explicitly running.', 'warn');
       return;
@@ -73,7 +71,6 @@ module.exports = function registerHunterIPC({
         JSON.stringify({ lastRun: Date.now(), date: new Date().toISOString() })
       );
 
-      // Use the real-filesystem copy — never the ASAR path
       const hunterProc = spawn(process.execPath, [hunterDest], {
         cwd: userDataPath,
         env: {
@@ -125,6 +122,7 @@ module.exports = function registerHunterIPC({
 
   function scheduleHunter() {
     if (_hunterTimer) { clearTimeout(_hunterTimer); _hunterTimer = null; }
+    if (!LOCAL_HUNTER_ENABLED) return;
     if (app.isQuiting || _hunterRunning) return;
 
     if (!ensureHunterScript()) return;
@@ -140,7 +138,7 @@ module.exports = function registerHunterIPC({
         const elapsed = Date.now() - lastRun;
         if (elapsed < COOLDOWN_MS) delayMs = COOLDOWN_MS - elapsed;
       }
-    } catch (_) { /* corrupt timestamp — run immediately */ }
+    } catch (_) {}
 
     if (delayMs > 0) {
       sendLog('HUNTER', `Sleeping. Next run in ${Math.ceil(delayMs / 60000)} min.`, 'info');
@@ -154,33 +152,31 @@ module.exports = function registerHunterIPC({
     }, delayMs);
   }
 
-  // ── IPC ───────────────────────────────────────────────────────────────────
-
   ipcMain.handle('hunter:runNow', () => {
+    if (!LOCAL_HUNTER_ENABLED) {
+      return { success: false, disabled: true, error: 'Local hunter disabled. Remote hunter is active.' };
+    }
     sendLog('HUNTER', 'Manual trigger received. Overriding schedule constraints.', 'info');
     runHunterNow();
     return { success: true };
   });
 
   ipcMain.handle('hunter:reschedule', () => {
+    if (!LOCAL_HUNTER_ENABLED) {
+      return { success: true, disabled: true };
+    }
     sendLog('HUNTER', 'Settings changed — rescheduling credential hunter.', 'info');
     scheduleHunter();
     return { success: true };
   });
 
   ipcMain.handle('hunter:status', () => {
-    const config = getConfig();
-    const userLimitMinutes = config.llm?.hunterLimitMinutes || 1440;
-    const COOLDOWN_MS = userLimitMinutes * 60 * 1000;
-    let delayMs = 0;
-    try {
-      if (fs.existsSync(hunterTimestampFile)) {
-        const { lastRun } = JSON.parse(fs.readFileSync(hunterTimestampFile, 'utf8'));
-        const elapsed = Date.now() - lastRun;
-        if (elapsed < COOLDOWN_MS) delayMs = COOLDOWN_MS - elapsed;
-      }
-    } catch (_) { }
-    return { delayMs, userLimitMinutes };
+    return {
+      online: false,
+      localDisabled: true,
+      delayMs: 0,
+      userLimitMinutes: getConfig()?.llm?.hunterLimitMinutes || 1440
+    };
   });
 
   return { scheduleHunter };

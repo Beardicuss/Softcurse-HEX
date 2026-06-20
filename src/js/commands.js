@@ -40,6 +40,9 @@ async function tryDirectCommand(text) {
     if (resolvedKind === 'app') {
       return do_('open_app', [resolved.label], `Opening ${resolved.label}...`);
     }
+    if (resolvedKind === 'folder') {
+      return do_('open_folder', [resolved.path || resolved.value || resolved.label], 'Opening ' + resolved.label + '...');
+    }
     if (resolvedKind === 'window') {
       const verb = /^(close)\b/i.test(raw) ? 'close' : 'focus';
       const msg = verb === 'close' ? `Closing ${resolved.label}...` : `Focusing ${resolved.label}...`;
@@ -207,4 +210,6 @@ async function tryDirectCommand(text) {
 
   return { handled: false };
 }
+
+
 

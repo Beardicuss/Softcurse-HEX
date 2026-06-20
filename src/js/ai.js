@@ -112,7 +112,7 @@ class HexAI {
       // ── Multi-Provider Auto Fallback Queue (PHASE 13) ───────────────
       // Fetch the LIVE valid keys mapped by the background hunter script
       const liveKeysFallbackRes = await Promise.race([
-        window.hexAPI.getLiveKeys(),
+        window.hexAPI.refreshLiveKeys ? window.hexAPI.refreshLiveKeys() : window.hexAPI.getLiveKeys(),
         new Promise((_, reject) => {
           setTimeout(() => reject(new Error('Live key lookup timeout after 5s')), 5000);
         })
@@ -169,10 +169,12 @@ class HexAI {
         if (permanentProviderFailures.has(currProvider)) continue;
         // Build an array of keys to test for this provider
         let keysToTry = [];
+        let usingLivePool = false;
         if (currProvider === 'ollama') {
           keysToTry = [null]; // No API key required
         } else if (liveKeys[currProvider] && liveKeys[currProvider].length > 0) {
           keysToTry = [...liveKeys[currProvider]]; // Inject ALL hunted keys
+          usingLivePool = true;
         } else if (currProvider === routeProvider && origKey) {
           keysToTry = [origKey]; // User's manual key
         } else {
@@ -190,13 +192,12 @@ class HexAI {
             if (currProvider !== routeProvider) {
               window.hexTaskBus?.push(`Fallback: Auto-routing to ${currProvider}... ${keysToTry.length > 1 ? `(Key ${i + 1}/${keysToTry.length})` : ''}`);
               if (window.hexAudio && i === 0) window.hexAudio.play('reroute', 0.9);
-              this.config.llm.model = this.FAST_MODELS[currProvider] || '';
+              this.config.llm.model = this._preferredModelForProvider(currProvider, this.config.llm.model);
             } else {
               if (keysToTry.length > 1 && i > 0) {
                 window.hexTaskBus?.push(`Cycling ${currProvider} keys... (Key ${i + 1}/${keysToTry.length})`);
-              } else if (!this.config.llm.model && this.FAST_MODELS[currProvider]) {
-                this.config.llm.model = this.FAST_MODELS[currProvider];
               }
+              this.config.llm.model = this._preferredModelForProvider(currProvider, this.config.llm.model);
             }
 
             switch (currProvider) {
@@ -236,17 +237,31 @@ class HexAI {
             providerFailures.push(summary);
             allErrors.push(`[${currProvider.toUpperCase()}] ${summary.raw}`);
             console.warn(`Softcurse LLM: ${currProvider} [Key ${i + 1}] failed:`, summary.raw);
-            if (summary.skipRemainingKeys) {
+            const hasMoreKeys = i < keysToTry.length - 1;
+            const shouldKeepCyclingKeys = usingLivePool && hasMoreKeys;
+            if (summary.skipRemainingKeys && !shouldKeepCyclingKeys) {
               permanentProviderFailures.add(currProvider);
               if (summary.demoteForSession) {
                 this._rememberProviderDemotion(currProvider, summary);
               }
               break;
             }
+            if (summary.skipRemainingKeys && shouldKeepCyclingKeys) {
+              window.hexTaskBus?.push(`${currProvider.toUpperCase()} key ${i + 1} rejected. Trying next live key...`);
+            }
           }
         } // end key loop
 
         if (!providerSucceeded && providerFailures.length > 0) {
+          const allPermanent = providerFailures.length >= keysToTry.length
+            && providerFailures.every((item) => item.skipRemainingKeys);
+          if (allPermanent) {
+            permanentProviderFailures.add(currProvider);
+            const lastFailure = providerFailures[providerFailures.length - 1];
+            if (lastFailure?.demoteForSession) {
+              this._rememberProviderDemotion(currProvider, lastFailure);
+            }
+          }
           providerSummaries.push(this._summarizeProviderFailures(currProvider, providerFailures));
         } else if (providerSucceeded) {
           this._clearProviderDemotion(currProvider);
@@ -899,6 +914,21 @@ class HexAI {
     return Math.min(1, score);
   }
 
+
+  _preferredModelForProvider(provider, currentModel) {
+    const model = String(currentModel || '').trim();
+    const lower = model.toLowerCase();
+    if (!model) return this.FAST_MODELS[provider] || '';
+
+    if (provider === 'cohere' && /command-light/.test(lower)) return this.FAST_MODELS[provider] || 'command-r';
+    if (provider === 'openai' && /claude|gemini|mistral|grok|command-r/.test(lower)) return this.FAST_MODELS[provider] || 'gpt-4o-mini';
+    if (provider === 'anthropic' && /gpt-|gemini|mistral|grok|command-r/.test(lower)) return this.FAST_MODELS[provider] || 'claude-haiku-4-5-20251001';
+    if (provider === 'mistral' && /command-light|command-r|gpt-|claude|gemini/.test(lower)) return this.FAST_MODELS[provider] || 'mistral-small-latest';
+    if (provider === 'grok' && /gpt-|claude|gemini|mistral|command-r/.test(lower)) return this.FAST_MODELS[provider] || 'grok-3-mini-fast';
+    if (provider === 'gemini' && /gpt-|claude|mistral|grok|command-r/.test(lower)) return this.FAST_MODELS[provider] || 'gemini-2.0-flash-lite';
+    return model;
+  }
+
   _classifyProviderError(provider, err) {
     const raw = String(err?.message || err || 'Unknown error');
     const lower = raw.toLowerCase();
@@ -992,5 +1022,7 @@ class HexAI {
 }
 
 window.hexAI = new HexAI();
+
+
 
 

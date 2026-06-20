@@ -123,6 +123,68 @@ module.exports = function registerSystemIPC({
     }
   });
 
+  ipcMain.handle('butler:sys-info', async () => {
+    try {
+      const [cpuData, memData, osData] = await Promise.all([
+        si.cpu(),
+        si.mem(),
+        si.osInfo(),
+      ]);
+      return {
+        success: true,
+        os: [osData.distro, osData.release].filter(Boolean).join(' '),
+        hostname: os.hostname(),
+        uptime: Math.round(os.uptime() / 3600) + 'h',
+        cpu: [cpuData.manufacturer, cpuData.brand].filter(Boolean).join(' '),
+        ramTotal: Math.round(memData.total / (1024 * 1024 * 1024)) + ' GB',
+        ramUsed: Math.round(memData.active / (1024 * 1024 * 1024)) + ' GB',
+        ramFree: Math.round(memData.available / (1024 * 1024 * 1024)) + ' GB'
+      };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('butler:battery', async () => {
+    try {
+      const battery = await si.battery();
+      if (!battery?.hasBattery) {
+        return { success: true, hasBattery: false, percent: 0, isCharging: false, timeRemaining: 'n/a' };
+      }
+      return {
+        success: true,
+        hasBattery: true,
+        percent: battery.percent ?? 0,
+        isCharging: !!battery.isCharging,
+        timeRemaining: battery.timeRemaining && battery.timeRemaining > 0 ? (battery.timeRemaining + ' min') : 'unknown'
+      };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('butler:disk-usage', async (_event, { drivePath } = {}) => {
+    try {
+      const disks = await si.fsSize();
+      const needle = String(drivePath || '').trim().toLowerCase();
+      const filtered = needle
+        ? disks.filter((disk) => String(disk.mount || '').toLowerCase().startsWith(needle))
+        : disks;
+      return {
+        success: true,
+        disks: filtered.map((disk) => ({
+          mount: disk.mount,
+          fs: disk.fs,
+          used: Math.round(disk.used / (1024 * 1024 * 1024)) + ' GB',
+          total: Math.round(disk.size / (1024 * 1024 * 1024)) + ' GB',
+          free: Math.round((disk.size - disk.used) / (1024 * 1024 * 1024)) + ' GB',
+          pct: Math.round(disk.use) + '%'
+        }))
+      };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
   // ── Screen capture ─────────────────────────────────────────────────────────
   ipcMain.handle('butler:screenshot', async () => {
     try {
@@ -199,3 +261,7 @@ module.exports = function registerSystemIPC({
     return { success: true };
   });
 };
+
+
+
+

@@ -36,8 +36,11 @@
     });
 
     /* ── Settings AI ─────────────────────────────────────────── */
-    bind('cfg-provider', 'change', () => updateProviderUI());
+    bind('cfg-provider', 'change', async () => { updateProviderUI(); if (AUTO_MODEL_PROVIDERS?.has(document.getElementById('cfg-provider')?.value || '')) await fetchAvailableModels().catch(() => {}); });
+    bind('cfg-autoollama', 'change', () => updateProviderUI());
     bind('fetch-models-btn', 'click', () => fetchAvailableModels());
+    bind('add-manual-key-btn', 'click', () => addManualApiKey());
+    bind('cfg-manual-api-key', 'keydown', (e) => { if (e.key === 'Enter') addManualApiKey(); });
 
     /* ── Settings Voice — Models ─────────────────────────────── */
     bind('dl-stt-size', 'change', function () {
@@ -251,3 +254,4 @@
     });
 
 })();
+

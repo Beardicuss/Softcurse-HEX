@@ -213,3 +213,29 @@ window.handleInputKey = function handleInputKey(e) {
     window.sendHexMessage();
   }
 };
+
+window.sendMessage = window.sendHexMessage;
+
+window.ensureChatInputBinding = function ensureChatInputBinding() {
+  const input = document.getElementById('chat-input');
+  const sendBtn = document.querySelector('.chat-send-btn');
+  if (input && !input.dataset.hexBound) {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        window.sendHexMessage();
+      }
+    });
+    input.dataset.hexBound = 'true';
+  }
+  if (sendBtn && !sendBtn.dataset.hexBound) {
+    sendBtn.addEventListener('click', () => window.sendHexMessage());
+    sendBtn.dataset.hexBound = 'true';
+  }
+};
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => window.ensureChatInputBinding(), { once: true });
+} else {
+  window.ensureChatInputBinding();
+}

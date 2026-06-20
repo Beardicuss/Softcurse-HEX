@@ -48,3 +48,4 @@ window.hexCandidateStore = (() => {
 
   return { set, get, snapshot };
 })();
+

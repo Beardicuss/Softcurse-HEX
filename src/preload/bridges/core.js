@@ -21,6 +21,9 @@ module.exports = function createCoreBridge(ipcRenderer) {
 
     ollamaListModels: () => ipcRenderer.invoke('ollama:list-models'),
     getLiveKeys: () => ipcRenderer.invoke('ai:get-live-keys'),
+    refreshLiveKeys: () => ipcRenderer.invoke('ai:refresh-live-keys'),
+    addManualApiKey: (payload) => ipcRenderer.invoke('ai:add-manual-api-key', payload),
+    removeManualApiKey: (payload) => ipcRenderer.invoke('ai:remove-manual-api-key', payload),
 
     on: (channel, cb) => ipcRenderer.on(channel, (event, ...args) => cb(...args)),
     receive: (channel, cb) => ipcRenderer.on(channel, (event, ...args) => cb(...args)),

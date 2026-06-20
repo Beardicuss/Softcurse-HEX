@@ -165,36 +165,27 @@ function nsUpdateQuickActions() {
 // ── Background Daemons ─────────────────────────────────────────
 function nsUpdateDaemons() {
     // Replaces the old Vitals strip with smart daemon tracking
-    const config = window._hexConfig || {};
-
-    // 1. Credential Hunter
-    if (window.hexAPI && typeof window.hexAPI.getHunterStatus === 'function') {
-        window.hexAPI.getHunterStatus().then(status => {
-            const dHunter = document.getElementById('daemon-hunter');
-            if (!dHunter) return;
-
-            const { delayMs, userLimitMinutes } = status || {};
-            // If completely disabled or limit is huge but zero logically? The app enforces 1440 if disabled but user might turn off with a specific setting.
-            // If the user's config doesn't have it enabled, this should show OFF. But let's assume it's running if limit > 0
-
-            if (delayMs > 0) {
-                let totalSec = Math.floor(delayMs / 1000);
-                let h = Math.floor(totalSec / 3600);
-                let m = Math.floor((totalSec % 3600) / 60);
-                let s = totalSec % 60;
-
-                let timeStr = '';
-                if (h > 0) timeStr += `${h}h `;
-                if (m > 0 || h > 0) timeStr += `${m}m `;
-                timeStr += `${s}s`;
-
-                dHunter.textContent = timeStr.trim();
-                dHunter.className = 'daemon-val local';
-            } else {
-                dHunter.textContent = nsT('status_active');
-                dHunter.className = 'daemon-val active';
-            }
-        });
+    const config = window._hexConfig || {};    // 1. Remote Hunter Bridge
+    const dHunter = document.getElementById('daemon-hunter');
+    if (dHunter) {
+        const cloudEnabled = !!(window._hexConfig?.cloud?.enabled && window._hexConfig?.cloud?.serverUrl && window._hexConfig?.cloud?.accessToken);
+        if (!cloudEnabled || !window.hexAPI?.cloud?.hunterStatus) {
+            dHunter.textContent = 'offline';
+            dHunter.className = 'daemon-val offline';
+        } else {
+            window.hexAPI.cloud.hunterStatus().then((status) => {
+                if (status?.success && status.configured) {
+                    dHunter.textContent = 'online';
+                    dHunter.className = 'daemon-val active';
+                } else {
+                    dHunter.textContent = 'offline';
+                    dHunter.className = 'daemon-val offline';
+                }
+            }).catch(() => {
+                dHunter.textContent = 'offline';
+                dHunter.className = 'daemon-val offline';
+            });
+        }
     }
 
     // 2. Desktop Vision
@@ -500,3 +491,6 @@ window.neuralSurface = {
     trackCommand: window.nsTrackCommand,
     trackAction: window.nsTrackAction,
 };
+
+
+

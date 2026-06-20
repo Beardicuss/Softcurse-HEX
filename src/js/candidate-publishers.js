@@ -10,7 +10,17 @@ window.hexCandidatePublishers = (() => {
 
   function rememberRecent(item) {
     if (!item || !item.label) return [];
-    return set('recent', [{ ...item, index: 1 }]);
+    const current = window.hexCandidateStore?.get('recent') || [];
+    const merged = [{ ...item, index: 1 }, ...current]
+      .filter(Boolean)
+      .filter((entry, index, list) => list.findIndex((other) => {
+        const a = [other?.kind || '', other?.path || '', other?.value || '', other?.label || ''].join('::').toLowerCase();
+        const b = [entry?.kind || '', entry?.path || '', entry?.value || '', entry?.label || ''].join('::').toLowerCase();
+        return a === b;
+      }) === index)
+      .slice(0, 10)
+      .map((entry, index) => ({ ...entry, index: index + 1 }));
+    return set('recent', merged);
   }
 
   function publishFiles(files) {
@@ -40,6 +50,15 @@ window.hexCandidatePublishers = (() => {
       path: game.path || null,
       value: game.name || game.label || '',
       meta: game
+    })));
+  }
+  function publishFolders(folders) {
+    return set('folder', (folders || []).map((folder, index) => ({
+      index: index + 1,
+      label: folder.name || folder.label || folder.path || '',
+      path: folder.path || folder.value || null,
+      value: folder.path || folder.value || folder.name || folder.label || '',
+      meta: folder.meta || { targetType: 'folder' }
     })));
   }
 
@@ -73,7 +92,10 @@ window.hexCandidatePublishers = (() => {
     publishFiles,
     publishApps,
     publishGames,
+    publishFolders,
     publishWindows,
     publishProcesses
   };
 })();
+
+

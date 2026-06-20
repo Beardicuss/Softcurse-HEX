@@ -22,7 +22,8 @@ window.hexReferenceResolver = (() => {
 
   function detectKind(text) {
     const lower = String(text || '').toLowerCase();
-    if (/\b(file|document|folder|image|video|song|track|photo|pdf)\b/.test(lower)) return 'file';
+    if (/\b(folder|directory)\b/.test(lower)) return 'folder';
+    if (/\b(file|document|image|video|song|track|photo|pdf)\b/.test(lower)) return 'file';
     if (/\b(game|steam|epic)\b/.test(lower)) return 'game';
     if (/\b(process|task|service|pid)\b/.test(lower)) return 'process';
     if (/\b(window|tab)\b/.test(lower)) return 'window';
@@ -78,3 +79,4 @@ window.hexReferenceResolver = (() => {
     isDesktopReferenceCommand
   };
 })();
+

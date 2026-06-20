@@ -7,6 +7,7 @@ window.hexPcAwareness = (() => {
     inventory: {
       apps: [],
       files: [],
+      folders: [],
       games: [],
       recent: []
     },
@@ -14,12 +15,19 @@ window.hexPcAwareness = (() => {
     lastProcessesRefreshAt: 0
   };
 
+  function cloneCandidateList(list, limit = 12) {
+    return (Array.isArray(list) ? list : [])
+      .slice(0, limit)
+      .map((item) => ({ ...item, meta: item?.meta ? { ...item.meta } : {} }));
+  }
+
   function syncFromCandidates() {
-    const snapshot = window.hexPcInventory?.getSnapshot?.() || {};
-    state.inventory.apps = Array.isArray(snapshot.apps) ? snapshot.apps.slice(0, 12) : [];
-    state.inventory.files = Array.isArray(snapshot.files) ? snapshot.files.slice(0, 12) : [];
-    state.inventory.games = Array.isArray(snapshot.games) ? snapshot.games.slice(0, 12) : [];
-    state.inventory.recent = Array.isArray(snapshot.promoted) ? snapshot.promoted.slice(0, 6) : [];
+    const snapshot = window.hexCandidateStore?.snapshot?.() || {};
+    state.inventory.apps = cloneCandidateList(snapshot.app, 12);
+    state.inventory.files = cloneCandidateList(snapshot.file, 12);
+    state.inventory.folders = cloneCandidateList(snapshot.folder, 12);
+    state.inventory.games = cloneCandidateList(snapshot.game, 12);
+    state.inventory.recent = cloneCandidateList(snapshot.recent, 6);
   }
 
   async function refreshWindows(force = false) {
@@ -67,13 +75,14 @@ window.hexPcAwareness = (() => {
   function getSnapshot() {
     syncFromCandidates();
     return {
-      windows: state.windows.map((item) => ({ ...item })),
-      processes: state.processes.map((item) => ({ ...item })),
+      windows: state.windows.map((item) => ({ ...item, meta: item?.meta ? { ...item.meta } : {} })),
+      processes: state.processes.map((item) => ({ ...item, meta: item?.meta ? { ...item.meta } : {} })),
       inventory: {
-        apps: state.inventory.apps.map((item) => ({ ...item })),
-        files: state.inventory.files.map((item) => ({ ...item })),
-        games: state.inventory.games.map((item) => ({ ...item })),
-        recent: state.inventory.recent.map((item) => ({ ...item }))
+        apps: state.inventory.apps.map((item) => ({ ...item, meta: item?.meta ? { ...item.meta } : {} })),
+        files: state.inventory.files.map((item) => ({ ...item, meta: item?.meta ? { ...item.meta } : {} })),
+        folders: state.inventory.folders.map((item) => ({ ...item, meta: item?.meta ? { ...item.meta } : {} })),
+        games: state.inventory.games.map((item) => ({ ...item, meta: item?.meta ? { ...item.meta } : {} })),
+        recent: state.inventory.recent.map((item) => ({ ...item, meta: item?.meta ? { ...item.meta } : {} }))
       },
       lastWindowsRefreshAt: state.lastWindowsRefreshAt,
       lastProcessesRefreshAt: state.lastProcessesRefreshAt
@@ -87,3 +96,4 @@ window.hexPcAwareness = (() => {
     getSnapshot
   };
 })();
+
