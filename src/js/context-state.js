@@ -1,9 +1,11 @@
 'use strict';
 
 window.hexContextState = (() => {
+  const STORAGE_KEY = 'hex.sessionContext.v2';
   const MAX_RECENT_MESSAGES = 8;
   const MAX_RECENT_ENTITIES = 16;
   const MAX_RECENT_TOPICS = 10;
+  const MAX_IDLE_CONTINUITY_MS = 1000 * 60 * 45;
 
   const state = {
     primaryGoal: '',
@@ -25,6 +27,45 @@ window.hexContextState = (() => {
     lastResolvedReference: null
   };
 
+  function persist() {
+    try {
+      window.localStorage?.setItem(STORAGE_KEY, JSON.stringify(getSnapshot()));
+    } catch (_) { }
+  }
+
+  function hydrateStored() {
+    try {
+      const raw = window.localStorage?.getItem(STORAGE_KEY);
+      const parsed = JSON.parse(raw || 'null');
+      if (!parsed || typeof parsed !== 'object') return;
+      state.primaryGoal = String(parsed.primaryGoal || '');
+      state.lastUserMessage = String(parsed.lastUserMessage || '');
+      state.lastAssistantMessage = String(parsed.lastAssistantMessage || '');
+      state.lastUserWasFollowUp = !!parsed.lastUserWasFollowUp;
+      state.lastActionTypes = Array.isArray(parsed.lastActionTypes) ? parsed.lastActionTypes.slice(0, 16) : [];
+      state.lastActionSummary = String(parsed.lastActionSummary || '');
+      state.lastSystemDataSummary = String(parsed.lastSystemDataSummary || '');
+      state.activeSurface = String(parsed.activeSurface || 'chat');
+      state.lastTouchedAt = Number(parsed.lastTouchedAt || 0) || null;
+      state.recentUserMessages = Array.isArray(parsed.recentUserMessages) ? parsed.recentUserMessages.slice(-MAX_RECENT_MESSAGES) : [];
+      state.recentAssistantSummaries = Array.isArray(parsed.recentAssistantSummaries) ? parsed.recentAssistantSummaries.slice(-MAX_RECENT_MESSAGES) : [];
+      state.recentEntities = Array.isArray(parsed.recentEntities) ? parsed.recentEntities.slice(0, MAX_RECENT_ENTITIES) : [];
+      state.activeTopics = Array.isArray(parsed.activeTopics) ? parsed.activeTopics.slice(0, MAX_RECENT_TOPICS) : [];
+      state.referenceCandidates = Array.isArray(parsed.referenceCandidates) ? parsed.referenceCandidates.slice(0, MAX_RECENT_ENTITIES) : [];
+      state.browserSnapshot = parsed.browserSnapshot && typeof parsed.browserSnapshot === 'object'
+        ? {
+          open: !!parsed.browserSnapshot.open,
+          url: parsed.browserSnapshot.url || null,
+          title: parsed.browserSnapshot.title || null
+        }
+        : { open: false, url: null, title: null };
+      state.browserCandidates = Array.isArray(parsed.browserCandidates) ? parsed.browserCandidates.slice(0, 16) : [];
+      state.lastResolvedReference = parsed.lastResolvedReference && typeof parsed.lastResolvedReference === 'object'
+        ? { ...parsed.lastResolvedReference }
+        : null;
+    } catch (_) { }
+  }
+
   function uniqueTrimmed(list, max) {
     const seen = new Set();
     const result = [];
@@ -43,21 +84,39 @@ window.hexContextState = (() => {
     return Array.isArray(list) ? list.slice(-max) : [];
   }
 
+  function hasWarmContext() {
+    if (!state.lastTouchedAt) return false;
+    const freshEnough = (Date.now() - state.lastTouchedAt) <= MAX_IDLE_CONTINUITY_MS;
+    return freshEnough && !!(
+      state.primaryGoal ||
+      state.lastActionSummary ||
+      state.recentEntities.length ||
+      state.referenceCandidates.length ||
+      state.activeTopics.length ||
+      state.browserSnapshot?.open ||
+      state.lastResolvedReference
+    );
+  }
+
   function isLikelyFollowUpMessage(text) {
     const raw = (text || '').trim();
     if (!raw) return false;
     const lower = raw.toLowerCase();
     const words = lower.split(/\s+/).filter(Boolean);
-    const shortContextualCommand = words.length <= 10 && /^(open|play|click|read|scroll|focus|select|choose|use|try|continue|resume|show|tell|find|pick|press|back|forward|refresh|reload|close)\b/.test(lower);
-    const hasReferenceLanguage = /\b(it|that|this|them|those|these|one|ones|first|second|third|fourth|fifth|last|next|previous|same|there|here|result|video|song|page|button|link)\b/.test(lower);
+    const shortContextualCommand = words.length <= 10 && /^(open|play|click|read|scroll|focus|select|choose|use|try|continue|resume|show|tell|find|pick|press|back|forward|refresh|reload|close|run|launch|kill|end)\b/.test(lower);
+    const hasReferenceLanguage = /\b(it|that|this|them|those|these|one|ones|first|second|third|fourth|fifth|last|next|previous|same|there|here|result|video|song|page|button|link|folder|file|app|game|window|process)\b/.test(lower);
+    const conversationalCarry = /^(and|also|then|now|again|next|continue|go on|keep going|what about|how about|and what|and can|and could|so|okay|ok|alright|well)\b/.test(lower);
+    const shortQuestionCarry = words.length <= 8 && /^(why|how|what|where|which|when)\b/.test(lower) && hasWarmContext();
 
-    if (/^(and|also|then|now|again|next|continue|go on|keep going)\b/.test(lower)) return true;
+    if (conversationalCarry) return true;
     if (/^(open|play|click|read|scroll|focus|select|choose|use|try)\s+(it|that|this|them|those|these|one|ones|first|second|third|fourth|fifth|last|next|previous)\b/.test(lower)) return true;
-    if (/^(open|play|click|read)\s+(the\s+)?(first|second|third|fourth|fifth|last|next)\b/.test(lower)) return true;
-    if (/^(go back|back|forward|refresh|reload|scroll down|scroll up|read the page|close it|click it|open it|play it)$/.test(lower)) return true;
+    if (/^(open|play|click|read|show|launch|run|focus|close)\s+(the\s+)?(first|second|third|fourth|fifth|last|next)\b/.test(lower)) return true;
+    if (/^(go back|back|forward|refresh|reload|scroll down|scroll up|read the page|close it|click it|open it|play it|run it|show it|focus it)$/.test(lower)) return true;
     if (words.length <= 6 && /\b(it|that|this|them|those|these|one|ones|first|second|third|fourth|fifth|last|next|previous|same|there)\b/.test(lower)) return true;
     if (shortContextualCommand && hasReferenceLanguage) return true;
-    if (shortContextualCommand && words.length <= 4) return true;
+    if (shortContextualCommand && words.length <= 4 && hasWarmContext()) return true;
+    if (shortQuestionCarry) return true;
+    if (words.length <= 5 && hasWarmContext() && !/[.!?].+[.!?]/.test(lower)) return true;
     return false;
   }
 
@@ -157,16 +216,18 @@ window.hexContextState = (() => {
         title: browserStatus?.title || null
       };
       if (browserStatus?.open) state.activeSurface = 'browser';
+      persist();
       return;
     }
 
-    const followUp = isLikelyFollowUpMessage(normalizedText) && (!!state.primaryGoal || !!browserStatus?.open || state.referenceCandidates.length > 0 || state.recentEntities.length > 0);
+    const hasContext = !!state.primaryGoal || !!browserStatus?.open || state.referenceCandidates.length > 0 || state.recentEntities.length > 0 || hasWarmContext();
+    const followUp = isLikelyFollowUpMessage(normalizedText) && hasContext;
     const baseGoal = followUp && state.primaryGoal ? state.primaryGoal : normalizedText;
 
     state.lastUserMessage = normalizedText;
     state.lastUserWasFollowUp = followUp;
     state.lastTouchedAt = now;
-    state.activeSurface = browserStatus?.open ? 'browser' : 'chat';
+    state.activeSurface = browserStatus?.open ? 'browser' : (state.lastResolvedReference?.surface || 'chat');
     state.browserSnapshot = {
       open: !!browserStatus?.open,
       url: browserStatus?.url || null,
@@ -192,6 +253,7 @@ window.hexContextState = (() => {
 
     pushReferenceCandidates(normalizedText, browserStatus);
     syncWorkingMemory(normalizedText, browserStatus, followUp, baseGoal);
+    persist();
   }
 
   function updateForAssistant(text, actions) {
@@ -206,11 +268,13 @@ window.hexContextState = (() => {
       ...state.recentAssistantSummaries,
       state.lastAssistantMessage
     ], MAX_RECENT_MESSAGES);
+    persist();
   }
 
   function updateForSystemData(infoResults) {
     state.lastSystemDataSummary = (infoResults || []).join('\n').substring(0, 700);
     state.lastTouchedAt = Date.now();
+    persist();
   }
 
   function hydrateRemote(remote, browser) {
@@ -259,26 +323,36 @@ window.hexContextState = (() => {
       remote.lastUserMessage || '',
       remote.lastAssistantMessage || ''
     ].join(' '), browser || state.browserSnapshot);
+    persist();
   }
 
   async function getBrowserSessionState() {
     try {
-      if (!window.hexAPI?.browser?.status) return { open: false, url: null, title: null };
-      const status = await window.hexAPI.browser.status();
-      return {
-        open: !!status?.open,
-        url: status?.url || null,
-        title: status?.title || null
-      };
-    } catch (_) {
-      return { open: false, url: null, title: null };
-    }
+      const status = await window.hexAPI?.browser?.status?.();
+      if (status && typeof status.open === 'boolean') {
+        state.browserSnapshot = {
+          open: !!status.open,
+          url: status.url || null,
+          title: status.title || null
+        };
+        persist();
+        return { ...state.browserSnapshot };
+      }
+    } catch (_) { }
+    return { ...state.browserSnapshot };
   }
 
   function getSnapshot() {
     return {
-      ...state,
+      primaryGoal: state.primaryGoal,
+      lastUserMessage: state.lastUserMessage,
+      lastAssistantMessage: state.lastAssistantMessage,
+      lastUserWasFollowUp: state.lastUserWasFollowUp,
       lastActionTypes: [...state.lastActionTypes],
+      lastActionSummary: state.lastActionSummary,
+      lastSystemDataSummary: state.lastSystemDataSummary,
+      activeSurface: state.activeSurface,
+      lastTouchedAt: state.lastTouchedAt,
       recentUserMessages: [...state.recentUserMessages],
       recentAssistantSummaries: [...state.recentAssistantSummaries],
       recentEntities: [...state.recentEntities],
@@ -297,7 +371,7 @@ window.hexContextState = (() => {
         label: String(item?.label || item?.text || '').trim(),
         text: String(item?.text || item?.label || '').trim(),
         url: item?.url || null,
-        kind: String(item?.kind || 'result').trim(),
+        kind: String(item?.kind || 'item').trim(),
         source: String(item?.source || 'browser').trim()
       }))
       .filter((item) => item.label || item.text)
@@ -318,6 +392,7 @@ window.hexContextState = (() => {
       ...state.referenceCandidates
     ], MAX_RECENT_ENTITIES);
     state.lastTouchedAt = Date.now();
+    persist();
   }
 
   function ordinalIndexFromText(text) {
@@ -355,17 +430,29 @@ window.hexContextState = (() => {
     if (!lower) return null;
     if (surface !== 'browser') return null;
     const candidates = state.browserCandidates || [];
-    if (!candidates.length) return null;
+    const browserMemory = window.hexPcEntityMemory?.search?.(query, ['browser', 'video', 'button', 'link', 'result', 'article', 'page'], 12) || [];
+    const normalizedMemory = browserMemory.map((item, index) => ({
+      index: Number.isFinite(item?.meta?.index) ? item.meta.index : index + 1,
+      label: String(item.label || item.value || '').trim(),
+      text: String(item.value || item.label || '').trim(),
+      url: item.path || item.meta?.browserUrl || null,
+      kind: String(item.kind || item.meta?.candidateKind || 'browser').trim(),
+      source: 'browser-memory'
+    })).filter((item) => item.label || item.text);
 
     let pool = candidates.filter((candidate) => candidateMatchesQuery(candidate, lower));
     if (!pool.length) pool = candidates;
+    if (!pool.length) pool = normalizedMemory.filter((candidate) => candidateMatchesQuery(candidate, lower));
+    if (!pool.length) pool = normalizedMemory;
+    if (!pool.length) return null;
 
     if (/^(it|that|this|that one|this one|same one|same result|same video|open it|click it|play it)$/.test(lower)) {
       const fallback = state.lastResolvedReference
-        ? candidates.find((candidate) => candidate.index === state.lastResolvedReference.index)
+        ? pool.find((candidate) => candidate.index === state.lastResolvedReference.index) || pool[0]
         : pool[0];
       if (fallback) {
-        state.lastResolvedReference = { ...fallback };
+        state.lastResolvedReference = { ...fallback, surface: 'browser', source: fallback.source || 'browser' };
+        persist();
         return fallback;
       }
     }
@@ -374,7 +461,8 @@ window.hexContextState = (() => {
     if (ordinalIndex !== null) {
       const chosen = ordinalIndex === -1 ? pool[pool.length - 1] : pool[ordinalIndex];
       if (chosen) {
-        state.lastResolvedReference = { ...chosen };
+        state.lastResolvedReference = { ...chosen, surface: 'browser', source: chosen.source || 'browser' };
+        persist();
         return chosen;
       }
     }
@@ -384,12 +472,15 @@ window.hexContextState = (() => {
       return hay.includes(lower);
     });
     if (exact) {
-      state.lastResolvedReference = { ...exact };
+      state.lastResolvedReference = { ...exact, surface: 'browser', source: exact.source || 'browser' };
+      persist();
       return exact;
     }
 
     return null;
   }
+
+  hydrateStored();
 
   return {
     state,
@@ -403,6 +494,7 @@ window.hexContextState = (() => {
     resolveReference,
     hydrateRemote,
     getBrowserSessionState,
-    getSnapshot
+    getSnapshot,
+    persist
   };
 })();

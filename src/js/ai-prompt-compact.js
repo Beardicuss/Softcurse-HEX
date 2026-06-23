@@ -6,6 +6,15 @@ window.buildHexCompactSystemPrompt = function buildHexCompactSystemPrompt(state,
   const session = state.sessionContext || {};
   const working = state.workingMemory || {};
   const desktop = state.desktopContext || {};
+  const cloudContext = state.cloudContext || {};
+  const cloudSummary = cloudContext.summary || {};
+  const cloudMemoryHits = Array.isArray(cloudContext.relevantMemories) ? cloudContext.relevantMemories.slice(0, 4).map((item) => item.content) : [];
+  const cloudTurnHits = Array.isArray(cloudContext.relevantTurns) ? cloudContext.relevantTurns.slice(0, 3).map((item) => String(item.role || 'user').toUpperCase() + ': ' + String(item.content || '').substring(0, 120)) : [];
+  const cloudTasks = (cloudContext.unresolvedTasks || []).slice(0, 4).map((item) => item.text).filter(Boolean);
+  const cloudActions = (cloudContext.actionTimeline || []).slice(0, 4).map((item) => item.kind + ': ' + item.text).filter(Boolean);
+  const cloudCommitments = (cloudContext.dialogue?.commitments || []).slice(0, 3).map((item) => item.text).filter(Boolean);
+  const cloudCorrections = (cloudContext.dialogue?.corrections || []).slice(0, 3).map((item) => item.text).filter(Boolean);
+  const formatCloudRefs = (items) => (items || []).map((item) => item?.label || item?.value || item).filter(Boolean);
   const recentUserMessages = Array.isArray(session.recentUserMessages) ? session.recentUserMessages.slice(-4) : [];
   const recentAssistantSummaries = Array.isArray(session.recentAssistantSummaries) ? session.recentAssistantSummaries.slice(-3) : [];
   const activeTopics = Array.isArray(session.activeTopics) ? session.activeTopics.slice(0, 8) : [];
@@ -13,6 +22,7 @@ window.buildHexCompactSystemPrompt = function buildHexCompactSystemPrompt(state,
   const referenceCandidates = Array.isArray(session.referenceCandidates) ? session.referenceCandidates.slice(0, 8) : [];
   const browserCandidates = Array.isArray(session.browserCandidates) ? session.browserCandidates.slice(0, 8) : [];
   const recentDesktopTarget = desktop.recentSummary || 'none';
+  const warmSession = session.lastTouchedAt ? Math.max(0, Math.round((Date.now() - session.lastTouchedAt) / 60000)) : null;
   const resolvedReference = session.resolvedReference || session.lastResolvedReference || null;
   const recentTurnsBlock = Array.isArray(state.recentTurns) && state.recentTurns.length > 0
     ? [
@@ -55,6 +65,21 @@ window.buildHexCompactSystemPrompt = function buildHexCompactSystemPrompt(state,
     'Desktop files: ' + ((desktop.fileCandidates || []).join(' | ') || 'none'),
     'Promoted desktop targets: ' + ((desktop.promotedRecent || []).join(' | ') || 'none'),
     'Resolved follow-up target: ' + (resolvedReference ? ('#' + resolvedReference.index + ' ' + (resolvedReference.label || resolvedReference.text || '') + (resolvedReference.url ? ' | ' + resolvedReference.url : '')) : 'none'),
+    'Brain route: ' + (state.brainRoute?.route || 'provider') + ' | Server packet: ' + (state.brainRoute?.serverPacket ? 'YES' : 'NO') + ' | Server memory hits: ' + (state.brainRoute?.serverMemoryHits || 0),
+    'Provider layer: ' + (state.brainRoute?.providerLayer || 'external') + ' — prefer server/local memory and continuity when present.',
+    'Brain confidence: ' + (state.brainRoute?.confidence || 'n/a') + ' | Provider required: ' + (state.brainRoute?.providerRequired === false ? 'NO' : 'YES') + ' | Next: ' + (state.brainRoute?.recommendedNext || 'unknown'),
+    'Brain sources: ' + ((state.brainRoute?.sources || []).join(', ') || 'none'),
+    'Brain action plan: ' + (state.brainRoute?.actionPlan?.domain || 'dialogue') + ' | surface: ' + (state.brainRoute?.actionPlan?.suggestedSurface || 'chat') + ' | urgency: ' + (state.brainRoute?.actionPlan?.urgency || 'normal') + ' | reasons: ' + ((state.brainRoute?.actionPlan?.reasons || []).join(', ') || 'none'),
+    'Cloud goal: ' + (cloudContext.activeGoal?.text || cloudSummary.goal || 'none'),
+    'Cloud active topic: ' + (cloudContext.topics?.active?.label || 'none'),
+    'Cloud paused topics: ' + ((cloudContext.topics?.paused || []).map((item) => item.label).join(' | ') || 'none'),
+    'Cloud memory hits: ' + (cloudMemoryHits.join(' | ') || 'none'),
+    'Cloud desktop refs: ' + (formatCloudRefs(cloudContext.references?.desktop || cloudSummary.desktopReferences).join(' | ') || 'none'),
+    'Unresolved tasks: ' + (cloudTasks.join(' | ') || 'none'),
+    'Recent actions: ' + (cloudActions.join(' | ') || 'none'),
+    'HEX commitments: ' + (cloudCommitments.join(' | ') || 'none'),
+    'User corrections: ' + (cloudCorrections.join(' | ') || 'none'),
+    'Pending follow-up: ' + (cloudContext.dialogue?.pendingFollowUp || 'none'),
     '',
     '=== ACTIVE SESSION CONTINUITY ===',
     'Current goal: ' + (session.primaryGoal || 'none'),
@@ -63,12 +88,15 @@ window.buildHexCompactSystemPrompt = function buildHexCompactSystemPrompt(state,
     'Last action plan: ' + (session.lastActionSummary || 'none'),
     'Last system/browser data: ' + String(session.lastSystemDataSummary || 'none').substring(0, 220),
     'Working task: ' + (working.currentTask || 'none'),
+    'Session warmth: ' + (warmSession != null ? (warmSession + ' min since last active turn') : 'unknown'),
     'Working entities: ' + ((working.currentEntities || []).join(', ') || 'none'),
     'Active topics: ' + (activeTopics.join(', ') || 'none'),
     'Recent entities: ' + (recentEntities.join(', ') || 'none'),
     'Reference candidates: ' + (referenceCandidates.join(' | ') || 'none'),
     'Desktop game candidates: ' + ((desktop.gameCandidates || []).join(' | ') || 'none'),
     'Session mood: ' + (working.mood || 'neutral'),
+    'Cloud turn hits: ' + (cloudTurnHits.join(' | ') || 'none'),
+    'Cloud browser refs: ' + (formatCloudRefs(cloudContext.references?.browser || cloudSummary.browserReferences).join(' | ') || 'none'),
     '',
     'Continuity rules:',
     '- Treat short, referential, ordinal, or corrective messages as follow-ups unless the user clearly changes topic.',
@@ -76,6 +104,9 @@ window.buildHexCompactSystemPrompt = function buildHexCompactSystemPrompt(state,
     '- If recent desktop targets, windows, processes, apps, files, or games are listed in the snapshot, referential desktop commands should use that active desktop context first.',
     '- Resolve pronouns and ordinals against Reference candidates, Recent entities, Active topics, recent desktop targets, and the latest browser/app/file/window/process context before assuming a new request.',
     '- Never behave as if each new user message starts a fresh chat.',
+    '- Keep conversational topics separate from executable tasks. A paused topic is not a pending command.',
+    '- When the user resumes or returns to a topic, continue from the matching cloud topic and recent turns instead of treating it as new.',
+    '- If the active session was warm recently, preserve topic continuity even for short natural replies, corrections, or follow-up questions.',
     '- Never say you forgot, start from scratch, or cannot remember.',
     '',
     recentUserMessages.length ? 'Recent user flow: ' + recentUserMessages.join('  ||  ') : '',

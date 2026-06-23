@@ -1,4 +1,6 @@
 window.hexServicesActionHandler = (() => {
+  const noteDesktopOutcome = (...args) => window.hexActionHelpers?.noteDesktopOutcome?.(...args);
+
   function recordMemoryOutcome(key, success, error) {
     if (window.hexMemory?.recordActionOutcome) {
       window.hexMemory.recordActionOutcome(key, success, error || '');
@@ -99,10 +101,23 @@ window.hexServicesActionHandler = (() => {
         if (foundFile) {
           addHexMessage(`**Playing:** ${foundFile.name}`);
           window.hexAPI.butler.openFile(foundFile.path);
+          noteDesktopOutcome({
+            kind: 'file',
+            label: foundFile.name || String(foundFile.path || '').split(/[\/]/).pop() || query,
+            path: foundFile.path || null,
+            value: foundFile.path || foundFile.name || query,
+            meta: { targetType: 'media', source: 'play-media' }
+          }, 'file', true);
           recordMemoryOutcome(`play_media:${query}`, true);
           recordBrainOutcome(`play_media:${query}`, true);
         } else {
           addHexMessage(`I couldn't find any playable media matching "**${query}**" on your PC.`);
+          noteDesktopOutcome({
+            kind: 'file',
+            label: query,
+            value: query,
+            meta: { targetType: 'media', source: 'play-media' }
+          }, 'file', false, 'not found');
           recordMemoryOutcome(`play_media:${query}`, false, 'not found');
           recordBrainOutcome(`play_media:${query}`, false, 'not found');
         }
@@ -123,9 +138,25 @@ window.hexServicesActionHandler = (() => {
           const plat = r.platform ? ` [${r.platform.toUpperCase()}]` : '';
           addHexMessage(`**Launching ${r.game}**${plat}. Loading…`);
           addLog('BUTLER', `Game launched: ${r.game}${plat}`);
+          noteDesktopOutcome({
+            kind: 'game',
+            label: r.game || gameName,
+            value: r.game || gameName,
+            meta: { platform: r.platform || null, source: 'launch-game' }
+          }, 'game', true);
+          recordMemoryOutcome(`launch_game:${gameName}`, true);
+          recordBrainOutcome(`launch_game:${gameName}`, true);
         } else {
           addHexMessage(`**Could not launch** "${gameName}". ${r.error || 'Not found in Steam, Epic, or installed apps.'}`);
           addLog('BUTLER', `Game not found: ${gameName}`, 'error');
+          noteDesktopOutcome({
+            kind: 'game',
+            label: gameName,
+            value: gameName,
+            meta: { source: 'launch-game' }
+          }, 'game', false, r.error || 'not found');
+          recordMemoryOutcome(`launch_game:${gameName}`, false, r.error || 'not found');
+          recordBrainOutcome(`launch_game:${gameName}`, false, r.error || 'not found');
         }
         return { handled: true };
       }
@@ -137,3 +168,4 @@ window.hexServicesActionHandler = (() => {
 
   return { handle };
 })();
+

@@ -113,6 +113,29 @@ module.exports = function registerVoiceIPC({
     };
   });
 
+  ipcMain.handle('voice:gcloud-synthesize', async (_, payload = {}) => {
+    const apiKey = String(getConfig()?.voice?.gcloudTtsKey || '').trim();
+    if (!apiKey) throw new Error('Google Cloud TTS key is not configured');
+    const text = String(payload.text || '').trim().slice(0, 5000);
+    if (!text) throw new Error('TTS text is required');
+    const voiceName = String(payload.voiceName || getConfig()?.voice?.gcloudVoice || 'ka-GE-Standard-A');
+    const response = await fetch('https://texttospeech.googleapis.com/v1/text:synthesize?key=' + encodeURIComponent(apiKey), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        input: { text },
+        voice: { languageCode: voiceName.substring(0, 5), name: voiceName },
+        audioConfig: {
+          audioEncoding: 'MP3',
+          speakingRate: Number(payload.rate || 1),
+          pitch: payload.pitch ? (Number(payload.pitch) - 1) * 10 : 0
+        }
+      })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error('Google Cloud TTS ' + response.status + ': ' + (result?.error?.message || response.statusText));
+    return { audio: Buffer.from(String(result.audioContent || ''), 'base64') };
+  });
   // ── Download models ────────────────────────────────────────────────────────
   ipcMain.handle('voice:download-models', async (_, { targets, whisperSize }) => {
     if (!localVoice) throw new Error('Local voice engine not available');

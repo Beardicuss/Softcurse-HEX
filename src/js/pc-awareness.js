@@ -4,6 +4,7 @@ window.hexPcAwareness = (() => {
   const state = {
     windows: [],
     processes: [],
+    knownLocations: [],
     inventory: {
       apps: [],
       files: [],
@@ -28,14 +29,46 @@ window.hexPcAwareness = (() => {
     state.inventory.folders = cloneCandidateList(snapshot.folder, 12);
     state.inventory.games = cloneCandidateList(snapshot.game, 12);
     state.inventory.recent = cloneCandidateList(snapshot.recent, 6);
+    state.knownLocations = (window.hexPcKnownLocations?.listAll?.() || [])
+      .map((item, index) => ({
+        kind: item.kind || 'folder',
+        index: index + 1,
+        label: item.label,
+        value: item.alias,
+        path: null,
+        meta: {
+          alias: item.alias,
+          priority: item.priority || 0,
+          startup: !!item.startup,
+          source: 'known-location'
+        }
+      }));
+  }
+
+  function mergeMetaByLabel(previous = [], next = [], rankMetaFactory) {
+    const prevByKey = new Map((Array.isArray(previous) ? previous : []).map((item) => [String(item?.label || '').toLowerCase(), item]));
+    return (Array.isArray(next) ? next : []).map((item, index) => {
+      const existing = prevByKey.get(String(item?.label || '').toLowerCase());
+      const rankMeta = rankMetaFactory(index);
+      return {
+        ...item,
+        index: index + 1,
+        meta: {
+          ...(existing?.meta || {}),
+          ...(item?.meta || {}),
+          ...rankMeta
+        }
+      };
+    });
   }
 
   async function refreshWindows(force = false) {
     const now = Date.now();
-    if (!window.hexPcAwarenessRefresh?.shouldRefresh?.(state.lastWindowsRefreshAt, force, 8000, 18000)) return state.windows;
+    if (!window.hexPcAwarenessRefresh?.shouldRefresh?.('window', state.lastWindowsRefreshAt, force)) return state.windows;
+    window.hexPcAwarenessRefresh?.noteAttempt?.('window');
     const result = await window.hexAPI?.butler?.listWindows?.().catch(() => null);
     if (result?.success && Array.isArray(result.windows)) {
-      state.windows = result.windows
+      const nextWindows = result.windows
         .map((win, index) => ({
           index: index + 1,
           label: win.MainWindowTitle || '',
@@ -45,18 +78,26 @@ window.hexPcAwareness = (() => {
         .filter((win) => win.label)
         .slice(0, 12);
       window.hexCandidatePublishers?.publishWindows(result.windows || []);
+      state.windows = mergeMetaByLabel(state.windows, nextWindows, (index) => ({
+        lastFocusedAt: now,
+        focusRank: Math.max(1, 12 - index)
+      }));
       state.lastWindowsRefreshAt = now;
+      window.hexPcAwarenessRefresh?.noteResult?.('window', true);
       syncFromCandidates();
+      return state.windows;
     }
+    window.hexPcAwarenessRefresh?.noteResult?.('window', false);
     return state.windows;
   }
 
   async function refreshProcesses(force = false) {
     const now = Date.now();
-    if (!window.hexPcAwarenessRefresh?.shouldRefresh?.(state.lastProcessesRefreshAt, force, 8000, 22000)) return state.processes;
+    if (!window.hexPcAwarenessRefresh?.shouldRefresh?.('process', state.lastProcessesRefreshAt, force)) return state.processes;
+    window.hexPcAwarenessRefresh?.noteAttempt?.('process');
     const result = await window.hexAPI?.butler?.listProcesses?.().catch(() => null);
     if (result?.success && Array.isArray(result.processes)) {
-      state.processes = result.processes
+      const nextProcesses = result.processes
         .map((proc, index) => ({
           index: index + 1,
           label: proc.name || '',
@@ -66,9 +107,16 @@ window.hexPcAwareness = (() => {
         .filter((proc) => proc.label)
         .slice(0, 12);
       window.hexCandidatePublishers?.publishProcesses(result.processes || []);
+      state.processes = mergeMetaByLabel(state.processes, nextProcesses, (index) => ({
+        refreshRank: Math.max(1, 12 - index),
+        seenAt: now
+      }));
       state.lastProcessesRefreshAt = now;
+      window.hexPcAwarenessRefresh?.noteResult?.('process', true);
       syncFromCandidates();
+      return state.processes;
     }
+    window.hexPcAwarenessRefresh?.noteResult?.('process', false);
     return state.processes;
   }
 
@@ -84,8 +132,10 @@ window.hexPcAwareness = (() => {
         games: state.inventory.games.map((item) => ({ ...item, meta: item?.meta ? { ...item.meta } : {} })),
         recent: state.inventory.recent.map((item) => ({ ...item, meta: item?.meta ? { ...item.meta } : {} }))
       },
+      knownLocations: state.knownLocations.map((item) => ({ ...item, meta: item?.meta ? { ...item.meta } : {} })),
       lastWindowsRefreshAt: state.lastWindowsRefreshAt,
-      lastProcessesRefreshAt: state.lastProcessesRefreshAt
+      lastProcessesRefreshAt: state.lastProcessesRefreshAt,
+      refreshState: window.hexPcAwarenessRefresh?.getState?.() || {}
     };
   }
 
@@ -96,4 +146,3 @@ window.hexPcAwareness = (() => {
     getSnapshot
   };
 })();
-

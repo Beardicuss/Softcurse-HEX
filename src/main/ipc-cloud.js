@@ -143,7 +143,77 @@ module.exports = function registerCloudIPC({
       return { success: false, error: error.message };
     }
   });
+  ipcMain.handle('cloud:hunter-capabilities', async (_, payload = {}) => {
+    try {
+      const preferredProvider = String(payload.preferredProvider || '').trim();
+      const query = preferredProvider
+        ? '?preferredProvider=' + encodeURIComponent(preferredProvider)
+        : '';
+      const result = await request('/api/hunter/capabilities' + query);
+      return { success: true, capabilities: result.capabilities || null };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+  ipcMain.handle('cloud:hunter-orchestration', async (_, payload = {}) => {
+    try {
+      const preferredProvider = String(payload.preferredProvider || '').trim();
+      const query = preferredProvider
+        ? '?preferredProvider=' + encodeURIComponent(preferredProvider)
+        : '';
+      const result = await request('/api/hunter/orchestration' + query);
+      return { success: true, orchestration: result.orchestration || null };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+  ipcMain.handle('cloud:hunter-report-provider', async (_, payload = {}) => {
+    try {
+      const result = await request('/api/hunter/orchestration/report', {
+        method: 'POST',
+        body: payload || {}
+      });
+      return {
+        success: true,
+        state: result.state || null,
+        orchestration: result.orchestration || null
+      };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
 
+
+  ipcMain.handle('cloud:remember-fact', async (_, payload = {}) => {
+    try {
+      const cloud = getCloudConfig();
+      const profileId = payload.profileId || cloud.profileId;
+      if (!profileId) return { success: false, error: 'No cloud profileId configured.' };
+      const result = await request('/api/memories', {
+        method: 'POST',
+        body: {
+          profileId,
+          sessionId: payload.sessionId || cloud.sessionId || null,
+          kind: payload.kind || 'explicit',
+          content: payload.content || '',
+          confidence: payload.confidence || 0.97,
+          tags: Array.isArray(payload.tags) ? payload.tags : ['explicit', 'desktop']
+        }
+      });
+      return { success: true, memory: result.memory || null };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('cloud:record-activity', async (_, payload = {}) => {
+    try {
+      const result = await request('/api/activity', { method: 'POST', body: payload || {} });
+      return { success: true, event: result.event || null };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
   ipcMain.handle('cloud:resolve-profile', async (_, payload = {}) => {
     const cfg = getConfig();
     cfg.cloud = cfg.cloud || {};
@@ -184,6 +254,44 @@ module.exports = function registerCloudIPC({
     }
   });
 
+
+
+  ipcMain.handle('cloud:sync-device-inventory', async (_, payload = {}) => {
+    try {
+      const activeProfileId = payload.profileId || getCloudConfig().profileId;
+      if (!activeProfileId) return { success: false, error: 'No cloud profileId configured.' };
+      const result = await request('/api/device-inventory', {
+        method: 'POST',
+        body: {
+          profileId: activeProfileId,
+          sessionId: payload.sessionId || getCloudConfig().sessionId || null,
+          deviceId: payload.deviceId || getCloudConfig().deviceId || null,
+          inventory: payload.inventory || {}
+        }
+      });
+      return { success: true, updated: result.updated || null };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+  ipcMain.handle('cloud:get-context-packet', async (_, payload = {}) => {
+    try {
+      const activeProfileId = payload.profileId || getCloudConfig().profileId;
+      if (!activeProfileId) return { success: false, error: 'No cloud profileId configured.' };
+      const result = await request('/api/context-packet', {
+        method: 'POST',
+        body: {
+          profileId: activeProfileId,
+          query: payload.query || '',
+          surface: payload.surface || null,
+          sessionId: payload.sessionId || getCloudConfig().sessionId || null
+        }
+      });
+      return { success: true, packet: result.packet || null };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
   ipcMain.handle('cloud:get-live-session', async (_, { profileId } = {}) => {
     try {
       const activeProfileId = profileId || getCloudConfig().profileId;

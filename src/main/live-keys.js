@@ -6,10 +6,9 @@
 // 2. Cloud hunter keys via hex-server when cloud continuity is enabled
 // Legacy local leaked-api-keys.json support is retained but disabled from live routing.
 
-const fs = require('fs');
-const path = require('path');
+const crypto = require('crypto');
+const executeProvider = require('./provider-executor');
 
-const LOCAL_LEAK_POOL_ENABLED = false;
 const SUPPORTED_LLM_PROVIDERS = new Set([
   'anthropic', 'openai', 'mistral', 'together', 'grok', 'gemini',
   'cohere', 'hf', 'replicate', 'openrouter', 'groq'
@@ -42,14 +41,12 @@ const MANUAL_PROVIDER_PATTERNS = [
   { provider: 'cohere', test: (key) => /^[A-Za-z0-9]{36,}$/.test(key) },
 ];
 
-module.exports = function registerLiveKeys({ ipcMain, app, safeSend, sendLog, getConfig, setConfig, saveConfig }) {
-  const LEAKED_KEYS_PATH = path.join(app.getPath('userData'), 'leaked-api-keys.json');
-  const DEFAULT_KEYS_BUNDLED = path.join(__dirname, '..', 'ai', 'leaked-api-keys.json');
+module.exports = function registerLiveKeys({ ipcMain, sendLog, getConfig, setConfig, saveConfig }) {
   const CLOUD_REFRESH_MS = 5 * 60 * 1000;
 
-  let _localApiKeys = {};
   let _manualApiKeys = {};
   let _cloudApiKeys = {};
+  let _cloudCapabilities = null;
   let _liveApiKeys = {};
   let _cloudRefreshTimer = null;
   let _cloudRefreshInFlight = false;
@@ -86,49 +83,59 @@ module.exports = function registerLiveKeys({ ipcMain, app, safeSend, sendLog, ge
     return merged;
   }
 
+  function keyId(provider, apiKey) {
+    return crypto.createHash('sha256').update(provider + ':' + apiKey).digest('hex').slice(0, 20);
+  }
+
+  function maskKey(apiKey) {
+    const value = String(apiKey || '');
+    if (value.length <= 10) return 'configured';
+    return value.slice(0, 4) + '...' + value.slice(-4);
+  }
+
+  function getManualKeySnapshot(pool = _manualApiKeys) {
+    return Object.fromEntries(Object.entries(pool || {}).map(([provider, keys]) => [
+      provider,
+      (keys || []).map((apiKey) => ({ id: keyId(provider, apiKey), masked: maskKey(apiKey) }))
+    ]));
+  }
   function getManualPoolFromConfig() {
     const cfg = getConfig?.() || {};
     return filterSupportedPool(cfg.llm?.manualApiKeys || {});
   }
 
   function applyMergedPool(reason = 'refresh') {
-    _liveApiKeys = mergePools(
-      _cloudApiKeys,
-      _manualApiKeys,
-      LOCAL_LEAK_POOL_ENABLED ? _localApiKeys : {}
-    );
-    safeSend('ai:live-keys-updated', _liveApiKeys);
+    _liveApiKeys = mergePools(_cloudApiKeys, _manualApiKeys);
     const summary = Object.keys(_liveApiKeys).map((p) => `${p}:${_liveApiKeys[p].length}`).join(', ') || 'empty';
     console.log(`Softcurse: Live AI keys ${reason} — ${summary}`);
   }
 
-  function parseLeakedKeys() {
-    if (!LOCAL_LEAK_POOL_ENABLED) return {};
-    try {
-      if (!fs.existsSync(LEAKED_KEYS_PATH) && fs.existsSync(DEFAULT_KEYS_BUNDLED)) {
-        fs.copyFileSync(DEFAULT_KEYS_BUNDLED, LEAKED_KEYS_PATH);
+  function buildFallbackCapabilitiesFromKeys(keyPool = {}) {
+    const providers = Object.entries(filterSupportedPool(keyPool)).map(([provider, keys]) => ({
+      provider,
+      label: provider.toUpperCase(),
+      validKeys: keys.length,
+      totalKeys: keys.length,
+      status: keys.length > 0 ? 'ready' : 'empty',
+      source: 'desktop-key-sync-fallback',
+      score: keys.length,
+      models: []
+    }));
+    providers.sort((a, b) => Number(b.validKeys || 0) - Number(a.validKeys || 0));
+    return {
+      schema: 'hex.hunter-capabilities.v1',
+      source: 'desktop-key-sync-fallback',
+      degraded: true,
+      degradationReason: 'Server capability endpoint unavailable; built from /api/hunter/valid-keys.',
+      activeProvider: providers.find((item) => item.status === 'ready')?.provider || null,
+      providers,
+      summary: {
+        totalProviders: providers.length,
+        readyProviders: providers.filter((item) => item.status === 'ready').length,
+        cooldownProviders: 0,
+        liveKeys: providers.reduce((sum, item) => sum + Number(item.validKeys || 0), 0)
       }
-      if (!fs.existsSync(LEAKED_KEYS_PATH)) return {};
-
-      const data = JSON.parse(fs.readFileSync(LEAKED_KEYS_PATH, 'utf8'));
-      const pool = {};
-      if (!data.commits || !Array.isArray(data.commits)) return {};
-
-      for (const commit of data.commits) {
-        if (!commit.leaked_keys) continue;
-        for (const k of commit.leaked_keys) {
-          if (!k.value_full) continue;
-          const provId = normalizeProviderId(k.provider) || normalizeProviderId(commit.provider);
-          if (!isSupportedProvider(provId)) continue;
-          if (!pool[provId]) pool[provId] = [];
-          if (!pool[provId].includes(k.value_full)) pool[provId].push(k.value_full);
-        }
-      }
-      return pool;
-    } catch (err) {
-      console.warn('Softcurse: Failed to parse leaked-api-keys.json', err.message);
-      return {};
-    }
+    };
   }
 
   function detectProviderFromKey(rawKey) {
@@ -162,41 +169,54 @@ module.exports = function registerLiveKeys({ ipcMain, app, safeSend, sendLog, ge
     return String(url || '').trim().replace(/\/+$/, '');
   }
 
+  async function fetchCloudJson(pathname) {
+    const response = await fetch(normalizeBaseUrl(getCloudConfig().serverUrl) + pathname, {
+      method: 'GET',
+      headers: buildCloudHeaders()
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.success === false) {
+      throw new Error(payload.error || ('HTTP ' + response.status));
+    }
+    return payload;
+  }
+
   async function refreshCloudKeys(force = false) {
     if (_cloudRefreshInFlight && !force) return;
     if (!isCloudEnabled()) {
-      if (Object.keys(_cloudApiKeys).length > 0) {
-        _cloudApiKeys = {};
-        applyMergedPool('cloud-disabled');
-      }
+      _cloudApiKeys = {};
+      _cloudCapabilities = null;
+      applyMergedPool('cloud-disabled');
       return;
     }
 
     _cloudRefreshInFlight = true;
     try {
-      const baseUrl = normalizeBaseUrl(getCloudConfig().serverUrl);
-      const response = await fetch(baseUrl + '/api/hunter/valid-keys', {
-        method: 'GET',
-        headers: buildCloudHeaders()
-      });
-      let payload = {};
-      try {
-        payload = await response.json();
-      } catch (_) {}
-
-      if (!response.ok || payload.success === false) {
-        throw new Error(payload.error || `HTTP ${response.status}`);
+      const [keyResult, capabilityResult] = await Promise.allSettled([
+        fetchCloudJson('/api/hunter/valid-keys'),
+        fetchCloudJson('/api/hunter/capabilities')
+      ]);
+      if (keyResult.status === 'fulfilled') {
+        _cloudApiKeys = filterSupportedPool(keyResult.value.keys || {});
+        if (capabilityResult.status === 'fulfilled') {
+          _cloudCapabilities = capabilityResult.value.capabilities || _cloudCapabilities;
+        } else {
+          _cloudCapabilities = buildFallbackCapabilitiesFromKeys(_cloudApiKeys);
+          sendLog?.('CLOUD', 'Hunter capability endpoint unavailable; using valid-key fallback.', 'warn');
+        }
+        applyMergedPool('cloud-sync');
+      } else {
+        if (capabilityResult.status === 'rejected') {
+          sendLog?.('CLOUD', 'Hunter capability refresh failed: ' + capabilityResult.reason.message, 'warn');
+        }
+        throw keyResult.reason;
       }
-
-      _cloudApiKeys = filterSupportedPool(payload.keys || {});
-      applyMergedPool('cloud-sync');
     } catch (error) {
-      sendLog?.('CLOUD', `Hunter key sync failed: ${error.message}`, 'warn');
+      sendLog?.('CLOUD', 'Hunter key sync failed: ' + error.message, 'warn');
     } finally {
       _cloudRefreshInFlight = false;
     }
   }
-
   function scheduleCloudRefresh() {
     if (_cloudRefreshTimer) clearInterval(_cloudRefreshTimer);
     _cloudRefreshTimer = setInterval(() => {
@@ -212,22 +232,88 @@ module.exports = function registerLiveKeys({ ipcMain, app, safeSend, sendLog, ge
     saveConfig?.(cfg);
   }
 
-  _localApiKeys = parseLeakedKeys();
   _manualApiKeys = getManualPoolFromConfig();
   applyMergedPool('local-load');
   scheduleCloudRefresh();
   refreshCloudKeys(false).catch(() => {});
 
-  ipcMain.handle('ai:get-live-keys', async () => {
+  ipcMain.handle('ai:get-provider-capabilities', async (_, payload = {}) => {
+    _manualApiKeys = getManualPoolFromConfig();
+    await refreshCloudKeys(payload.force === true);
+    const pool = mergePools(_liveApiKeys);
+    const config = getConfig?.() || {};
+    const configuredProvider = normalizeProviderId(config.llm?.provider);
+    if (configuredProvider && isSupportedProvider(configuredProvider) && config.llm?.apiKey) {
+      pool[configuredProvider] = [...new Set([...(pool[configuredProvider] || []), String(config.llm.apiKey).trim()])];
+    }
+    if (config.llm?.visionApiKey) {
+      pool.gemini = [...new Set([...(pool.gemini || []), String(config.llm.visionApiKey).trim()])];
+    }
+
+    const serverProviders = Array.isArray(_cloudCapabilities?.providers) ? _cloudCapabilities.providers : [];
+    const byProvider = Object.fromEntries(serverProviders.map((item) => [normalizeProviderId(item.provider), { ...item }]));
+    for (const [provider, keys] of Object.entries(pool)) {
+      const current = byProvider[provider] || { provider, label: provider.toUpperCase(), score: 0, models: [] };
+      byProvider[provider] = {
+        ...current,
+        validKeys: Math.max(Number(current.validKeys || 0), keys.length),
+        status: current.onCooldown ? 'cooldown' : 'ready',
+        source: current.provider ? (current.source || 'merged') : 'local'
+      };
+    }
+    const providers = Object.values(byProvider).sort((a, b) => {
+      if (a.status === 'ready' && b.status !== 'ready') return -1;
+      if (b.status === 'ready' && a.status !== 'ready') return 1;
+      return Number(b.score || 0) - Number(a.score || 0) || Number(b.validKeys || 0) - Number(a.validKeys || 0);
+    });
+    const capabilities = {
+      ...(_cloudCapabilities || {}),
+      schema: _cloudCapabilities?.schema || 'hex.hunter-capabilities.v1',
+      source: _cloudCapabilities?.source || 'local-only',
+      degraded: !_cloudCapabilities || _cloudCapabilities.degraded === true,
+      activeProvider: providers.find((item) => item.status === 'ready')?.provider || null,
+      providers,
+      summary: {
+        totalProviders: providers.length,
+        readyProviders: providers.filter((item) => item.status === 'ready').length,
+        cooldownProviders: providers.filter((item) => item.status === 'cooldown').length,
+        liveKeys: providers.reduce((sum, item) => sum + Number(item.validKeys || 0), 0)
+      }
+    };
+    return {
+      success: true,
+      capabilities,
+      providers: Object.fromEntries(providers.map((item) => [item.provider, item])),
+      manualKeys: getManualKeySnapshot()
+    };
+  });
+  ipcMain.handle('ai:execute-provider', async (_, payload = {}) => {
+    const provider = normalizeProviderId(payload.provider);
+    if (!isSupportedProvider(provider)) {
+      return { success: false, error: 'Unsupported remote provider: ' + provider };
+    }
     _manualApiKeys = getManualPoolFromConfig();
     await refreshCloudKeys(false);
-    return { success: true, keys: _liveApiKeys, manualKeys: _manualApiKeys };
-  });
-
-  ipcMain.handle('ai:refresh-live-keys', async () => {
-    _manualApiKeys = getManualPoolFromConfig();
-    await refreshCloudKeys(true);
-    return { success: true, keys: _liveApiKeys, manualKeys: _manualApiKeys };
+    const config = getConfig?.() || {};
+    const configuredKeys = [];
+    if (normalizeProviderId(config.llm?.provider) === provider && config.llm?.apiKey) {
+      configuredKeys.push(String(config.llm.apiKey).trim());
+    }
+    if (provider === 'gemini' && config.llm?.visionApiKey) {
+      configuredKeys.push(String(config.llm.visionApiKey).trim());
+    }
+    const keys = [...new Set([...(_liveApiKeys[provider] || []), ...configuredKeys].filter(Boolean))];
+    if (!keys.length) return { success: false, error: 'No usable key for ' + provider };
+    const errors = [];
+    for (const apiKey of keys) {
+      try {
+        const text = await executeProvider({ ...payload, provider, apiKey });
+        return { success: true, provider, text };
+      } catch (error) {
+        errors.push(String(error?.message || error).split(apiKey).join('[REDACTED]').slice(0, 500));
+      }
+    }
+    return { success: false, provider, error: errors.at(-1) || ('All ' + provider + ' keys failed'), attempts: keys.length };
   });
 
   ipcMain.handle('ai:add-manual-api-key', async (_, payload = {}) => {
@@ -246,38 +332,24 @@ module.exports = function registerLiveKeys({ ipcMain, app, safeSend, sendLog, ge
     _manualApiKeys = pool;
     applyMergedPool('manual-add');
     await refreshCloudKeys(false);
-    return { success: true, provider: detectedProvider, keys: _liveApiKeys, manualKeys: _manualApiKeys };
+    return { success: true, provider: detectedProvider, providers: Object.fromEntries(Object.entries(_liveApiKeys).map(([provider, keys]) => [provider, { provider, validKeys: keys.length, status: keys.length ? 'ready' : 'unavailable' }])), manualKeys: getManualKeySnapshot() };
   });
 
   ipcMain.handle('ai:remove-manual-api-key', async (_, payload = {}) => {
     const provider = normalizeProviderId(payload.provider || '');
-    const apiKey = String(payload.apiKey || '').trim();
-    if (!provider || !apiKey) return { success: false, error: 'Missing provider or API key.' };
+    const requestedId = String(payload.keyId || '').trim();
+    if (!provider || !requestedId) return { success: false, error: 'Missing provider or key ID.' };
 
     const pool = getManualPoolFromConfig();
-    pool[provider] = Array.isArray(pool[provider]) ? pool[provider].filter((value) => value !== apiKey) : [];
+    pool[provider] = Array.isArray(pool[provider])
+      ? pool[provider].filter((value) => keyId(provider, value) !== requestedId)
+      : [];
     if (pool[provider].length === 0) delete pool[provider];
     saveManualPool(pool);
     _manualApiKeys = pool;
     applyMergedPool('manual-remove');
     await refreshCloudKeys(false);
-    return { success: true, keys: _liveApiKeys, manualKeys: _manualApiKeys };
+    return { success: true, providers: Object.fromEntries(Object.entries(_liveApiKeys).map(([provider, keys]) => [provider, { provider, validKeys: keys.length, status: keys.length ? 'ready' : 'unavailable' }])), manualKeys: getManualKeySnapshot() };
   });
 
-  let _debounce = null;
-  try {
-    if (LOCAL_LEAK_POOL_ENABLED && fs.existsSync(path.dirname(LEAKED_KEYS_PATH))) {
-      fs.watch(LEAKED_KEYS_PATH, { persistent: false }, () => {
-        if (_debounce) clearTimeout(_debounce);
-        _debounce = setTimeout(() => {
-          _localApiKeys = parseLeakedKeys();
-          _manualApiKeys = getManualPoolFromConfig();
-          applyMergedPool('local-reload');
-          refreshCloudKeys(false).catch(() => {});
-        }, 500);
-      });
-    }
-  } catch (e) {
-    console.warn('Softcurse: Could not watch leaked-api-keys.json', e.message);
-  }
 };

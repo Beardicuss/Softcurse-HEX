@@ -20,8 +20,8 @@ module.exports = function createCoreBridge(ipcRenderer) {
     windowDragStop: () => ipcRenderer.send('window:drag-stop'),
 
     ollamaListModels: () => ipcRenderer.invoke('ollama:list-models'),
-    getLiveKeys: () => ipcRenderer.invoke('ai:get-live-keys'),
-    refreshLiveKeys: () => ipcRenderer.invoke('ai:refresh-live-keys'),
+    getProviderCapabilities: (payload) => ipcRenderer.invoke('ai:get-provider-capabilities', payload),
+    executeProvider: (payload) => ipcRenderer.invoke('ai:execute-provider', payload),
     addManualApiKey: (payload) => ipcRenderer.invoke('ai:add-manual-api-key', payload),
     removeManualApiKey: (payload) => ipcRenderer.invoke('ai:remove-manual-api-key', payload),
 

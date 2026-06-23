@@ -5,6 +5,9 @@ window.hexCandidatePublishers = (() => {
     const result = window.hexCandidateStore?.set(kind, items) || [];
     window.hexRecentPromoter?.touchMany?.(kind, result, 1);
     window.hexPcAwareness?.syncFromCandidates?.();
+    window.hexPcEntityMemory?.ingestSnapshot?.(window.hexCandidateStore?.snapshot?.() || {});
+    window.hexPcEntityPromoter?.promoteInventorySnapshot?.();
+    window.hexPcInventory?.persistNow?.();
     return result;
   }
 
@@ -20,7 +23,9 @@ window.hexCandidatePublishers = (() => {
       }) === index)
       .slice(0, 10)
       .map((entry, index) => ({ ...entry, index: index + 1 }));
-    return set('recent', merged);
+    const result = set('recent', merged);
+    window.hexPcEntityMemory?.ingest?.(result, 'recent', 1.5);
+    return result;
   }
 
   function publishFiles(files) {
@@ -97,5 +102,3 @@ window.hexCandidatePublishers = (() => {
     publishProcesses
   };
 })();
-
-

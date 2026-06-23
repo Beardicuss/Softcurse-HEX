@@ -1,4 +1,6 @@
 'use strict';
+  const noteDesktopOutcome = (...args) => window.hexActionHelpers?.noteDesktopOutcome?.(...args);
+
 
 window.hexFileActionHandler = (() => {
   function publishFileCandidates(files) {
@@ -18,6 +20,13 @@ window.hexFileActionHandler = (() => {
           if (r && r.success) {
             if (r.count > 0) {
               publishFileCandidates(r.files);
+              window.hexPcEntityMemory?.ingest?.((r.files || []).map(function (f) { return {
+                kind: 'file',
+                label: f.name || String(f.path || '').split(/[\/]/).pop() || '',
+                path: f.path || null,
+                value: f.path || f.name || '',
+                meta: { sourceQuery: query, category: category || '', targetType: 'file' }
+              }; }), 'file', 1.2);
               const folderCandidates = r.files.map(function (f) {
                 const folderPath = f.path.substring(0, Math.max(f.path.lastIndexOf('\\'), f.path.lastIndexOf('/')));
                 return { name: folderPath.split(/[\\/]/).pop() || folderPath, path: folderPath, value: folderPath, meta: { targetType: 'folder', sourceQuery: query } };
@@ -83,16 +92,24 @@ window.hexFileActionHandler = (() => {
           const folderResult = await window.hexAPI.butler.openFolder(p);
           if (folderResult.success) {
             addLog('BUTLER', `Opened folder: ${folderResult.path}`);
-            window.hexCandidatePublishers?.rememberRecent({
-              kind: 'file',
+            const recentFolder = {
+              kind: 'folder',
               label: folderResult.path || p,
               path: folderResult.path || p,
               value: folderResult.path || p,
               meta: { targetType: 'folder' }
-            });
+            };
+            noteDesktopOutcome(recentFolder, 'folder', true);
             if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_folder:${p}`, true);
           } else {
             addLog('BUTLER', `Folder error: ${folderResult.error}`, 'error');
+            noteDesktopOutcome({
+              kind: 'folder',
+              label: p,
+              path: p,
+              value: p,
+              meta: { targetType: 'folder', source: 'open-folder' }
+            }, 'folder', false, folderResult.error || '');
             if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_folder:${p}`, false, folderResult.error);
           }
         }
@@ -105,16 +122,24 @@ window.hexFileActionHandler = (() => {
           const openResult = await window.hexAPI.butler.openFile(p);
           if (openResult.success) {
             addLog('BUTLER', `Opened file: ${openResult.path}`);
-            window.hexCandidatePublishers?.rememberRecent({
+            const recentFile = {
               kind: 'file',
               label: String(openResult.path || p).split(/[\\/]/).pop(),
               path: openResult.path || p,
               value: openResult.path || p,
               meta: { targetType: 'file' }
-            });
+            };
+            noteDesktopOutcome(recentFile, 'file', true);
             if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_file:${p}`, true);
           } else {
             addLog('BUTLER', `File error: ${openResult.error}`, 'error');
+            noteDesktopOutcome({
+              kind: 'file',
+              label: String(p).split(/[\/]/).pop() || p,
+              path: p,
+              value: p,
+              meta: { targetType: 'file', source: 'open-file' }
+            }, 'file', false, openResult.error || '');
             if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_file:${p}`, false, openResult.error);
           }
         }
@@ -201,10 +226,25 @@ window.hexFileActionHandler = (() => {
           const preview = dirs.slice(0, 8).concat(files.slice(0, 8));
           const more = r.count > 16 ? ('..and ' + (r.count - 16) + ' more') : '';
           addHexMessage('**' + r.path + '** - ' + r.count + ' items\n' + preview.join('\n') + more);
+          const listedFolder = {
+            kind: 'folder',
+            label: String(r.path || targetDir).split(/[\\/]/).pop() || (r.path || targetDir),
+            path: r.path || targetDir,
+            value: r.path || targetDir,
+            meta: { targetType: 'folder', listedAt: Date.now() }
+          };
+          noteDesktopOutcome(listedFolder, 'folder', true);
           addLog('BUTLER', 'Listed ' + r.count + ' items in ' + r.path);
           if (window.hexMemory) window.hexMemory.recordActionOutcome(`list_dir:${targetDir}`, true);
         } else {
           addHexMessage('Could not list directory: ' + r.error);
+          noteDesktopOutcome({
+            kind: 'folder',
+            label: String(targetDir || 'desktop').split(/[\/]/).pop() || targetDir || 'desktop',
+            path: targetDir,
+            value: targetDir,
+            meta: { targetType: 'folder', source: 'list-dir' }
+          }, 'folder', false, r.error || '');
           if (window.hexMemory) window.hexMemory.recordActionOutcome(`list_dir:${targetDir}`, false, r.error);
         }
         return { handled: true };
@@ -292,6 +332,9 @@ window.hexFileActionHandler = (() => {
 
   return { handle, publishFileCandidates };
 })();
+
+
+
 
 
 

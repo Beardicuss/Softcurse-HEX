@@ -1,4 +1,8 @@
 import { isHunterApiConfigured, fetchHunterAuditLogs, fetchHunterKeySummary, fetchHunterProviderStats, fetchHunterValidKeys } from './hunter-api';
+import { buildHunterCapabilityPacket, toPublicCapabilityPacket, updateProviderCapabilityState } from './hunter-capabilities';
+import { buildTopicLedger, persistTopicTransition } from './topic-ledger';
+import { cancelPendingActivities, insertActivityEvent, listActivityEvents } from './activity-store';
+import { assembleContextPacketV2 } from './context-packet-v2';
 export class ProfileSession {
   constructor(state, env) {
     this.state = state;
@@ -67,6 +71,18 @@ async function handleApi(request, env, url) {
     });
   }
 
+  if (url.pathname === '/api/hunter/capabilities' && request.method === 'GET') {
+    if (!isHunterApiConfigured(env)) {
+      return json({ success: false, error: 'Hunter API is not configured' }, 503);
+    }
+    try {
+      const preferredProvider = String(url.searchParams.get('preferredProvider') || '').trim();
+      const packet = await buildHunterCapabilityPacket(env, { preferredProvider });
+      return json({ success: true, capabilities: toPublicCapabilityPacket(packet) });
+    } catch (error) {
+      return json({ success: false, error: error?.message || 'Failed to build Hunter capabilities' }, 502);
+    }
+  }
   if (url.pathname === '/api/hunter/provider-stats' && request.method === 'GET') {
     if (!isHunterApiConfigured(env)) {
       return json({ success: false, error: 'Hunter API is not configured' }, 503);
@@ -115,7 +131,77 @@ async function handleApi(request, env, url) {
       return json({ success: false, error: error?.message || 'Failed to read hunter valid keys' }, 502);
     }
   }
+  if (url.pathname === '/api/hunter/orchestration' && request.method === 'GET') {
+    if (!isHunterApiConfigured(env)) {
+      return json({ success: false, error: 'Hunter API is not configured' }, 503);
+    }
+    try {
+      const preferredProvider = String(url.searchParams.get('preferredProvider') || '').trim();
+      const orchestration = await buildHunterCapabilityPacket(env, { preferredProvider });
+      return json({ success: true, orchestration });
+    } catch (error) {
+      return json({ success: false, error: error?.message || 'Failed to build hunter orchestration' }, 502);
+    }
+  }
+  if (url.pathname === '/api/hunter/orchestration/report' && request.method === 'POST') {
+    if (!isHunterApiConfigured(env)) {
+      return json({ success: false, error: 'Hunter API is not configured' }, 503);
+    }
+    try {
+      const body = await readJson(request);
+      const provider = normalizeProviderName(body.provider);
+      if (!provider) {
+        return json({ success: false, error: 'provider is required' }, 400);
+      }
+      const state = await updateProviderCapabilityState(env, provider, body || {});
+      const orchestration = await buildHunterCapabilityPacket(env, {
+        preferredProvider: String(body.preferredProvider || provider || '').trim()
+      });
+      return json({ success: true, state, orchestration });
+    } catch (error) {
+      return json({ success: false, error: error?.message || 'Failed to update hunter orchestration state' }, 502);
+    }
+  }
 
+  if (url.pathname === '/api/activity' && request.method === 'POST') {
+    try {
+      const event = await insertActivityEvent(env, await readJson(request));
+      return json({ success: true, event });
+    } catch (error) {
+      return json({ success: false, error: error?.message || 'Failed to record activity' }, 400);
+    }
+  }
+
+  if (url.pathname === '/api/activity' && request.method === 'GET') {
+    const profileId = String(url.searchParams.get('profileId') || '').trim();
+    if (!profileId) return json({ success: false, error: 'profileId is required' }, 400);
+    const events = await listActivityEvents(env, profileId, {
+      sessionId: url.searchParams.get('sessionId') || null,
+      limit: url.searchParams.get('limit') || 12
+    });
+    return json({ success: true, events });
+  }
+  if (url.pathname === '/api/context-packet' && request.method === 'POST') {
+    const body = await readJson(request);
+    const profileId = String(body.profileId || '').trim();
+    if (!profileId) {
+      return json({ success: false, error: 'profileId is required' }, 400);
+    }
+
+    const packet = await buildContextPacket(env, profileId, String(body.query || ''), body || {});
+    if (!packet) return json({ success: false, error: 'Profile not found' }, 404);
+    return json({ success: true, packet });
+  }
+
+  if (url.pathname === '/api/device-inventory' && request.method === 'POST') {
+    const body = await readJson(request);
+    const profileId = String(body.profileId || '').trim();
+    if (!profileId) {
+      return json({ success: false, error: 'profileId is required' }, 400);
+    }
+    const updated = await persistDeviceInventory(env, profileId, body || {});
+    return json({ success: true, updated });
+  }
   if (url.pathname === '/api/bootstrap' && request.method === 'GET') {
     const metrics = await getMetrics(env);
     return json({
@@ -239,6 +325,25 @@ async function handleApi(request, env, url) {
       sessions: sessions.results || []
     });
   }
+
+  if (url.pathname === '/api/memories' && request.method === 'POST') {
+    const body = await readJson(request);
+    const profileId = String(body.profileId || '').trim();
+    const content = String(body.content || '').trim();
+    if (!profileId) return json({ success: false, error: 'profileId is required' }, 400);
+    if (!content) return json({ success: false, error: 'content is required' }, 400);
+    const memory = await upsertExplicitMemory(env, {
+      profileId,
+      sessionId: body.sessionId || null,
+      messageId: body.messageId || null,
+      kind: body.kind || 'explicit',
+      content,
+      confidence: body.confidence,
+      tags: Array.isArray(body.tags) ? body.tags : ['explicit', 'desktop']
+    });
+    return json({ success: true, memory });
+  }
+
   if (url.pathname === '/api/sessions' && request.method === 'POST') {
     const body = await readJson(request);
     const profileId = String(body.profileId || '').trim();
@@ -353,6 +458,8 @@ async function handleApi(request, env, url) {
     `).bind(sessionId).first();
 
     await updateLiveSessionFromMessage(env, profileId, sessionId, sessionSnapshot, message);
+    await persistDialogueActivity(env, message);
+    await persistTopicTransition(env, message);
     await upsertDerivedMemories(env, profileId, sessionId, message);
 
     if (env.MEMORY_QUEUE) {
@@ -443,7 +550,7 @@ function getProfileIdFromPath(pathname) {
   return pathname.split('/')[3];
 }
 
-async function buildContinuityPacket(env, profileId) {
+async function buildContinuityPacket(env, profileId, options = {}) {
   const profile = await env.DB.prepare(`
     SELECT id, display_name, normalized_name, language, assistant_mode, persona_id, created_at, updated_at
     FROM profiles
@@ -452,13 +559,23 @@ async function buildContinuityPacket(env, profileId) {
   `).bind(profileId).first();
   if (!profile) return null;
 
-  const recentSession = await env.DB.prepare(`
-    SELECT id, title, status, current_goal, current_surface, browser_url, browser_title, last_user_message, last_assistant_message, updated_at
-    FROM sessions
-    WHERE profile_id = ?1
-    ORDER BY updated_at DESC
-    LIMIT 1
-  `).bind(profileId).first();
+  const preferredSessionId = String(options.sessionId || '').trim();
+  const preferredDeviceId = String(options.deviceId || '').trim();
+
+  const recentSession = preferredSessionId
+    ? await env.DB.prepare(`
+      SELECT id, title, status, current_goal, current_surface, browser_url, browser_title, last_user_message, last_assistant_message, updated_at, device_id
+      FROM sessions
+      WHERE id = ?1 AND profile_id = ?2
+      LIMIT 1
+    `).bind(preferredSessionId, profileId).first()
+    : await env.DB.prepare(`
+      SELECT id, title, status, current_goal, current_surface, browser_url, browser_title, last_user_message, last_assistant_message, updated_at, device_id
+      FROM sessions
+      WHERE profile_id = ?1
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `).bind(profileId).first();
 
   const recentTurns = recentSession
     ? await env.DB.prepare(`
@@ -476,11 +593,14 @@ async function buildContinuityPacket(env, profileId) {
     WHERE profile_id = ?1
       AND status = 'active'
     ORDER BY updated_at DESC, confidence DESC
-    LIMIT 12
+    LIMIT 18
   `).bind(profileId).all();
 
   const liveSessionState = await fetchLiveSessionState(env, profileId);
   const fallbackTurns = (recentTurns.results || []).slice().reverse();
+  const effectiveDeviceId = preferredDeviceId || liveSessionState?.deviceId || recentSession?.device_id || null;
+  const storedDesktopContext = await getStoredDeviceDesktopContext(env, profileId, effectiveDeviceId);
+  const mergedDesktopContext = mergeDesktopContexts(liveSessionState?.desktopContext || null, storedDesktopContext);
 
   return {
     profile,
@@ -492,7 +612,8 @@ async function buildContinuityPacket(env, profileId) {
       lastAssistantMessage: liveSessionState?.lastAssistantMessage || recentSession?.last_assistant_message || null,
       lastActionSummary: liveSessionState?.lastActionSummary || null,
       lastSystemDataSummary: liveSessionState?.lastSystemDataSummary || null,
-      updatedAt: liveSessionState?.updatedAt || recentSession?.updated_at || null
+      updatedAt: liveSessionState?.updatedAt || recentSession?.updated_at || null,
+      deviceId: effectiveDeviceId
     },
     browser: {
       open: !!(liveSessionState?.browserOpen || recentSession?.browser_url),
@@ -500,6 +621,7 @@ async function buildContinuityPacket(env, profileId) {
       title: liveSessionState?.browserTitle || recentSession?.browser_title || null
     },
     workingMemory: liveSessionState?.workingMemory || null,
+    desktopContext: mergedDesktopContext,
     memories: memories.results || [],
     recentTurns: Array.isArray(liveSessionState?.recentTurns) && liveSessionState.recentTurns.length > 0
       ? liveSessionState.recentTurns
@@ -507,6 +629,507 @@ async function buildContinuityPacket(env, profileId) {
   };
 }
 
+async function buildContextPacket(env, profileId, query, options = {}) {
+  const continuity = await buildContinuityPacket(env, profileId, options);
+  if (!continuity) return null;
+
+  continuity.activityEvents = await listActivityEvents(env, profileId, { sessionId: continuity.session?.sessionId, limit: 30 });
+  continuity.topicLedger = buildTopicLedger(continuity.activityEvents);
+  const retrievalPlan = buildRetrievalPlan(query, continuity, options);
+  const relevantMemories = rankRelevantMemories(query, continuity.memories || [], 6, retrievalPlan);
+  const relevantTurns = rankRelevantTurns(query, continuity.recentTurns || [], 6, retrievalPlan);
+  const references = extractContinuityReferences(continuity, query, options);
+  const unresolvedTasks = deriveUnresolvedTasks(continuity, relevantTurns);
+  const actionTimeline = buildActionTimeline(continuity, relevantTurns, retrievalPlan);
+
+  return assembleContextPacketV2({
+    continuity,
+    retrieval: summarizeRetrievalPlan(retrievalPlan, references),
+    relevantMemories,
+    relevantTurns,
+    references,
+    unresolvedTasks,
+    actionTimeline,
+    summary: buildContextSummary(continuity, relevantMemories, relevantTurns, references, unresolvedTasks, actionTimeline, retrievalPlan),
+    query
+  });
+}
+
+function mergeDesktopContexts(primary = null, fallback = null) {
+  if (!primary && !fallback) return null;
+  if (!primary) return fallback;
+  if (!fallback) return primary;
+
+  const listFields = ['promotedRecent', 'knownLocations', 'appCandidates', 'fileCandidates', 'folderCandidates', 'gameCandidates', 'windowCandidates', 'processCandidates', 'inventoryHighlights', 'entityMatches'];
+  const merged = { ...fallback, ...primary };
+  for (const field of listFields) {
+    const seen = new Set();
+    merged[field] = [...(Array.isArray(primary?.[field]) ? primary[field] : []), ...(Array.isArray(fallback?.[field]) ? fallback[field] : [])]
+      .map((item) => String(item || '').trim())
+      .filter((item) => {
+        if (!item) return false;
+        const key = item.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, field === 'inventoryHighlights' ? 10 : 16);
+  }
+  return merged;
+}
+
+async function getStoredDeviceDesktopContext(env, profileId, deviceId = null) {
+  const deviceTag = String(deviceId || '').trim();
+  let row = null;
+  if (deviceTag) {
+    row = await env.DB.prepare(`
+      SELECT content, updated_at
+      FROM memories
+      WHERE profile_id = ?1
+        AND kind = 'device_inventory'
+        AND tags_json LIKE ?2
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `).bind(profileId, '%' + deviceTag + '%').first();
+  }
+  if (!row) {
+    row = await env.DB.prepare(`
+      SELECT content, updated_at
+      FROM memories
+      WHERE profile_id = ?1
+        AND kind = 'device_inventory'
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `).bind(profileId).first();
+  }
+  if (!row?.content) return null;
+  return parseStoredDeviceInventory(row.content, row.updated_at);
+}
+
+function parseStoredDeviceInventory(content, updatedAt = null) {
+  const text = String(content || '').trim();
+  if (!text) return null;
+  const parts = text.split(/\s*\|\s*/).map((part) => part.trim()).filter(Boolean);
+  const result = {
+    promotedRecent: [],
+    knownLocations: [],
+    appCandidates: [],
+    fileCandidates: [],
+    folderCandidates: [],
+    gameCandidates: [],
+    windowCandidates: [],
+    processCandidates: [],
+    inventoryHighlights: [],
+    entityMatches: [],
+    inventorySummary: text,
+    inventoryUpdatedAt: updatedAt || null
+  };
+
+  for (const part of parts) {
+    result.inventoryHighlights.push(part);
+    const splitAt = part.indexOf(':');
+    if (splitAt === -1) continue;
+    const label = part.slice(0, splitAt).trim().toLowerCase();
+    const values = part.slice(splitAt + 1).split(',').map((item) => item.trim()).filter(Boolean);
+    if (label === 'apps') result.appCandidates.push(...values);
+    else if (label === 'files') result.fileCandidates.push(...values);
+    else if (label === 'folders' || label === 'locations') result.folderCandidates.push(...values);
+    else if (label === 'games') result.gameCandidates.push(...values);
+    else if (label === 'windows') result.windowCandidates.push(...values);
+    else if (label === 'processes') result.processCandidates.push(...values);
+  }
+
+  result.promotedRecent = result.inventoryHighlights.slice(0, 8);
+  result.knownLocations = result.folderCandidates.slice(0, 8);
+  return result;
+}
+
+function rankRelevantMemories(query, memories, limit = 6, retrievalPlan = null) {
+  const queryText = String(query || '').trim();
+  const tokens = tokenizeForSearch(queryText);
+  const source = Array.isArray(memories) ? memories : [];
+
+  return source
+    .map((memory) => ({
+      ...memory,
+      score: scoreMemoryMatch(queryText, tokens, memory, retrievalPlan)
+    }))
+    .filter((memory) => memory.score > 0 || !queryText)
+    .sort((a, b) => (b.score - a.score) || ((b.confidence || 0) - (a.confidence || 0)))
+    .slice(0, limit)
+    .map(({ score, ...memory }) => memory);
+}
+
+function rankRelevantTurns(query, turns, limit = 6, retrievalPlan = null) {
+  const queryText = String(query || '').trim();
+  const tokens = tokenizeForSearch(queryText);
+  const source = Array.isArray(turns) ? turns : [];
+
+  return source
+    .map((turn, index) => ({
+      ...turn,
+      score: scoreTurnMatch(queryText, tokens, turn, index, source.length, retrievalPlan)
+    }))
+    .filter((turn) => turn.score > 0 || !queryText)
+    .sort((a, b) => (b.score - a.score))
+    .slice(0, limit)
+    .map(({ score, ...turn }) => turn);
+}
+
+function normalizeReferenceItem(item, fallbackKind = 'recent', index = 0) {
+  if (item && typeof item === 'object' && !Array.isArray(item)) {
+    const label = String(item.label || item.value || item.path || '').trim();
+    if (!label) return null;
+    return {
+      index: Number.isFinite(item.index) ? item.index : index + 1,
+      kind: String(item.kind || fallbackKind || 'recent').trim(),
+      label,
+      path: item.path || null,
+      value: item.value || item.path || label,
+      meta: item.meta && typeof item.meta === 'object' ? { ...item.meta } : {}
+    };
+  }
+
+  const label = String(item || '').trim();
+  if (!label) return null;
+  return {
+    index: index + 1,
+    kind: fallbackKind || 'recent',
+    label,
+    path: null,
+    value: label,
+    meta: {}
+  };
+}
+
+function buildCategoryBucket(items, fallbackKind, limit = 8) {
+  const unique = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(items) ? items : []) {
+    const normalized = normalizeReferenceItem(raw, fallbackKind, unique.length);
+    if (!normalized) continue;
+    const key = [normalized.kind, normalized.path || '', normalized.value || '', normalized.label].join('::').toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push({ ...normalized, index: unique.length + 1 });
+    if (unique.length >= limit) break;
+  }
+  return unique;
+}
+
+function buildDesktopReferenceBuckets(desktop = {}) {
+  return {
+    apps: buildCategoryBucket(desktop.appCandidates || [], 'app', 8),
+    files: buildCategoryBucket(desktop.fileCandidates || [], 'file', 8),
+    folders: buildCategoryBucket(desktop.folderCandidates || [], 'folder', 8),
+    games: buildCategoryBucket(desktop.gameCandidates || [], 'game', 8),
+    windows: buildCategoryBucket(desktop.windowCandidates || [], 'window', 8),
+    processes: buildCategoryBucket(desktop.processCandidates || [], 'process', 8),
+    locations: buildCategoryBucket(desktop.knownLocations || [], 'folder', 8),
+    recent: buildCategoryBucket(desktop.promotedRecent || desktop.inventoryHighlights || [], 'recent', 8),
+    entityMatches: buildCategoryBucket(desktop.entityMatches || [], 'recent', 8)
+  };
+}
+
+function detectDesktopReferenceFocus(queryText) {
+  const lower = String(queryText || '').toLowerCase();
+  if (!lower) return ['recent', 'entityMatches', 'apps', 'files', 'folders', 'games', 'windows', 'processes', 'locations'];
+  if (/\b(game|steam|epic|play|launch)\b/.test(lower)) return ['games', 'apps', 'recent'];
+  if (/\b(app|program|software|install|open app|run app)\b/.test(lower)) return ['apps', 'recent', 'windows'];
+  if (/\b(file|document|txt|pdf|image|photo|video|song)\b/.test(lower)) return ['files', 'recent', 'folders'];
+  if (/\b(folder|directory|location|desktop|downloads|documents|pictures|videos|music)\b/.test(lower)) return ['folders', 'locations', 'recent'];
+  if (/\b(window|tab|focus|switch|bring)\b/.test(lower)) return ['windows', 'apps', 'recent'];
+  if (/\b(process|task|service|pid|kill|terminate|running)\b/.test(lower)) return ['processes', 'windows', 'recent'];
+  return ['entityMatches', 'recent', 'apps', 'files', 'folders', 'games', 'windows', 'processes', 'locations'];
+}
+
+function flattenPreferredDesktopReferences(buckets, focusOrder, queryText, limit = 10) {
+  const merged = [];
+  const seen = new Set();
+  for (const key of focusOrder) {
+    for (const value of Array.isArray(buckets[key]) ? buckets[key] : []) {
+      const normalized = normalizeReferenceItem(value, key, merged.length);
+      if (!normalized) continue;
+      const id = [normalized.kind, normalized.path || '', normalized.value || '', normalized.label].join('::').toLowerCase();
+      if (seen.has(id)) continue;
+      seen.add(id);
+      merged.push(normalized);
+    }
+  }
+  return merged
+    .map((item, index) => ({ item, score: scoreTextMatch(queryText, tokenizeForSearch(queryText), item.label + ' ' + (item.path || '') + ' ' + (item.value || '')) + Math.max(0, (20 - index) * 0.01) }))
+    .filter((entry) => entry.score > 0 || !String(queryText || '').trim())
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((entry, index) => ({ ...entry.item, index: index + 1 }));
+}
+
+function extractContinuityReferences(continuity, query, options = {}) {
+  const desktop = continuity?.desktopContext || {};
+  const browser = continuity?.browser || {};
+  const queryText = String(query || '').trim();
+  const desktopByCategory = buildDesktopReferenceBuckets(desktop);
+  const focusOrder = detectDesktopReferenceFocus(queryText);
+  const desktopHits = flattenPreferredDesktopReferences(desktopByCategory, focusOrder, queryText, 10);
+  const browserPool = [];
+  if (browser.open) {
+    if (browser.title) browserPool.push(String(browser.title));
+    if (browser.url) browserPool.push(String(browser.url));
+  }
+  for (const turn of Array.isArray(continuity?.recentTurns) ? continuity.recentTurns : []) {
+    if (turn?.surface === 'browser' && turn?.content) browserPool.push(String(turn.content).substring(0, 180));
+  }
+  const browserHits = rankReferenceStrings(queryText, browserPool, 6);
+
+  return {
+    desktop: desktopHits,
+    desktopByCategory,
+    desktopFocusOrder: focusOrder,
+    browser: browserHits,
+    query: queryText,
+    requestedSurface: String(options.surface || '').trim() || null
+  };
+}
+
+function deriveUnresolvedTasks(continuity, relevantTurns) {
+  const lifecycleEvents = Array.isArray(continuity?.activityEvents) ? continuity.activityEvents : [];
+  const durable = lifecycleEvents
+    .filter((event) => (event?.kind === 'task' || event?.kind === 'commitment') && event?.status === 'pending')
+    .map((event) => ({ kind: event.kind, text: String(event.summary || '').trim() }))
+    .filter((item) => item.text);
+  if (lifecycleEvents.length > 0) return dedupeTasks(durable).slice(0, 6);
+
+  const session = continuity?.session || {};
+  const turns = Array.isArray(relevantTurns) && relevantTurns.length > 0
+    ? relevantTurns
+    : (Array.isArray(continuity?.recentTurns) ? continuity.recentTurns : []);
+  const legacy = [];
+  if (session.primaryGoal) legacy.push({ kind: 'goal', text: session.primaryGoal });
+  if (session.lastActionSummary) legacy.push({ kind: 'action-plan', text: session.lastActionSummary });
+  for (const turn of turns) {
+    const content = String(turn?.content || '').trim();
+    if ((turn?.role || '').toLowerCase() === 'user' && /\b(continue|next|open|show|find|search|play|launch|check|read|focus|close|fix|remember)\b/i.test(content)) {
+      legacy.push({ kind: 'user-follow-up', text: content });
+    }
+  }
+  return dedupeTasks(legacy).slice(0, 6);
+}
+
+function dedupeTasks(tasks) {
+  const seen = new Set();
+  return tasks.filter((task) => {
+    const key = String(task?.text || '').trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+function buildActionTimeline(continuity, relevantTurns, retrievalPlan = null) {
+  const timeline = (continuity?.activityEvents || [])
+    .filter((event) => event?.kind === 'action-result')
+    .map((event) => ({
+    kind: event.kind || 'action',
+    status: event.status || 'unknown',
+    actionType: event.actionType || null,
+    text: event.summary,
+    surface: event.surface || 'chat',
+    at: event.createdAt || null
+  }));
+  const turns = Array.isArray(continuity?.recentTurns) ? continuity.recentTurns : [];
+  const scored = Array.isArray(relevantTurns) ? relevantTurns : [];
+
+  if (continuity?.session?.lastActionSummary) {
+    timeline.push({
+      kind: 'action-plan',
+      text: String(continuity.session.lastActionSummary),
+      surface: continuity.session.activeSurface || 'chat',
+      at: continuity.session.updatedAt || null
+    });
+  }
+
+  for (const turn of turns.slice(-6)) {
+    const text = String(turn?.content || '').trim();
+    if (!text) continue;
+    const role = String(turn?.role || 'user').toLowerCase();
+    const isActionish = role === 'assistant' || /\[ACTION:/i.test(text) || /(opening|launching|checking|searching|reading|focusing|closing)/i.test(text);
+    if (!isActionish) continue;
+    timeline.push({
+      kind: role === 'assistant' ? 'assistant-step' : 'user-request',
+      text: text.substring(0, 180),
+      surface: turn?.surface || continuity?.session?.activeSurface || 'chat',
+      at: turn?.created_at || null
+    });
+  }
+
+  for (const turn of scored.slice(0, 2)) {
+    const text = String(turn?.content || '').trim();
+    if (!text) continue;
+    timeline.push({
+      kind: 'relevant-turn',
+      text: text.substring(0, 160),
+      surface: turn?.surface || 'chat',
+      at: turn?.created_at || null
+    });
+  }
+
+  return dedupeTimeline(timeline).slice(0, 10);
+}
+
+function dedupeTimeline(items) {
+  const seen = new Set();
+  const result = [];
+  for (const item of Array.isArray(items) ? items : []) {
+    const key = `${String(item?.kind || '')}::${String(item?.surface || '')}::${String(item?.text || '').toLowerCase()}`;
+    if (!item?.text || seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+  return result;
+}
+
+function buildContextSummary(continuity, relevantMemories, relevantTurns, references, unresolvedTasks, actionTimeline) {
+  const session = continuity?.session || {};
+  const browser = continuity?.browser || {};
+  return {
+    goal: session.primaryGoal || null,
+    activeSurface: session.activeSurface || 'chat',
+    browserOpen: !!browser.open,
+    memoryHighlights: relevantMemories.slice(0, 3).map((item) => item.content),
+    recentTurnHighlights: relevantTurns.slice(0, 3).map((item) => `${String(item.role || 'user').toUpperCase()}: ${String(item.content || '').substring(0, 120)}`),
+    desktopReferences: (references?.desktop || []).slice(0, 5),
+    desktopFocusOrder: (references?.desktopFocusOrder || []).slice(0, 4),
+    browserReferences: (references?.browser || []).slice(0, 5),
+    unresolvedTaskTexts: (unresolvedTasks || []).slice(0, 4).map((item) => item.text),
+    actionHighlights: (actionTimeline || []).slice(0, 5).map((item) => item.text)
+  };
+}
+
+function buildRetrievalPlan(query, continuity, options = {}) {
+  const queryText = String(query || '').trim();
+  const lower = queryText.toLowerCase();
+  const browserOpen = !!continuity?.browser?.open;
+  const requestedSurface = String(options?.surface || '').trim().toLowerCase();
+  let surface = requestedSurface || (browserOpen ? 'browser' : (continuity?.session?.activeSurface || 'chat'));
+  if (/\b(browser|page|site|website|url|link|tab|video|result|button|youtube|google)\b/.test(lower)) surface = 'browser';
+  if (/\b(file|folder|directory|document|app|program|software|game|window|process|desktop|downloads|documents)\b/.test(lower)) surface = 'desktop';
+
+  let intent = 'general';
+  if (/\b(open|launch|play|run|click|select|choose|focus|close|kill|terminate)\b/.test(lower)) intent = 'action';
+  else if (/\b(find|search|look for|where|which|show|list|what exists|what is on this pc)\b/.test(lower)) intent = 'lookup';
+  else if (/\b(remember|who|what|why|how|when|continue|resume|again|same|previous|next)\b/.test(lower)) intent = 'continuity';
+
+  const focusKinds = [];
+  const push = (value) => {
+    const clean = String(value || '').trim();
+    if (!clean || focusKinds.includes(clean)) return;
+    focusKinds.push(clean);
+  };
+
+  if (/\b(video|result|button|link|page|article|browser)\b/.test(lower)) {
+    ['browser', 'video', 'result', 'link', 'button', 'page', 'article'].forEach(push);
+  }
+  if (/\b(game|steam|epic)\b/.test(lower)) push('game');
+  if (/\b(app|program|software)\b/.test(lower)) push('app');
+  if (/\b(file|document|pdf|image|photo|video file|song)\b/.test(lower)) push('file');
+  if (/\b(folder|directory|location|desktop|downloads|documents|pictures|videos|music)\b/.test(lower)) push('folder');
+  if (/\b(window|tab)\b/.test(lower)) push('window');
+  if (/\b(process|task|service|pid)\b/.test(lower)) push('process');
+  if (!focusKinds.length) {
+    if (surface === 'browser') ['browser', 'page', 'result'].forEach(push);
+    else if (surface === 'desktop') ['app', 'file', 'folder', 'game', 'window', 'process'].forEach(push);
+  }
+
+  return {
+    query: queryText,
+    surface,
+    intent,
+    browserOpen,
+    focusKinds,
+    sessionSurface: continuity?.session?.activeSurface || 'chat'
+  };
+}
+
+function summarizeRetrievalPlan(plan, references) {
+  return {
+    query: plan?.query || '',
+    surface: plan?.surface || 'chat',
+    intent: plan?.intent || 'general',
+    browserOpen: !!plan?.browserOpen,
+    focusKinds: Array.isArray(plan?.focusKinds) ? plan.focusKinds.slice(0, 6) : [],
+    desktopReferenceCount: Array.isArray(references?.desktop) ? references.desktop.length : 0,
+    browserReferenceCount: Array.isArray(references?.browser) ? references.browser.length : 0
+  };
+}
+
+function rankReferenceStrings(query, values, limit = 8) {
+  const queryText = String(query || '').trim();
+  const tokens = tokenizeForSearch(queryText);
+  const unique = [];
+  const seen = new Set();
+  for (const value of Array.isArray(values) ? values : []) {
+    const clean = String(value || '').trim();
+    if (!clean) continue;
+    const key = clean.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(clean);
+  }
+
+  return unique
+    .map((value, index) => ({ value, score: scoreTextMatch(queryText, tokens, value) + Math.max(0, (20 - index) * 0.01) }))
+    .filter((item) => item.score > 0 || !queryText)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((item) => item.value);
+}
+
+function scoreMemoryMatch(queryText, tokens, memory, retrievalPlan = null) {
+  const hay = [memory?.content, memory?.kind, memory?.status].filter(Boolean).join(' ');
+  const base = scoreTextMatch(queryText, tokens, hay);
+  const confidence = Number(memory?.confidence || 0) * 0.4;
+  const preferenceBoost = /identity|preference|registration/.test(String(memory?.kind || '')) ? 0.12 : 0;
+  const deviceBoost = String(memory?.kind || '') === 'device_inventory' ? 0.24 : 0;
+  const recencyBoost = memory?.updated_at ? 0.05 : 0;
+  const kind = String(memory?.kind || '').toLowerCase();
+  const focusBoost = Array.isArray(retrievalPlan?.focusKinds) && retrievalPlan.focusKinds.some((item) => kind.includes(item) || item.includes(kind)) ? 0.32 : 0;
+  const browserBoost = retrievalPlan?.surface === 'browser' && /browser|page|result|link|video|article/.test(kind) ? 0.26 : 0;
+  const desktopBoost = retrievalPlan?.surface === 'desktop' && /device_inventory|app|file|folder|game|window|process/.test(kind) ? 0.18 : 0;
+  const continuityBoost = retrievalPlan?.intent === 'continuity' && /identity|preference|registration|summary|conversation/.test(kind) ? 0.16 : 0;
+  return base + confidence + preferenceBoost + deviceBoost + recencyBoost + focusBoost + browserBoost + desktopBoost + continuityBoost;
+}
+
+function scoreTurnMatch(queryText, tokens, turn, index, total, retrievalPlan = null) {
+  const hay = [turn?.role, turn?.surface, turn?.content, turn?.summary].filter(Boolean).join(' ');
+  const base = scoreTextMatch(queryText, tokens, hay);
+  const recencyBoost = Math.max(0, (total - index) * 0.03);
+  const userBoost = String(turn?.role || '').toLowerCase() === 'user' ? 0.05 : 0;
+  const surfaceBoost = retrievalPlan?.surface && String(turn?.surface || '').toLowerCase() === retrievalPlan.surface ? 0.22 : 0;
+  const continuityBoost = retrievalPlan?.intent === 'continuity' && String(turn?.role || '').toLowerCase() === 'user' ? 0.08 : 0;
+  const actionBoost = retrievalPlan?.intent === 'action' && /(open|launch|play|click|focus|close|run|search|find|show)/i.test(String(turn?.content || '')) ? 0.12 : 0;
+  return base + recencyBoost + userBoost + surfaceBoost + continuityBoost + actionBoost;
+}
+
+function scoreTextMatch(queryText, tokens, text) {
+  const hay = String(text || '').toLowerCase();
+  if (!hay) return 0;
+  if (!queryText) return 0.05;
+  let score = 0;
+  const cleanQuery = String(queryText || '').toLowerCase();
+  if (cleanQuery && hay.includes(cleanQuery)) score += 1.2;
+  for (const token of tokens) {
+    if (hay.includes(token)) score += token.length >= 5 ? 0.35 : 0.18;
+  }
+  return score;
+}
+
+function tokenizeForSearch(value) {
+  return String(value || '')
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 2)
+    .slice(0, 16);
+}
 async function fetchLiveSessionState(env, profileId) {
   if (!env.PROFILE_SESSIONS) return null;
   try {
@@ -520,6 +1143,36 @@ async function fetchLiveSessionState(env, profileId) {
   }
 }
 
+async function persistDialogueActivity(env, message) {
+  const role = String(message?.role || '').toLowerCase();
+  const content = String(message?.content || '').trim();
+  const base = {
+    profileId: message.profile_id,
+    sessionId: message.session_id,
+    surface: message.surface || 'chat',
+    details: { sourceMessageId: message.id },
+    createdAt: message.created_at
+  };
+
+  if (role === 'user' && /\b(cancel|stop|never mind|nevermind|forget it|do not continue|don't continue)\b/i.test(content)) {
+    await cancelPendingActivities(env, message.profile_id, message.session_id);
+    return;
+  }
+
+  const isCorrection = role === 'user' && /\b(no,?|actually|i mean|not that|instead|correction|don't|do not)\b/i.test(content);
+  if (isCorrection) {
+    await cancelPendingActivities(env, message.profile_id, message.session_id);
+    await insertActivityEvent(env, { ...base, kind: 'correction', status: 'success', summary: content.slice(0, 500) });
+  }
+
+  if (role === 'user' && /\b(open|launch|play|run|click|select|focus|close|find|search|show|read|check|fix|create|move|copy|delete|set|remind|continue|install|update)\b/i.test(content)) {
+    await insertActivityEvent(env, { ...base, kind: 'task', status: 'pending', summary: content.slice(0, 500) });
+  }
+
+  if (role === 'assistant' && /\b(i will|i'll|let me|next i|we will|i can)\b/i.test(content)) {
+    await insertActivityEvent(env, { ...base, kind: 'commitment', status: 'pending', summary: content.slice(0, 500) });
+  }
+}
 async function updateLiveSessionFromMessage(env, profileId, sessionId, sessionSnapshot, message) {
   if (!env.PROFILE_SESSIONS) return;
   try {
@@ -543,6 +1196,54 @@ async function updateLiveSessionFromMessage(env, profileId, sessionId, sessionSn
       body: JSON.stringify(payload)
     }));
   } catch (_) {}
+}
+
+async function upsertExplicitMemory(env, payload = {}) {
+  const profileId = String(payload.profileId || '').trim();
+  const content = String(payload.content || '').trim().slice(0, 1200);
+  const kind = String(payload.kind || 'explicit').trim().slice(0, 60) || 'explicit';
+  const confidence = Math.max(0.1, Math.min(1, Number(payload.confidence || 0.97)));
+  const tags = Array.isArray(payload.tags) ? payload.tags.map((item) => String(item).slice(0, 50)).filter(Boolean).slice(0, 12) : ['explicit'];
+  const existing = await env.DB.prepare(`
+    SELECT id, confidence
+    FROM memories
+    WHERE profile_id = ?1
+      AND kind = ?2
+      AND content = ?3
+      AND status = 'active'
+    LIMIT 1
+  `).bind(profileId, kind, content).first();
+
+  if (existing?.id) {
+    await env.DB.prepare(`
+      UPDATE memories
+      SET confidence = MIN(1, confidence + 0.05),
+          tags_json = ?2,
+          updated_at = ?3
+      WHERE id = ?1
+    `).bind(existing.id, JSON.stringify(tags), nowIso()).run();
+    return { id: existing.id, profile_id: profileId, kind, content, confidence: Math.min(1, Number(existing.confidence || confidence) + 0.05), updatedExisting: true };
+  }
+
+  const id = 'mem_' + crypto.randomUUID();
+  await env.DB.prepare(`
+    INSERT INTO memories (
+      id, profile_id, kind, content, confidence, source_session_id, source_message_id, tags_json, status, created_at, updated_at
+    )
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'active', ?9, ?10)
+  `).bind(
+    id,
+    profileId,
+    kind,
+    content,
+    confidence,
+    payload.sessionId ? String(payload.sessionId) : null,
+    payload.messageId ? String(payload.messageId) : null,
+    JSON.stringify(tags),
+    nowIso(),
+    nowIso()
+  ).run();
+  return { id, profile_id: profileId, kind, content, confidence, updatedExisting: false };
 }
 
 async function upsertDerivedMemories(env, profileId, sessionId, message) {
@@ -594,6 +1295,16 @@ function extractMemoryCandidates(content) {
   if (!text) return [];
 
   const candidates = [];
+  const rememberMatch = text.match(/(?:remember that|remember|save that|запомни(?: что)?|сохрани(?: что)?|დაიმახსოვრე(?: რომ)?|შეინახე(?: რომ)?)\s+([^\n]+)/i);
+  if (rememberMatch) {
+    candidates.push({
+      kind: 'explicit',
+      content: rememberMatch[1].trim().replace(/[.!?]+$/, ''),
+      confidence: 0.97,
+      tags: ['explicit', 'remember']
+    });
+  }
+
   const nameMatch = text.match(/(?:my name is|call me)\s+([^\n,.!?]+)/i);
   if (nameMatch) {
     candidates.push({
@@ -673,6 +1384,75 @@ async function persistRegistrationFacts(env, profileId, registration) {
       nowIso()
     ).run();
   }
+}
+
+async function persistDeviceInventory(env, profileId, payload) {
+  const deviceId = String(payload.deviceId || '').trim() || String(payload.sessionId || '').trim() || ('inv_' + crypto.randomUUID());
+  const inventory = payload.inventory && typeof payload.inventory === 'object' ? payload.inventory : {};
+  const highlights = buildInventoryHighlights(inventory);
+  const content = `Known PC inventory for device ${deviceId}: ${highlights.join(' | ')}`;
+
+  const existing = await env.DB.prepare(`
+    SELECT id
+    FROM memories
+    WHERE profile_id = ?1
+      AND kind = 'device_inventory'
+      AND tags_json LIKE ?2
+    ORDER BY updated_at DESC
+    LIMIT 1
+  `).bind(profileId, '%' + deviceId + '%').first();
+
+  if (existing?.id) {
+    await env.DB.prepare(`
+      UPDATE memories
+      SET content = ?2,
+          confidence = 0.92,
+          tags_json = ?3,
+          updated_at = ?4
+      WHERE id = ?1
+    `).bind(
+      existing.id,
+      content,
+      JSON.stringify(['device', 'inventory', deviceId]),
+      nowIso()
+    ).run();
+    return { deviceId, highlights, updatedExisting: true };
+  }
+
+  await env.DB.prepare(`
+    INSERT INTO memories (
+      id, profile_id, kind, content, confidence, source_session_id, source_message_id, tags_json, status, created_at, updated_at
+    )
+    VALUES (?1, ?2, 'device_inventory', ?3, 0.92, NULL, NULL, ?4, 'active', ?5, ?6)
+  `).bind(
+    'mem_' + crypto.randomUUID(),
+    profileId,
+    content,
+    JSON.stringify(['device', 'inventory', deviceId]),
+    nowIso(),
+    nowIso()
+  ).run();
+
+  return { deviceId, highlights, updatedExisting: false };
+}
+
+function buildInventoryHighlights(inventory = {}) {
+  const parts = [];
+  const pushBucket = (label, list, limit = 5) => {
+    const items = (Array.isArray(list) ? list : [])
+      .map((item) => String(item?.label || item?.value || item?.path || '').trim())
+      .filter(Boolean)
+      .slice(0, limit);
+    if (items.length) parts.push(`${label}: ${items.join(', ')}`);
+  };
+  pushBucket('apps', inventory.apps, 5);
+  pushBucket('games', inventory.games, 5);
+  pushBucket('files', inventory.files, 4);
+  pushBucket('folders', inventory.folders, 4);
+  pushBucket('windows', inventory.windows, 4);
+  pushBucket('processes', inventory.processes, 4);
+  pushBucket('locations', inventory.knownLocations, 4);
+  return parts.slice(0, 8);
 }
 
 async function persistDevice(env, profileId, device) {
@@ -762,4 +1542,3 @@ function isAuthorizedRequest(request, env, pathname) {
   const alt = (request.headers.get('x-hex-token') || '').trim();
   return bearer === expected || alt === expected;
 }
-

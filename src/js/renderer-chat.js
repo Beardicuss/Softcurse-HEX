@@ -1,5 +1,7 @@
 'use strict';
 
+window.hexFeedbackBuffer = window.hexFeedbackBuffer || new Map();
+
 // ── Script detection ──────────────────────────────────────────────────────────
 // Detects the dominant script in a string and returns a BCP-47 language tag.
 // Used to set lang= on chat bubbles so CSS :lang() and browser hyphenation work.
@@ -82,6 +84,29 @@ function buildChatMsg(role, text, options = {}) {
       actionRow.appendChild(button);
     });
     el.appendChild(actionRow);
+  }
+
+  if (role === 'hex' && options.feedback !== false) {
+    const feedbackId = 'fb_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+    window.hexFeedbackBuffer.set(feedbackId, {
+      user: String(options.feedback?.user || window._lastUserMsg || '').slice(0, 4000),
+      assistant: String(text || '').slice(0, 8000),
+      brainRoute: options.feedback?.brainRoute || null,
+      createdAt: new Date().toISOString()
+    });
+    const feedbackRow = window.hexRenderUtils.createEl('div', { className: 'chat-actions chat-feedback-actions' });
+    [
+      { kind: 'good', label: 'GOOD' },
+      { kind: 'wrong', label: 'WRONG' },
+      { kind: 'fix', label: 'FIX' }
+    ].forEach((item) => {
+      feedbackRow.appendChild(window.hexRenderUtils.createEl('button', {
+        className: 'action-btn chat-feedback-btn',
+        text: item.label,
+        dataset: { hexFeedback: item.kind, feedbackId }
+      }));
+    });
+    el.appendChild(feedbackRow);
   }
 
   return el;

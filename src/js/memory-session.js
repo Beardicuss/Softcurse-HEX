@@ -24,8 +24,12 @@ window.hexMemorySession = {
     if (desktop.processCandidates?.length) lines.push('Processes: ' + desktop.processCandidates.slice(0, 4).join(' | '));
     if (desktop.appCandidates?.length) lines.push('Apps: ' + desktop.appCandidates.slice(0, 4).join(' | '));
     if (desktop.fileCandidates?.length) lines.push('Files: ' + desktop.fileCandidates.slice(0, 4).join(' | '));
+    if (desktop.folderCandidates?.length) lines.push('Folders: ' + desktop.folderCandidates.slice(0, 4).join(' | '));
     if (desktop.gameCandidates?.length) lines.push('Games: ' + desktop.gameCandidates.slice(0, 4).join(' | '));
-    return lines.slice(0, 10);
+    if (desktop.knownLocations?.length) lines.push('Locations: ' + desktop.knownLocations.slice(0, 4).join(' | '));
+    if (desktop.inventorySummary) lines.push('Inventory: ' + desktop.inventorySummary);
+    if (desktop.entityMatches?.length) lines.push('Entity hits: ' + desktop.entityMatches.slice(0, 4).join(' | '));
+    return lines.slice(0, 12);
   },
 
   promoteLiveSession(memory, state = {}) {
@@ -52,6 +56,11 @@ window.hexMemorySession = {
     }
     if (desktop.recentSummary && desktop.recentSummary !== 'none') {
       memory.addNode('workflow', 'Recent desktop target: ' + desktop.recentSummary.substring(0, 220), 0.76, { implicit: true, temporal: 'current' });
+    }
+    if (Array.isArray(desktop.inventoryHighlights)) {
+      desktop.inventoryHighlights.slice(0, 4).forEach((line) => {
+        memory.addNode('workflow', 'Known desktop context: ' + String(line).substring(0, 180), 0.68, { implicit: true, temporal: 'current' });
+      });
     }
 
     memory.working.lastLiveSessionSummary = summaryLines.join(' || ');
@@ -90,8 +99,12 @@ window.hexMemorySession = {
     if (currentMessage) {
       const episode = window.hexMemoryRetrieval?.findRelevantEpisode?.(memory, currentMessage);
       if (episode?.summary) lines.push('Relevant remembered session: ' + episode.summary.substring(0, 220));
+      const entityHits = window.hexPcEntityMemory?.search?.(currentMessage, [], 4) || [];
+      if (entityHits.length) {
+        lines.push('Known PC entities: ' + entityHits.map((item) => `${item.label} [${item.kind}]`).join(' | '));
+      }
     }
 
-    return lines.slice(0, 4);
+    return lines.slice(0, 5);
   }
 };

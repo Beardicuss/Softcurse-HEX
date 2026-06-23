@@ -108,3 +108,23 @@ CREATE TABLE IF NOT EXISTS personas (
 CREATE INDEX IF NOT EXISTS idx_personas_profile_active
 ON personas(profile_id, is_active DESC, updated_at DESC);
 
+
+CREATE TABLE IF NOT EXISTS activity_events (
+  id TEXT PRIMARY KEY,
+  profile_id TEXT NOT NULL,
+  session_id TEXT,
+  device_id TEXT,
+  kind TEXT NOT NULL,
+  status TEXT NOT NULL,
+  surface TEXT,
+  action_type TEXT,
+  summary TEXT NOT NULL,
+  details_json TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_profile_created
+ON activity_events(profile_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_activity_session_created
+ON activity_events(session_id, created_at DESC);

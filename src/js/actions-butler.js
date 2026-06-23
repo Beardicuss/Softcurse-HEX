@@ -1,4 +1,7 @@
 window.hexButlerActionHandler = (() => {
+  const noteDesktopOutcome = (...args) => window.hexActionHelpers?.noteDesktopOutcome?.(...args);
+  const noteBrowserOutcome = (...args) => window.hexActionHelpers?.noteBrowserOutcome?.(...args);
+
   async function handle(action) {
     switch (action.type) {
       case 'open_app': {
@@ -49,6 +52,13 @@ window.hexButlerActionHandler = (() => {
                 const openResult = await window.hexAPI.butler.openFile(savedPath);
                 if (openResult?.success) {
                   addHexMessage(`**Opening** ${appName} (remembered path)`);
+                  noteDesktopOutcome({
+                    kind: 'app',
+                    label: appName,
+                    path: savedPath,
+                    value: appName,
+                    meta: { source: 'memory-path' }
+                  }, 'app', true);
                   return { handled: true };
                 }
               }
@@ -73,9 +83,11 @@ window.hexButlerActionHandler = (() => {
               const r = await window.hexAPI.browser.open(url);
               if (r.success) {
                 addHexMessage(`**Opening resolved link:** ${url}`);
+                noteBrowserOutcome({ kind: 'browser', label: appName, value: appName, path: url, meta: { source: 'app-alias-url' } }, true);
                 window.hexMemory.recordActionOutcome(`open_app:${appName}`, true);
               } else {
                 addHexMessage(`**Failed to open link:** ${url}`);
+                noteBrowserOutcome({ kind: 'browser', label: appName, value: appName, path: url, meta: { source: 'app-alias-url' } }, false, r.error || '');
                 window.hexMemory.recordActionOutcome(`open_app:${appName}`, false, r.error || '');
               }
               return { handled: true };
@@ -100,12 +112,13 @@ window.hexButlerActionHandler = (() => {
           if (r.success) {
             addHexMessage(`**Opening** ${fuzzyMatch.name} (Cache Bypass)`);
             addLog('BUTLER', `Launched via Cache: ${fuzzyMatch.name}`);
-            window.hexCandidatePublishers?.rememberRecent({
+            noteDesktopOutcome({
               kind: 'app',
               label: fuzzyMatch.name || appName,
               path: fuzzyMatch.path,
-              value: fuzzyMatch.name || appName
-            });
+              value: fuzzyMatch.name || appName,
+              meta: { source: 'app-cache' }
+            }, 'app', true);
             return { handled: true };
           }
         }
@@ -115,18 +128,24 @@ window.hexButlerActionHandler = (() => {
           const found = r.found || appName;
           addHexMessage(`**Opening** ${found}${r.method ? ` (${r.method})` : ''}.`);
           addLog('BUTLER', `Launched: ${found}`);
-          window.hexCandidatePublishers?.rememberRecent({
+          noteDesktopOutcome({
             kind: 'app',
             label: found,
             path: r.path || null,
             value: found,
-            meta: { method: r.method || null }
-          });
+            meta: { method: r.method || null, source: 'open-app' }
+          }, 'app', true);
           window.hexMemory?.recordActionOutcome(`open_app:${appName}`, true);
           window.hexBrain?.recordOutcome(`open_app:${appName}`, true);
         } else {
           addHexMessage(`**Could not open** "${appName}". ${r.error || ''}${r.hint ? ` ${r.hint}` : ''}`);
           addLog('BUTLER', `Launch failed: ${appName} — ${r.error || ''}`, 'error');
+          noteDesktopOutcome({
+            kind: 'app',
+            label: appName,
+            value: appName,
+            meta: { source: 'open-app' }
+          }, 'app', false, r.error || '');
           window.hexMemory?.recordActionOutcome(`open_app:${appName}`, false, r.error || '');
           window.hexBrain?.recordOutcome(`open_app:${appName}`, false, r.error || '');
           addHexMessage(`I couldn't find "**${appName}**" on your system. Could you tell me the **exact app name** and **where the .exe file is located**? For example: \`VLC is at D:\\Programs\\VLC\\vlc.exe\`. I'll remember it for next time! 🧠`);
@@ -156,10 +175,12 @@ window.hexButlerActionHandler = (() => {
           const r = await window.hexAPI.browser.open(url);
           if (r?.success) {
             addHexMessage(`**Opened:** ${url}`);
+            noteBrowserOutcome({ kind: 'browser', label: url, value: url, path: url, meta: { source: 'open-url' } }, true);
             window.hexMemory?.recordActionOutcome(`open_url:${url}`, true);
             window.hexBrain?.recordOutcome(`open_url:${url}`, true);
           } else {
             addHexMessage(`**Failed to open:** ${url}`);
+            noteBrowserOutcome({ kind: 'browser', label: url, value: url, path: url, meta: { source: 'open-url' } }, false, r?.error || '');
             window.hexMemory?.recordActionOutcome(`open_url:${url}`, false, r?.error || '');
             window.hexBrain?.recordOutcome(`open_url:${url}`, false, r?.error || '');
           }
@@ -233,4 +254,5 @@ window.hexButlerActionHandler = (() => {
 
   return { handle };
 })();
+
 

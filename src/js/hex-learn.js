@@ -12,193 +12,60 @@
 
 window.hexLearn = (function () {
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
+  async function _llmCall(prompt) {
+    const cfg = window.hexAI?.config?.llm || {};
+    const capabilities = await window.hexAPI.getProviderCapabilities();
+    const active = String(cfg.provider || '').toLowerCase();
+    const ranked = capabilities?.capabilities?.providers || Object.values(capabilities?.providers || {});
+    const queue = ranked
+      .filter((item) => item?.status === 'ready' && Number(item.validKeys || 0) > 0)
+      .map((item) => item.provider);
 
-  // Resolve API key: checks direct apiKey first, then the multi-provider apiKeys map
-  function _resolveKey(cfg, prov) {
-    if (cfg.provider === prov && cfg.apiKey) return cfg.apiKey;
-    return cfg.apiKeys?.[prov] || cfg.apiKey || '';
-  }
-
-  // Read a failed HTTP response and throw a human-readable error
-  async function _httpError(res, label) {
-    let detail = res.statusText;
-    try {
-      const b = await res.json();
-      detail = b?.error?.message || b?.error?.status || b?.message || JSON.stringify(b?.error || b);
-    } catch (_) {}
-    throw new Error(`${label} HTTP ${res.status}: ${detail}`);
-  }
-
-  // ── Per-provider call (throws on failure, returns text on success) ─────────
-
-  const OPENAI_BASE = {
-    openai:     'https://api.openai.com/v1',
-    grok:       'https://api.x.ai/v1',
-    groq:       'https://api.groq.com/openai/v1',
-    mistral:    'https://api.mistral.ai/v1',
-    together:   'https://api.together.xyz/v1',
-    openrouter: 'https://openrouter.ai/api/v1',
-  };
-
-  // Default model used when config model is blank or just the provider name
-  const LEARN_MODEL = {
-    gemini:     'gemini-2.5-flash',   // free
-    grok:       'grok-3-mini',        // has free tier
-    openrouter: 'openai/gpt-4o-mini', // cheap
-    openai:     'gpt-4o',             // use exactly what the user configured
-    groq:       'llama-3.1-8b-instant',
-    mistral:    'mistral-small-latest',
-    together:   'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo',
-    anthropic:  'claude-haiku-4-5-20251001',
-    cohere:     'command-r-plus',
-  };
-
-  async function _callProvider(prov, cfg, msgs) {
-    const key = _resolveKey(cfg, prov);
-    if (!key && prov !== 'ollama') throw new Error(`No API key for "${prov}"`);
-
-    // ── Ollama ──────────────────────────────────────────────────────────────
-    if (prov === 'ollama') {
-      const model = cfg.model || 'qwen2.5:7b';
-      const res = await fetch((cfg.baseUrl || 'http://localhost:11434') + '/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, messages: msgs, stream: false, options: { temperature: 0.2, num_predict: 1200 } }),
-      });
-      if (!res.ok) await _httpError(res, 'Ollama');
-      return (await res.json())?.message?.content || null;
+    let lastError = null;
+    for (const provider of queue) {
+      try {
+        window.hexTaskBus?.push('Learn: trying ' + provider + '...');
+        const result = await window.hexAPI.executeProvider({
+          provider,
+          model: provider === active ? (cfg.model || '') : '',
+          system: 'You are HEX knowledge extraction. Return only accurate structured JSON. Do not invent facts.',
+          messages: [{ role: 'user', content: prompt }],
+          maxTokens: 1200
+        });
+        if (result?.success && result.text) {
+          _llmCall._usedProvider = provider;
+          return result.text;
+        }
+        throw new Error(result?.error || (provider + ' returned no content'));
+      } catch (error) {
+        lastError = error;
+        console.warn('[HexLearn] ' + provider + ' failed: ' + error.message);
+      }
     }
 
-    // ── Gemini ──────────────────────────────────────────────────────────────
-    if (prov === 'gemini') {
-      const model = (cfg.model && cfg.model !== 'gemini') ? cfg.model.split(/\s+/)[0] : LEARN_MODEL.gemini;
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-        {
+    if (active === 'ollama') {
+      try {
+        const response = await fetch((cfg.baseUrl || 'http://localhost:11434') + '/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: msgs[0].content }] }],
-            generationConfig: { temperature: 0.2, maxOutputTokens: 1200 },
-          }),
-        }
-      );
-      if (!res.ok) await _httpError(res, 'Gemini');
-      return (await res.json())?.candidates?.[0]?.content?.parts?.[0]?.text || null;
-    }
-
-    // ── Anthropic ───────────────────────────────────────────────────────────
-    if (prov === 'anthropic') {
-      const model = (cfg.model && cfg.model !== 'anthropic') ? cfg.model : LEARN_MODEL.anthropic;
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': key,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        body: JSON.stringify({ model, max_tokens: 1200, messages: msgs }),
-      });
-      if (!res.ok) await _httpError(res, 'Anthropic');
-      return (await res.json())?.content?.[0]?.text || null;
-    }
-
-    // ── Cohere ──────────────────────────────────────────────────────────────
-    if (prov === 'cohere') {
-      const model = (cfg.model && cfg.model !== 'cohere') ? cfg.model : LEARN_MODEL.cohere;
-      const res = await fetch('https://api.cohere.com/v2/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
-        body: JSON.stringify({ model, messages: msgs, max_tokens: 1200, temperature: 0.2 }),
-      });
-      if (!res.ok) await _httpError(res, 'Cohere');
-      return (await res.json())?.message?.content?.[0]?.text || null;
-    }
-
-    // ── OpenAI-compatible (openai, grok, groq, mistral, together, openrouter) ──
-    if (OPENAI_BASE[prov]) {
-      const model = (cfg.model && cfg.model !== prov) ? cfg.model : (LEARN_MODEL[prov] || 'gpt-4o-mini');
-      const hdrs = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key };
-      if (prov === 'openrouter') {
-        hdrs['HTTP-Referer'] = 'https://softcurse-hex.local';
-        hdrs['X-Title'] = 'HEX-Learn';
-      }
-      const res = await fetch(OPENAI_BASE[prov] + '/chat/completions', {
-        method: 'POST',
-        headers: hdrs,
-        body: JSON.stringify({ model, messages: msgs, max_tokens: 1200, temperature: 0.2 }),
-      });
-      if (!res.ok) await _httpError(res, prov);
-      return (await res.json())?.choices?.[0]?.message?.content || null;
-    }
-
-    throw new Error(`Provider "${prov}" is not supported.`);
-  }
-
-  // ── Smart provider fallback ───────────────────────────────────────────────
-  //
-  // Priority order for the learn engine (free / cheapest first):
-  //   1. gemini     — free tier, excellent JSON output
-  //   2. grok       — free tier
-  //   3. openrouter — pay-per-use but very cheap (gpt-4o-mini default)
-  //   4. openai     — uses your exact configured model (e.g. gpt-4o)
-  //   5. groq       — free but rate-limited
-  //   6. ollama     — local, always free
-  //   7. active provider — whatever is set in HEX settings (last resort)
-  //
-  // A provider is only tried if it has an API key configured.
-  // If all fail, the last error is surfaced to the user.
-
-  const LEARN_PRIORITY = ['gemini', 'grok', 'openrouter', 'openai', 'groq', 'ollama',
-                           'mistral', 'together', 'anthropic', 'cohere', 'openrouter'];
-
-  async function _llmCall(prompt) {
-    if (!window.hexAI?.config) throw new Error('HEX AI engine not initialised.');
-    const cfg = window.hexAI.config.llm;
-    if (!cfg) throw new Error('No AI provider configured. Set one in Settings → AI.');
-
-    const msgs = [{ role: 'user', content: prompt }];
-    const activeProv = cfg.provider || 'none';
-
-    // Build the ordered list of providers to try:
-    // Start with priority list, append active provider at the end as final fallback,
-    // deduplicate so we never call the same provider twice.
-    const seen = new Set();
-    const queue = [...LEARN_PRIORITY, activeProv].filter(p => {
-      if (!p || p === 'none' || seen.has(p)) return false;
-      seen.add(p);
-      // Skip providers with no key (except ollama which is local)
-      if (p !== 'ollama' && !_resolveKey(cfg, p)) return false;
-      return true;
-    });
-
-    if (queue.length === 0) {
-      throw new Error('No AI provider with a configured API key found. Add at least one key in Settings → AI.');
-    }
-
-    let lastError = null;
-    for (const prov of queue) {
-      try {
-        window.hexTaskBus?.push(`Learn: trying ${prov}...`);
-        const result = await _callProvider(prov, cfg, msgs);
-        if (result) {
-          // Tag which provider was used so the caller can report it
-          _llmCall._usedProvider = prov;
-          return result;
-        }
-      } catch (e) {
-        lastError = e;
-        console.warn(`[HexLearn] ${prov} failed: ${e.message}`);
-        // Continue to next provider
+            model: cfg.model || 'qwen2.5:7b',
+            messages: [{ role: 'user', content: prompt }],
+            stream: false,
+            options: { temperature: 0.2, num_predict: 1200 }
+          })
+        });
+        if (!response.ok) throw new Error('Ollama HTTP ' + response.status);
+        _llmCall._usedProvider = 'ollama';
+        return (await response.json())?.message?.content || null;
+      } catch (error) {
+        lastError = error;
       }
     }
 
-    throw lastError || new Error('All configured providers failed to respond.');
+    throw lastError || new Error('No usable AI provider is available for learning.');
   }
   _llmCall._usedProvider = null;
-
   // ── Build the study prompt ──────────────────────────────────────────────
   function _buildStudyPrompt(topic) {
     return `You are a knowledge extraction engine. Your task is to study the topic below and return a structured JSON object that will be stored as long-term memory for an AI assistant called HEX.

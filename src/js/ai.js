@@ -9,7 +9,6 @@ class HexAI {
     this.history = [];
     this._transientMessages = null;
     this._lastSystemState = null;
-    this._sessionProviderDemotions = {};
     this.MAX_HISTORY = 20;
     this.REQUEST_TIMEOUT_MS = 20000;
     // Complexity-aware routing: fast models for simple queries
@@ -31,8 +30,6 @@ class HexAI {
 
   configure(config) {
     this.config = config;
-    this._sessionProviderDemotions = {};
-    window._hexProviderSessionDemotions = {};
   }
 
   // ── System prompt ─────────────────────────────────────────
@@ -80,15 +77,42 @@ class HexAI {
         : this.history.concat({ role: 'user', content: userMsg });
     }
 
-    window.hexTaskBus?.push('Building system prompt...');
-    const sysPrompt = this._systemPrompt(systemState, lang);
     let text;
+    const brainRoute = await window.hexBrainRouter?.route?.({ userMsg, systemState, lang, options });
+    if (brainRoute?.hints) {
+      systemState = { ...(systemState || {}), brainRoute: brainRoute.hints };
+      this._lastSystemState = systemState;
+      window.hexBrainTelemetry?.sync?.({
+        phase: 'route',
+        user: userMsg,
+        route: brainRoute.hints.route,
+        reason: brainRoute.hints.reason || brainRoute.reason,
+        confidence: brainRoute.hints.confidence,
+        actionDomain: brainRoute.hints.actionPlan?.domain,
+        actionSurface: brainRoute.hints.actionPlan?.suggestedSurface,
+        actionUrgency: brainRoute.hints.actionPlan?.urgency,
+        providerRequired: brainRoute.hints.providerRequired,
+        serverPacket: brainRoute.hints.serverPacket,
+        serverMemoryHits: brainRoute.hints.serverMemoryHits,
+        sources: brainRoute.hints.sources || []
+      });
+    }
+    if (brainRoute?.mode && brainRoute.mode !== 'provider' && brainRoute.mode !== 'server-context-provider') {
+      window.hexTaskBus?.push('Brain Router: ' + brainRoute.mode + ' (' + (brainRoute.reason || 'local') + ')');
+      text = brainRoute.text || window.hexBrainCore?.survivalReply?.({ userMsg, lang }) || this._offline();
+      this._transientMessages = null;
+    }
 
-    this._transientMessages = messageHistory;
+    if (!text) {
+      if (brainRoute?.mode) {
+        window.hexTaskBus?.push('Brain Router: ' + brainRoute.mode + ' (' + (brainRoute.reason || 'model') + ')');
+      }
+      window.hexTaskBus?.push('Building system prompt...');
+      const sysPrompt = this._systemPrompt(systemState, lang);
+      this._transientMessages = messageHistory;
 
-    try {
+      try {
       const p = this.config && this.config.llm ? this.config.llm.provider : 'none';
-      const origKey = this.config?.llm?.apiKey;
       const origModel = this.config?.llm?.model;
 
       // ── Complexity-aware routing ─────────────────────────────
@@ -103,60 +127,40 @@ class HexAI {
       window.hexTaskBus?.push(`Querying ${p} model...`);
 
       let routeProvider = p;
-      const fallbackKey = this.config?.llm?.visionApiKey;
-      if (visionData && p === 'ollama' && fallbackKey) {
+      if (visionData && p === 'ollama') {
         routeProvider = 'gemini';
         window.hexTaskBus?.push('Delegating visual payload to Gemini Vision API...');
       }
 
-      // ── Multi-Provider Auto Fallback Queue (PHASE 13) ───────────────
-      // Fetch the LIVE valid keys mapped by the background hunter script
-      const liveKeysFallbackRes = await Promise.race([
-        window.hexAPI.refreshLiveKeys ? window.hexAPI.refreshLiveKeys() : window.hexAPI.getLiveKeys(),
+      // G��G�� Multi-Provider Auto Fallback Queue (PHASE 13 + CLOUD ORCHESTRATION) G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+      const capabilityRes = await Promise.race([
+        window.hexAPI.getProviderCapabilities(),
         new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Live key lookup timeout after 5s')), 5000);
+          setTimeout(() => reject(new Error('Provider capability lookup timeout after 5s')), 5000);
         })
       ]);
-      const liveKeys = liveKeysFallbackRes.success ? liveKeysFallbackRes.keys : {};
+      const liveKeys = Object.fromEntries(
+        Object.entries(capabilityRes?.providers || {}).map(([provider, capability]) => [
+          provider,
+          Number(capability?.validKeys || 0) > 0 ? [true] : []
+        ])
+      );
 
-      // Strict cascade order per Phase 13 requirements:
-      const PRIORITY = ['anthropic', 'openai', 'mistral', 'together', 'grok', 'gemini', 'cohere', 'hf', 'replicate'];
+      const orchestration = capabilityRes?.capabilities || null;
+      const providerQueue = this._buildProviderQueue({
+        routeProvider,
+        liveKeys,
+        orchestration
+      });
 
-      // Smart fallback: if the user's chosen provider has no live key AND isn't local (ollama),
-      // auto-route to the first provider in the cascade that HAS keys.
-      const providerQueue = [];
-      const skippedSessionProviders = [];
-
-      // Check if user's selected provider has a live key or is local
-      const selectedHasKey = routeProvider === 'ollama' || (liveKeys[routeProvider] && liveKeys[routeProvider].length > 0);
-
-      if (selectedHasKey && !this._isSessionDemoted(routeProvider)) {
-        providerQueue.push(routeProvider);
-      } else if (selectedHasKey && this._isSessionDemoted(routeProvider)) {
-        skippedSessionProviders.push(this._getSessionDemotionSummary(routeProvider));
-        window.hexTaskBus?.push(`Skipping ${routeProvider}: session-demoted (${this._getSessionDemotionReason(routeProvider)})`);
-      } else if (routeProvider !== 'none') {
-        window.hexTaskBus?.push(`No key for ${routeProvider}. Smart fallback activating...`);
+      if (orchestration?.providers?.length) {
+        const active = orchestration.activeProvider || providerQueue[0] || 'none';
+        window.hexTaskBus?.push('Cloud orchestration active: ' + active + ' ranked first.');
       }
 
-      // Build the backup pipeline by picking the highest priority providers that HAVE known valid keys
-      for (const pri of PRIORITY) {
-        if (this._isSessionDemoted(pri)) {
-          skippedSessionProviders.push(this._getSessionDemotionSummary(pri));
-          continue;
-        }
-        if (!providerQueue.includes(pri) && liveKeys[pri] && liveKeys[pri].length > 0) {
-          providerQueue.push(pri);
-        }
-      }
-
-      // If queue is completely empty, still try ollama as last resort
       if (providerQueue.length === 0) {
         const emergencyProvider = routeProvider !== 'none' ? routeProvider : 'ollama';
         providerQueue.push(emergencyProvider);
-        if (this._isSessionDemoted(emergencyProvider)) {
-          window.hexTaskBus?.push(`No healthy providers left. Re-testing session-demoted ${emergencyProvider} as emergency fallback.`);
-        }
       }
 
       let success = false;
@@ -173,10 +177,8 @@ class HexAI {
         if (currProvider === 'ollama') {
           keysToTry = [null]; // No API key required
         } else if (liveKeys[currProvider] && liveKeys[currProvider].length > 0) {
-          keysToTry = [...liveKeys[currProvider]]; // Inject ALL hunted keys
+          keysToTry = [null]; // Main process owns and cycles provider keys
           usingLivePool = true;
-        } else if (currProvider === routeProvider && origKey) {
-          keysToTry = [origKey]; // User's manual key
         } else {
           continue; // Cannot test this provider, no keys
         }
@@ -185,9 +187,7 @@ class HexAI {
         const providerFailures = [];
         let providerSucceeded = false;
         for (let i = 0; i < keysToTry.length; i++) {
-          const testKey = keysToTry[i];
           try {
-            if (testKey) this.config.llm.apiKey = testKey;
 
             if (currProvider !== routeProvider) {
               window.hexTaskBus?.push(`Fallback: Auto-routing to ${currProvider}... ${keysToTry.length > 1 ? `(Key ${i + 1}/${keysToTry.length})` : ''}`);
@@ -202,26 +202,18 @@ class HexAI {
 
             switch (currProvider) {
               case 'ollama': text = await this._ollama(sysPrompt, visionData); break;
-              case 'openai': text = await this._openai(sysPrompt); break;
-              case 'anthropic': text = await this._anthropic(sysPrompt); break;
-              case 'gemini': {
-                if (currProvider === 'gemini' && p === 'ollama') {
-                  const tempKey = this.config.llm.apiKey;
-                  this.config.llm.apiKey = fallbackKey || testKey || tempKey;
-                  try { text = await this._gemini(sysPrompt, visionData, 'gemini-2.5-flash'); }
-                  finally { this.config.llm.apiKey = tempKey; }
-                } else {
-                  text = await this._gemini(sysPrompt, visionData);
-                }
+              case 'openai':
+              case 'anthropic':
+              case 'gemini':
+              case 'grok':
+              case 'openrouter':
+              case 'mistral':
+              case 'groq':
+              case 'together':
+              case 'cohere':
+              case 'hf':
+                text = await this._executeRemoteProvider(currProvider, sysPrompt, visionData);
                 break;
-              }
-              case 'grok': text = await this._grok(sysPrompt); break;
-              case 'openrouter': text = await this._openrouter(sysPrompt); break;
-              case 'mistral': text = await this._mistral(sysPrompt); break;
-              case 'groq': text = await this._groq(sysPrompt); break;
-              case 'together': text = await this._together(sysPrompt); break;
-              case 'cohere': text = await this._cohere(sysPrompt); break;
-              case 'hf': text = await this._hf(sysPrompt); break;
               case 'replicate': text = await this._replicate(sysPrompt); break;
               default: text = this._offline(); break;
             }
@@ -241,9 +233,7 @@ class HexAI {
             const shouldKeepCyclingKeys = usingLivePool && hasMoreKeys;
             if (summary.skipRemainingKeys && !shouldKeepCyclingKeys) {
               permanentProviderFailures.add(currProvider);
-              if (summary.demoteForSession) {
-                this._rememberProviderDemotion(currProvider, summary);
-              }
+                await this._reportProviderOutcome(currProvider, { ok: false, summary, preferredProvider: routeProvider });
               break;
             }
             if (summary.skipRemainingKeys && shouldKeepCyclingKeys) {
@@ -258,25 +248,27 @@ class HexAI {
           if (allPermanent) {
             permanentProviderFailures.add(currProvider);
             const lastFailure = providerFailures[providerFailures.length - 1];
-            if (lastFailure?.demoteForSession) {
-              this._rememberProviderDemotion(currProvider, lastFailure);
-            }
+            await this._reportProviderOutcome(currProvider, { ok: false, summary: lastFailure, preferredProvider: routeProvider });
           }
           providerSummaries.push(this._summarizeProviderFailures(currProvider, providerFailures));
         } else if (providerSucceeded) {
-          this._clearProviderDemotion(currProvider);
+            await this._reportProviderOutcome(currProvider, { ok: true, preferredProvider: routeProvider });
         }
         if (success) break; // Break outer provider loop!
       }
 
       if (!success) {
-        const mergedSummaries = this._mergeProviderSummaries(providerSummaries, skippedSessionProviders);
+        const mergedSummaries = providerSummaries;
         window._hexLastProviderFailures = mergedSummaries;
         const compact = mergedSummaries.length > 0
           ? mergedSummaries.map((item) => `- ${item.label}: ${item.reason}`).join('\n')
           : allErrors.join('\n');
-        let msg = 'All available LLM auto-fallback providers failed.\n\nProvider status:\n' + compact;
-        throw new Error(msg);
+        const providerError = new Error('All available LLM auto-fallback providers failed.\n\nProvider status:\n' + compact);
+        text = window.hexBrainCore?.survivalReply
+          ? window.hexBrainCore.survivalReply({ userMsg, lang, error: providerError, providerSummaries: mergedSummaries })
+          : this._offline();
+        success = true;
+        window.hexTaskBus?.push('Provider layer unavailable. Local Brain Core survival response used.');
       }
 
       window._hexLastProviderFailures = [];
@@ -286,14 +278,17 @@ class HexAI {
 
       // Restore original config parameters
       if (this.config && this.config.llm) {
-        this.config.llm.apiKey = origKey;
         this.config.llm.model = origModel;
       }
     } catch (e) {
       console.error('AI error:', e);
-      text = 'Neural link disrupted: ' + (e?.message || String(e));
+      text = window.hexBrainCore?.survivalReply
+        ? window.hexBrainCore.survivalReply({ userMsg, lang, error: e })
+        : ('Neural link disrupted: ' + (e?.message || String(e)));
+      window.hexTaskBus?.push('Neural layer error caught. Local Brain Core survival response used.');
     } finally {
       this._transientMessages = null;
+    }
     }
 
     // Save to persistent memory
@@ -311,7 +306,7 @@ class HexAI {
       }
     }
 
-    return { text, actions: this._parseActions(text) };
+    return { text, actions: this._parseActions(text), brainRoute: brainRoute?.hints || null };
   }
 
   // ── Ollama (local) ────────────────────────────────────────
@@ -344,208 +339,19 @@ class HexAI {
     return ((await this._safeJson(res))?.message?.content) || '…';
   }
 
-  // ── OpenAI ────────────────────────────────────────────────
-  async _openai(system) {
-    const res = await this._fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.config.llm.apiKey },
-      body: JSON.stringify({
-        model: this.config.llm.model || 'gpt-4o-mini',
-        messages: [{ role: 'system', content: system }, ...this._msgs()],
-        max_tokens: this._maxTokens || 800, temperature: 0.75
-      })
+
+  async _executeRemoteProvider(provider, system, visionData = null) {
+    const result = await window.hexAPI.executeProvider({
+      provider,
+      model: this.config?.llm?.model || '',
+      system,
+      messages: this._msgs(),
+      visionData,
+      maxTokens: this._maxTokens || 800
     });
-    if (!res.ok) { const e = await this._safeJson(res); throw new Error('OpenAI ' + res.status + ': ' + (e.error && e.error.message)); }
-    return (await this._safeJson(res)).choices?.[0]?.message?.content || '…';
+    if (!result?.success) throw new Error(result?.error || (provider + ' request failed'));
+    return result.text || '...';
   }
-
-  // ── Anthropic ─────────────────────────────────────────────
-  async _anthropic(system) {
-    const res = await this._fetchWithTimeout('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': this.config.llm.apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: this.config.llm.model || 'claude-haiku-4-5-20251001',
-        max_tokens: this._maxTokens || 800, system,
-        messages: this._msgs()
-      })
-    });
-    if (!res.ok) { const e = await this._safeJson(res); throw new Error('Anthropic ' + res.status + ': ' + (e.error && e.error.message)); }
-    return (await this._safeJson(res)).content?.[0]?.text || '…';
-  }
-
-  // ── Google Gemini ─────────────────────────────────────────
-  async _gemini(system, visionData = null, overrideModel = null) {
-    const rawModel = overrideModel || this.config.llm.model || '';
-    let model = (rawModel && rawModel !== 'gemini') ? rawModel.trim().split(/\s+/)[0] : 'gemini-2.5-flash';
-    if (model.includes('gemini-1.5')) model = 'gemini-2.5-flash'; // Avoid unsupported 1.5 versions
-    const apiKey = this.config.llm.apiKey;
-
-    // Map history and inject visionData into the very last user message if present
-    const msgs = this._msgs();
-    const historyParts = msgs.map((m, i) => {
-      const parts = [{ text: m.content }];
-      if (i === msgs.length - 1 && visionData) {
-        const mimeMatch = visionData.match(/^data:(image\/\w+);base64,(.*)$/);
-        if (mimeMatch) parts.push({ inlineData: { mimeType: mimeMatch[1], data: mimeMatch[2] } });
-      }
-      return { role: m.role === 'assistant' ? 'model' : 'user', parts };
-    });
-
-    const contents = [
-      { role: 'user', parts: [{ text: '[SYSTEM]\n' + system + '\n[/SYSTEM]\n\nAcknowledge briefly.' }] },
-      { role: 'model', parts: [{ text: 'Understood. HEX online.' }] },
-      ...historyParts
-    ];
-
-    const payload = {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents, generationConfig: { maxOutputTokens: this._maxTokens || 800, temperature: 0.75 } })
-    };
-
-    let res = await this._fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, payload);
-    if (!res.ok) {
-      let e = await this._safeJson(res).catch(() => ({}));
-      if ((res.status === 404 || res.status === 429 || res.status === 400) && model !== 'gemini-2.5-flash') {
-        window.hexTaskBus?.push(`Gemini ${res.status} on ${model}. Rerouting to gemini-2.5-flash...`);
-        res = await this._fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, payload);
-        if (!res.ok) e = await this._safeJson(res).catch(() => ({}));
-      }
-      if (!res.ok) throw new Error(`Gemini ${res.status}: ${e.error?.message || e.error?.status || JSON.stringify(e.error) || res.statusText}`);
-    }
-
-    const finalData = await this._safeJson(res);
-    return finalData.candidates?.[0]?.content?.parts?.[0]?.text || '…';
-  }
-
-  // ── Grok (xAI) ────────────────────────────────────────────
-  async _grok(system) {
-    const rawModel = this.config.llm.model || '';
-    const model = (rawModel && rawModel !== 'grok') ? rawModel : 'grok-3-mini';
-    const res = await this._fetchWithTimeout('https://api.x.ai/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.config.llm.apiKey },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'system', content: system }, ...this._msgs()],
-        max_tokens: this._maxTokens || 800, temperature: 0.75
-      })
-    });
-    if (!res.ok) { const e = await this._safeJson(res); throw new Error('Grok ' + res.status + ': ' + (e.error?.message || (typeof e.error === 'string' ? e.error : null) || e.message || JSON.stringify(e))); }
-    return (await this._safeJson(res)).choices?.[0]?.message?.content || '…';
-  }
-
-  // ── OpenRouter (100+ models) ──────────────────────────────
-  async _openrouter(system) {
-    const rawModel = this.config.llm.model || '';
-    // If model has no slash (not a real openrouter model id), use a known free default
-    const model = rawModel.includes('/') ? rawModel : 'meta-llama/llama-3.1-8b-instruct:free';
-    const res = await this._fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + this.config.llm.apiKey,
-        'HTTP-Referer': 'https://softcurse-hex.local',
-        'X-Title': 'Softcurse H.E.X.'
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'system', content: system }, ...this._msgs()],
-        max_tokens: this._maxTokens || 800
-      })
-    });
-    if (!res.ok) { const e = await this._safeJson(res); throw new Error('OpenRouter ' + res.status + ': ' + (e.error && e.error.message)); }
-    return (await this._safeJson(res)).choices?.[0]?.message?.content || '…';
-  }
-
-  // ── Mistral ───────────────────────────────────────────────
-  async _mistral(system) {
-    const res = await this._fetchWithTimeout('https://api.mistral.ai/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.config.llm.apiKey },
-      body: JSON.stringify({
-        model: this.config.llm.model || 'mistral-small-latest',
-        messages: [{ role: 'system', content: system }, ...this._msgs()],
-        max_tokens: this._maxTokens || 800, temperature: 0.75
-      })
-    });
-    if (!res.ok) { const e = await this._safeJson(res); throw new Error('Mistral ' + res.status + ': ' + (e.error && e.error.message)); }
-    return (await this._safeJson(res)).choices?.[0]?.message?.content || '…';
-  }
-
-  // ── Groq (ultra-fast inference) ───────────────────────────
-  async _groq(system) {
-    const res = await this._fetchWithTimeout('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.config.llm.apiKey },
-      body: JSON.stringify({
-        model: this.config.llm.model || 'llama-3.1-8b-instant',
-        messages: [{ role: 'system', content: system }, ...this._msgs()],
-        max_tokens: this._maxTokens || 800, temperature: 0.75
-      })
-    });
-    if (!res.ok) { const e = await this._safeJson(res); throw new Error('Groq ' + res.status + ': ' + (e.error && e.error.message)); }
-    return (await this._safeJson(res)).choices?.[0]?.message?.content || '…';
-  }
-
-  // ── Together AI ────────────────────────────────────────────
-  async _together(system) {
-    const res = await this._fetchWithTimeout('https://api.together.xyz/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.config.llm.apiKey },
-      body: JSON.stringify({
-        model: this.config.llm.model || 'meta-llama/Llama-3-8b-chat-hf',
-        messages: [{ role: 'system', content: system }, ...this._msgs()],
-        max_tokens: this._maxTokens || 800, temperature: 0.75
-      })
-    });
-    if (!res.ok) { const e = await this._safeJson(res); throw new Error('Together ' + res.status + ': ' + (e.error && e.error.message)); }
-    return (await this._safeJson(res)).choices?.[0]?.message?.content || '…';
-  }
-
-  // ── Cohere ────────────────────────────────────────────────
-  async _cohere(system) {
-    const hist = this._msgs();
-    const chatHistory = [];
-    for (let i = 0; i < hist.length - 1; i++) {
-      chatHistory.push({ role: hist[i].role === 'user' ? 'USER' : 'CHATBOT', message: hist[i].content });
-    }
-    const lastMsg = hist.length ? hist[hist.length - 1].content : '';
-    const res = await this._fetchWithTimeout('https://api.cohere.com/v1/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.config.llm.apiKey },
-      body: JSON.stringify({
-        model: this.config.llm.model || 'command-r-plus',
-        preamble: system, chat_history: chatHistory,
-        message: lastMsg, max_tokens: this._maxTokens || 800, temperature: 0.75
-      })
-    });
-    if (!res.ok) { const e = await this._safeJson(res); throw new Error('Cohere ' + res.status + ': ' + (e?.message || e?.detail || JSON.stringify(e))); }
-    return (await this._safeJson(res)).text || '…';
-  }
-
-  // ── Hugging Face ──────────────────────────────────────────
-  async _hf(system) {
-    const defaultModel = 'mistralai/Mixtral-8x7B-Instruct-v0.1'; // HF free inference api default
-    const res = await this._fetchWithTimeout(`https://api-inference.huggingface.co/models/${this.config.llm.model || defaultModel}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.config.llm.apiKey },
-      body: JSON.stringify({
-        inputs: system + '\n\n' + this.history.map(m => m.role + ': ' + m.content).join('\n') + '\n\nAssistant:',
-        parameters: { max_new_tokens: this._maxTokens || 800, temperature: 0.7 }
-      })
-    });
-    if (!res.ok) { const e = await this._safeJson(res); throw new Error('HF ' + res.status + ': ' + (e?.error?.message || (typeof e?.error === 'string' ? e.error : JSON.stringify(e)))); }
-    const out = await this._safeJson(res);
-    return out[0]?.generated_text || out?.generated_text || '…';
-  }
-
   // ── Replicate ─────────────────────────────────────────────
   async _replicate(system) {
     throw new Error('Replicate API connection not yet fully implemented for synchronous single-pass fallback.');
@@ -661,7 +467,8 @@ class HexAI {
       (desktop.appCandidates && desktop.appCandidates.length) ||
       (desktop.fileCandidates && desktop.fileCandidates.length) ||
       (desktop.gameCandidates && desktop.gameCandidates.length) ||
-      (desktop.promotedRecent && desktop.promotedRecent.length)
+      (desktop.promotedRecent && desktop.promotedRecent.length) ||
+      (desktop.entityMatches && desktop.entityMatches.length)
     );
     if (!hasContext) return null;
 
@@ -685,10 +492,16 @@ class HexAI {
     if (desktop.processCandidates?.length) lines.push('Process context: ' + desktop.processCandidates.join(' | '));
     if (desktop.appCandidates?.length) lines.push('App context: ' + desktop.appCandidates.join(' | '));
     if (desktop.fileCandidates?.length) lines.push('File context: ' + desktop.fileCandidates.join(' | '));
+    if (desktop.folderCandidates?.length) lines.push('Folder context: ' + desktop.folderCandidates.join(' | '));
     if (desktop.gameCandidates?.length) lines.push('Game context: ' + desktop.gameCandidates.join(' | '));
     if (desktop.promotedRecent?.length) lines.push('Promoted desktop targets: ' + desktop.promotedRecent.join(' | '));
+    if (desktop.inventorySummary) lines.push('Desktop inventory summary: ' + desktop.inventorySummary);
+    if (desktop.inventoryHighlights?.length) lines.push('Desktop inventory highlights: ' + desktop.inventoryHighlights.join(' | '));
+    if (desktop.entityMatches?.length) lines.push('Desktop entity matches for this message: ' + desktop.entityMatches.join(' | '));
+    if (desktop.inventoryAgeMinutes != null) lines.push('Desktop inventory cached age: ' + desktop.inventoryAgeMinutes + ' min');
     if (desktop.recentSummary && desktop.recentSummary !== 'none') {
       lines.push('If the user says open it, close that, launch the second one, focus that window, or kill that process, resolve it against this desktop context before treating it as a new request.');
+      lines.push('If entity matches are present for the current message, prefer those known PC entities before broad scanning or guessing.');
     }
     if (recentTurns.length > 0) {
       lines.push('Recent turns:');
@@ -751,134 +564,15 @@ class HexAI {
 
   // ── List available models from provider API ───────────────
   // Returns array of { id, free } objects
-  async fetchModels(provider, apiKey, baseUrl) {
-    const headers = { 'Content-Type': 'application/json' };
-    let url, transform;
-
-    // Known free Gemini models (no billing required)
-    const FREE_GEMINI = [
-      'gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash',
-      'gemini-1.5-flash-8b', 'gemini-2.5-flash-preview-04-17'
-    ];
-    // Known free Grok models
-    const FREE_GROK = ['grok-3-mini'];
-    // Known free Mistral models
-    const FREE_MISTRAL = ['mistral-small-3.1-24b-instruct', 'devstral-small-2505'];
-
-    switch (provider) {
-      case 'gemini':
-        url = 'https://generativelanguage.googleapis.com/v1beta/models?key=' + apiKey;
-        transform = d => (d.models || [])
-          .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
-          .map(m => {
-            const id = m.name.replace('models/', '');
-            return { id, free: FREE_GEMINI.some(f => id.startsWith(f)) };
-          });
-        break;
-      case 'grok':
-        url = 'https://api.x.ai/v1/models';
-        headers['Authorization'] = 'Bearer ' + apiKey;
-        transform = d => (d.data || []).map(m => ({
-          id: m.id,
-          free: FREE_GROK.includes(m.id) || (m.pricing && String(m.pricing.prompt) === '0')
-        }));
-        break;
-      case 'openai':
-        url = 'https://api.openai.com/v1/models';
-        headers['Authorization'] = 'Bearer ' + apiKey;
-        transform = d => (d.data || [])
-          .filter(m => m.id.startsWith('gpt'))
-          .sort((a, b) => a.id.localeCompare(b.id))
-          .map(m => ({ id: m.id, free: false }));
-        break;
-      case 'anthropic':
-        url = 'https://api.anthropic.com/v1/models';
-        headers['x-api-key'] = apiKey;
-        headers['anthropic-version'] = '2023-06-01';
-        headers['anthropic-dangerous-direct-browser-access'] = 'true';
-        transform = d => (d.data || []).map(m => ({ id: m.id, free: false }));
-        break;
-      case 'groq':
-        url = 'https://api.groq.com/openai/v1/models';
-        headers['Authorization'] = 'Bearer ' + apiKey;
-        // Groq free tier: all models free up to rate limits
-        transform = d => (d.data || []).sort((a, b) => a.id.localeCompare(b.id))
-          .map(m => ({ id: m.id, free: true }));
-        break;
-      case 'mistral':
-        url = 'https://api.mistral.ai/v1/models';
-        headers['Authorization'] = 'Bearer ' + apiKey;
-        transform = d => (d.data || []).sort((a, b) => a.id.localeCompare(b.id))
-          .map(m => ({
-            id: m.id,
-            free: FREE_MISTRAL.some(f => m.id.includes(f))
-          }));
-        break;
-      case 'openrouter':
-        url = 'https://openrouter.ai/api/v1/models';
-        headers['Authorization'] = 'Bearer ' + apiKey;
-        transform = d => (d.data || [])
-          .map(m => ({
-            id: m.id,
-            free: m.id.endsWith(':free') ||
-              (m.pricing && String(m.pricing.prompt) === '0' && String(m.pricing.completion) === '0')
-          }))
-          .filter(m => m.free)   // ONLY show free models by default
-          .sort((a, b) => a.id.localeCompare(b.id));
-        break;
-      case 'together':
-        url = 'https://api.together.xyz/v1/models';
-        headers['Authorization'] = 'Bearer ' + apiKey;
-        transform = d => (Array.isArray(d) ? d : (d.data || []))
-          .filter(m => m.type === 'chat' || m.display_type === 'chat')
-          .map(m => ({
-            id: m.id,
-            free: m.pricing ? (parseFloat(m.pricing.input) === 0) : false
-          }))
-          .sort((a, b) => a.id.localeCompare(b.id));
-        break;
-      case 'ollama':
-        url = (baseUrl || 'http://localhost:11434') + '/api/tags';
-        transform = d => (d.models || []).map(m => ({ id: m.name, free: true }));
-        break;
-      case 'cohere':
-        url = 'https://api.cohere.com/v2/models';
-        headers['Authorization'] = 'Bearer ' + apiKey;
-        transform = d => (d.models || [])
-          .filter(m => m.endpoints && m.endpoints.includes('chat'))
-          .map(m => ({ id: m.name, free: false }))
-          .sort((a, b) => a.id.localeCompare(b.id));
-        break;
-      case 'hf':
-        // HF Inference API — list recommended models
-        url = 'https://api-inference.huggingface.co/framework/text-generation-inference';
-        headers['Authorization'] = 'Bearer ' + apiKey;
-        transform = d => {
-          // HF returns an array of model objects
-          if (Array.isArray(d)) return d.map(m => ({ id: m.id || m.modelId || m, free: true })).slice(0, 50);
-          return [
-            { id: 'mistralai/Mixtral-8x7B-Instruct-v0.1', free: true },
-            { id: 'meta-llama/Meta-Llama-3-8B-Instruct', free: true },
-            { id: 'microsoft/Phi-3-mini-4k-instruct', free: true },
-            { id: 'google/gemma-2-2b-it', free: true },
-          ];
-        };
-        break;
-      default:
-        throw new Error('Model listing not supported for provider: ' + provider);
+  async fetchModels(provider, _apiKey, baseUrl) {
+    if (provider !== 'ollama') {
+      throw new Error('Remote model inventory is supplied by Hunter capabilities.');
     }
-
-    const res = await fetch(url, { headers });
-    if (!res.ok) throw new Error('HTTP ' + res.status + ': ' + await res.text());
-    return transform(await this._safeJson(res));
+    const response = await fetch((baseUrl || 'http://localhost:11434') + '/api/tags');
+    if (!response.ok) throw new Error('Ollama HTTP ' + response.status);
+    const data = await this._safeJson(response);
+    return (data.models || []).map((model) => ({ id: model.name, free: true }));
   }
-
-  clearHistory() {
-    this.history = [];
-    if (window.hexMemory) window.hexMemory.clearHistory();
-  }
-
-  // ── Complexity scorer (0.0 = trivial, 1.0 = very complex) ──
   _scoreComplexity(msg) {
     if (!msg) return 0;
     const m = msg.toLowerCase().trim();
@@ -912,6 +606,46 @@ class HexAI {
     if (/\b(then|after that|also|and then|next|finally|first|second)\b/i.test(m)) score += 0.15;
 
     return Math.min(1, score);
+  }
+
+
+  _buildProviderQueue({ routeProvider, liveKeys, orchestration }) {
+    const queue = [];
+    const ranked = Array.isArray(orchestration?.providers)
+      ? orchestration.providers.filter((item) => item?.status === 'ready')
+      : [];
+
+    const addProvider = (provider) => {
+      const normalized = String(provider || '').trim().toLowerCase();
+      if (!normalized || normalized === 'none' || queue.includes(normalized)) return;
+      if (normalized === 'ollama' || liveKeys[normalized]?.length > 0) queue.push(normalized);
+    };
+
+    const selected = ranked.find((item) => item.provider === routeProvider);
+    if (routeProvider === 'ollama' || selected?.status === 'ready') {
+      addProvider(routeProvider);
+    } else if (routeProvider !== 'none') {
+      window.hexTaskBus?.push('Provider ' + routeProvider + ' is not ready. Server-ranked fallback activating...');
+    }
+
+    ranked.forEach((item) => addProvider(item.provider));
+    return queue;
+  }
+  async _reportProviderOutcome(provider, payload = {}) {
+    try {
+      if (!window.hexAPI?.cloud?.hunterReportProvider) return;
+      const summary = payload.summary || null;
+      await window.hexAPI.cloud.hunterReportProvider({
+        provider,
+        ok: payload.ok === true,
+        preferredProvider: payload.preferredProvider || '',
+        reason: summary?.reason || '',
+        error: summary?.raw || summary?.reason || '',
+        cooldownMs: summary?.kind === 'rate_limit' ? 2 * 60 * 1000 : undefined
+      });
+    } catch (_) {
+      // Cloud orchestration reporting should never break chat fallback.
+    }
   }
 
 
@@ -971,58 +705,7 @@ class HexAI {
     };
   }
 
-  _rememberProviderDemotion(provider, summary) {
-    this._sessionProviderDemotions[provider] = {
-      provider,
-      label: provider.toUpperCase(),
-      reason: summary.reason,
-      kind: summary.kind,
-      timestamp: Date.now()
-    };
-    window._hexProviderSessionDemotions = { ...this._sessionProviderDemotions };
-  }
 
-  _clearProviderDemotion(provider) {
-    if (!this._sessionProviderDemotions[provider]) return;
-    delete this._sessionProviderDemotions[provider];
-    window._hexProviderSessionDemotions = { ...this._sessionProviderDemotions };
-  }
-
-  _isSessionDemoted(provider) {
-    return !!this._sessionProviderDemotions[provider];
-  }
-
-  _getSessionDemotionReason(provider) {
-    return this._sessionProviderDemotions[provider]?.reason || 'session-demoted';
-  }
-
-  _getSessionDemotionSummary(provider) {
-    const item = this._sessionProviderDemotions[provider];
-    if (!item) return null;
-    return {
-      provider,
-      label: item.label,
-      reason: `${item.reason} (skipped in this session)`,
-      attempts: 0
-    };
-  }
-
-  _mergeProviderSummaries(runtimeSummaries, skippedSummaries) {
-    const merged = [];
-    const seen = new Set();
-
-    [...runtimeSummaries, ...skippedSummaries].forEach((item) => {
-      if (!item || seen.has(item.provider)) return;
-      seen.add(item.provider);
-      merged.push(item);
-    });
-
-    return merged;
-  }
 }
 
 window.hexAI = new HexAI();
-
-
-
-

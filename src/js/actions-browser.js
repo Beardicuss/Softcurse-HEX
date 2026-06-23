@@ -12,9 +12,11 @@ window.hexBrowserActionHandler = (() => {
           const r = await window.hexAPI.browser.open(bUrl);
           if (r?.success) {
             addHexMessage(`🌐 Opened: ${r.url || bUrl}`);
+            helpers.noteBrowserOutcome({ kind: 'browser', label: r.url || bUrl, value: r.url || bUrl, path: r.url || bUrl }, true);
             if (window.hexBrain) window.hexBrain.recordOutcome(`browser_open:${bUrl}`, true);
           } else {
             addHexMessage(`Browser open failed: ${r?.error || 'Unknown error'}`);
+            helpers.noteBrowserOutcome({ kind: 'browser', label: bUrl, value: bUrl, path: bUrl }, false, r?.error || 'Unknown error');
             if (window.hexBrain) window.hexBrain.recordOutcome(`browser_open:${bUrl}`, false, r?.error || '');
           }
         }
@@ -41,6 +43,7 @@ window.hexBrowserActionHandler = (() => {
           } catch (e) {
             const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
             await window.hexAPI.browser.open(searchUrl);
+            helpers.noteBrowserOutcome({ kind: 'result', label: query, value: query, path: searchUrl }, true);
             addHexMessage(`**Opened Google in browser:** ${query}`);
           }
         }
@@ -55,11 +58,13 @@ window.hexBrowserActionHandler = (() => {
         const r = await window.hexAPI.browser.navigate(url);
         if (r.success) {
           addHexMessage(`✅ Opened: **${r.title || r.url}**`);
+          helpers.noteBrowserOutcome({ kind: 'page', label: r.title || r.url || url, value: r.title || r.url || url, path: r.url || url }, true);
           await helpers.refreshBrowserReferenceCandidates('after navigation');
           const visionCtx = await helpers.captureWebVision('after navigation');
           if (visionCtx) return { handled: true, result: { data: `Navigated to ${r.title} (${r.url}). ${visionCtx}` } };
         } else {
           addHexMessage(`❌ Navigation failed: ${r.error}`);
+          helpers.noteBrowserOutcome({ kind: 'page', label: url, value: url, path: url }, false, r.error);
         }
         return { handled: true };
       }
@@ -81,6 +86,7 @@ window.hexBrowserActionHandler = (() => {
         const r = await window.hexAPI.browser.smartSearch(query, siteUrl);
         if (r.success) {
           addHexMessage(`✅ Search done — page: **${r.title || r.url}**`);
+          helpers.noteBrowserOutcome({ kind: 'result', label: query, value: query, path: r.url || siteUrl || null, meta: { browserTitle: r.title || null } }, true);
           await helpers.refreshBrowserReferenceCandidates(`after search "${query}"`);
           const visionCtx = await helpers.captureWebVision(`search results for "${query}"`);
           if (visionCtx) {
@@ -95,6 +101,7 @@ window.hexBrowserActionHandler = (() => {
               .catch(() => window.hexAPI.browser.click('ytd-video-renderer a'))
               .catch(() => null);
             if (playResult && playResult.success) {
+              helpers.noteBrowserOutcome({ kind: 'video', label: query, value: query, path: currentUrl }, true);
               addHexMessage(`🎵 Now playing!`);
             }
           }
@@ -102,6 +109,7 @@ window.hexBrowserActionHandler = (() => {
           return { handled: true, result: { data: `Browser searched for "${query}" — now on page: ${r.title} (${r.url})` } };
         } else {
           addHexMessage(`❌ Search failed: ${r.error}`);
+          helpers.noteBrowserOutcome({ kind: 'result', label: query, value: query, path: siteUrl || null }, false, r.error);
         }
         return { handled: true };
       }
@@ -110,8 +118,13 @@ window.hexBrowserActionHandler = (() => {
         const selector = action.args.join(':').trim();
         if (!selector) return { handled: true };
         const r = await window.hexAPI.browser.click(selector);
-        if (r.success) addHexMessage(`✅ Clicked: \`${selector}\``);
-        else addHexMessage(`❌ Click failed: ${r.error}`);
+        if (r.success) {
+          addHexMessage(`✅ Clicked: \`${selector}\``);
+          helpers.noteBrowserOutcome({ kind: 'button', label: selector, value: selector }, true);
+        } else {
+          addHexMessage(`❌ Click failed: ${r.error}`);
+          helpers.noteBrowserOutcome({ kind: 'button', label: selector, value: selector }, false, r.error);
+        }
         return { handled: true };
       }
 
@@ -131,12 +144,20 @@ window.hexBrowserActionHandler = (() => {
         const r = await window.hexAPI.browser.findClick(text);
         if (r.success) {
           addHexMessage(`✅ Clicked "${text}"`);
+          helpers.noteBrowserOutcome({
+            kind: resolvedRef?.kind || 'browser',
+            label: resolvedRef?.label || resolvedRef?.text || text,
+            value: resolvedRef?.text || resolvedRef?.label || text,
+            path: resolvedRef?.url || null,
+            meta: resolvedRef || {}
+          }, true);
           if (resolvedRef) window.hexContextState.state.lastResolvedReference = { ...resolvedRef };
           await helpers.refreshBrowserReferenceCandidates(`after clicking "${text}"`);
           const visionCtx = await helpers.captureWebVision(`after clicking "${text}"`);
           if (visionCtx) return { handled: true, result: { data: `Clicked "${text}". ${visionCtx}` } };
         } else {
           addHexMessage(`❌ Could not click "${text}": ${r.error}`);
+          helpers.noteBrowserOutcome({ kind: resolvedRef?.kind || 'browser', label: text, value: text, path: resolvedRef?.url || null }, false, r.error);
         }
         return { handled: true };
       }
@@ -146,8 +167,13 @@ window.hexBrowserActionHandler = (() => {
         const text = action.args.slice(1).join(':').trim();
         if (!selector || !text) return { handled: true };
         const r = await window.hexAPI.browser.type(selector, text);
-        if (r.success) addHexMessage(`⌨️ Typed into \`${selector}\``);
-        else addHexMessage(`❌ Type failed: ${r.error}`);
+        if (r.success) {
+          addHexMessage(`⌨️ Typed into \`${selector}\``);
+          helpers.noteBrowserOutcome({ kind: 'field', label: selector, value: text, meta: { typedText: text } }, true);
+        } else {
+          addHexMessage(`❌ Type failed: ${r.error}`);
+          helpers.noteBrowserOutcome({ kind: 'field', label: selector, value: text }, false, r.error);
+        }
         return { handled: true };
       }
 
@@ -155,10 +181,14 @@ window.hexBrowserActionHandler = (() => {
         const r = await window.hexAPI.browser.back();
         if (r.success) {
           addHexMessage(`⬅️ Back — now on: **${r.title || r.url}**`);
+          helpers.noteBrowserOutcome({ kind: 'page', label: r.title || r.url || 'back', value: r.title || r.url || 'back', path: r.url || null }, true);
           await helpers.refreshBrowserReferenceCandidates('after back');
           const visionCtx = await helpers.captureWebVision('after going back');
           if (visionCtx) return { handled: true, result: { data: `Went back to ${r.title} (${r.url}). ${visionCtx}` } };
-        } else addHexMessage(`❌ Back failed: ${r.error}`);
+        } else {
+          addHexMessage(`❌ Back failed: ${r.error}`);
+          helpers.noteBrowserOutcome({ kind: 'page', label: 'back', value: 'back' }, false, r.error);
+        }
         return { handled: true };
       }
 
@@ -166,8 +196,12 @@ window.hexBrowserActionHandler = (() => {
         const r = await window.hexAPI.browser.forward();
         if (r.success) {
           addHexMessage(`➡️ Forward — now on: **${r.title || r.url}**`);
+          helpers.noteBrowserOutcome({ kind: 'page', label: r.title || r.url || 'forward', value: r.title || r.url || 'forward', path: r.url || null }, true);
           await helpers.refreshBrowserReferenceCandidates('after forward');
-        } else addHexMessage(`❌ Forward failed: ${r.error}`);
+        } else {
+          addHexMessage(`❌ Forward failed: ${r.error}`);
+          helpers.noteBrowserOutcome({ kind: 'page', label: 'forward', value: 'forward' }, false, r.error);
+        }
         return { handled: true };
       }
 
@@ -175,8 +209,12 @@ window.hexBrowserActionHandler = (() => {
         const r = await window.hexAPI.browser.refresh();
         if (r.success) {
           addHexMessage(`🔄 Page refreshed: **${r.title}**`);
+          helpers.noteBrowserOutcome({ kind: 'page', label: r.title || r.url || 'refresh', value: r.title || r.url || 'refresh', path: r.url || null }, true);
           await helpers.refreshBrowserReferenceCandidates('after refresh');
-        } else addHexMessage(`❌ Refresh failed: ${r.error}`);
+        } else {
+          addHexMessage(`❌ Refresh failed: ${r.error}`);
+          helpers.noteBrowserOutcome({ kind: 'page', label: 'refresh', value: 'refresh' }, false, r.error);
+        }
         return { handled: true };
       }
 
@@ -185,10 +223,12 @@ window.hexBrowserActionHandler = (() => {
         const r = await window.hexAPI.browser.readPage();
         if (r.success) {
           addHexMessage(`✅ Read **${r.title}** (${r.charCount} chars)`);
+          helpers.noteBrowserOutcome({ kind: 'article', label: r.title || r.url || 'page', value: r.title || r.url || 'page', path: r.url || null }, true);
           await helpers.refreshBrowserReferenceCandidates('after read');
           return { handled: true, result: { data: `Current page content — ${r.title} (${r.url}):\n\n${r.text}` } };
         } else {
           addHexMessage(`❌ Read failed: ${r.error}`);
+          helpers.noteBrowserOutcome({ kind: 'article', label: 'page read', value: 'page read' }, false, r.error);
         }
         return { handled: true };
       }

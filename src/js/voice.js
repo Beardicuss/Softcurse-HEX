@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 // ── voice.js — HEX Voice Engine ──────────────────────────────────────────────
 //
 // STT: AudioWorklet captures raw 16kHz PCM → main process → Whisper / Ollama
@@ -12,8 +12,10 @@ class HexVoice {
     this.continuous = false;
     this.langCode = 'en-US';
     this._sttLang = 'en';
-    this.wakeWord = 'hey hex';
-    this.wakeWordMode = false;
+    this.wakeWord = 'hex';
+    this.wakeWordMode = true;
+    this._wakeArmedUntil = 0;
+    this._wakeWindowMs = 8000;
 
     this.onTranscript = null;
     this.onStateChange = null;
@@ -62,11 +64,11 @@ class HexVoice {
 
   // ── Init ──────────────────────────────────────────────────────
   async init(config = {}) {
-    this.wakeWord = (config.wakeWord || 'hey hex').toLowerCase();
-    this.wakeWordMode = config.wakeWordMode === true;
+    this.wakeWord = (config.wakeWord || 'hex').toLowerCase();
+    this.wakeWordMode = true;
     this._voiceName = config.voiceName || '';
-    this._gcloudKey = config.gcloudTtsKey || '';
-    this._useGCloud = !!this._gcloudKey;
+    this._gcloudKey = '';
+    this._useGCloud = config.hasGcloudTtsKey === true;
     this._gcloudVoice = config.gcloudVoice || 'ka-GE-Standard-A';
     this._ttsEngine = config.ttsEngine || 'os';
     this._localVoiceLang = config.localVoiceLang || 'en';
@@ -104,23 +106,16 @@ class HexVoice {
   }
 
   async _speakGCloud(text, opts = {}) {
-    if (!this._gcloudKey) throw new Error('No Google Cloud TTS key');
     const voiceName = opts.gcVoice || this._gcloudVoice || 'ka-GE-Standard-A';
-    const res = await fetch(
-      'https://texttospeech.googleapis.com/v1/text:synthesize?key=' + this._gcloudKey,
-      {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          input: { text },
-          voice: { languageCode: voiceName.substring(0, 5), name: voiceName },
-          audioConfig: { audioEncoding: 'MP3', speakingRate: opts.rate || 1.0, pitch: opts.pitch ? (opts.pitch - 1) * 10 : 0 }
-        })
-      }
-    );
-    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error('GCloud TTS ' + res.status + ': ' + (e.error?.message || res.statusText)); }
-    const raw = atob((await res.json()).audioContent);
-    const bytes = new Uint8Array(raw.length);
-    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    const result = await window.hexAPI.voice.synthesizeGCloud({
+      text,
+      voiceName,
+      rate: opts.rate || 1,
+      pitch: opts.pitch || 1
+    });
+    const bytes = result?.audio instanceof Uint8Array
+      ? result.audio
+      : new Uint8Array(result?.audio?.data || Object.values(result?.audio || {}));
     await this._playArrayBuffer(bytes.buffer);
   }
 
@@ -170,7 +165,7 @@ class HexVoice {
         catch (e) { console.warn('Local TTS failed:', e.message); }
       }
     }
-    if (this._useGCloud && this._gcloudKey) {
+    if (this._useGCloud) {
       try { await this._speakGCloud(clean, { gcVoice: opts.gcVoice || this._gcloudVoice, rate: opts.rate ?? 1.0, pitch: opts.pitch ?? 1.0 }); return; }
       catch (e) { console.warn('GCloud TTS failed:', e.message); }
     }
@@ -357,42 +352,48 @@ class HexVoice {
     // Reject if very short (1-2 words) and matches a hallucination prefix
     if (cleaned.split(/\s+/).length <= 2 && HALLUCINATIONS.some(h => lc.includes(h))) return;
 
-    // ── Wake word matching — fuzzy to handle Whisper mishearings ─
-    // "hex" is often heard as "hicks", "hacks", "hex", "hecks", "next"
-    const matchesWakeWord = (transcript) => {
-      const t = transcript.toLowerCase();
-      if (t.includes(this.wakeWord)) return true;
-      // Build phonetic variants of the wake word
-      const variants = this._wakeWordVariants(this.wakeWord);
-      return variants.some(v => t.includes(v));
-    };
+    this._routeTranscript(cleaned);
+  }
 
-    // ── Sleep mode wake detection ──────────────────────────────────
-    // If HEX is sleeping and mic is active, check for "wake up" before normal processing
-    if (this._sleepWakeHook) {
-      if (this._sleepWakeHook(cleaned)) return; // consumed by sleep module
+  _routeTranscript(transcript) {
+    const cleaned = String(transcript || '').trim();
+    if (!cleaned) return;
+    if (this._sleepWakeHook && this._sleepWakeHook(cleaned)) return;
+    if (window.hexSleep && !window.hexSleep.isSleeping) window.hexSleep.resetIdle();
+    if (!this.wakeWordMode) {
+      this.onTranscript?.(cleaned, true);
+      return;
     }
 
-    // Reset sleep idle timer on any voice interaction
-    if (window.hexSleep && !window.hexSleep.isSleeping) {
-      window.hexSleep.resetIdle();
-    }
-
-    if (this.wakeWordMode) {
-      if (matchesWakeWord(cleaned)) {
-        this.onWakeWord?.();
-        // Strip any variant of the wake word from the command part
-        let after = lc;
-        const allVariants = [this.wakeWord, ...this._wakeWordVariants(this.wakeWord)];
-        for (const v of allVariants) after = after.replace(v, '');
-        after = after.trim();
-        if (after) this.onTranscript?.(after, true);
+    const match = this._matchWakePhrase(cleaned);
+    if (match) {
+      this._wakeArmedUntil = Date.now() + this._wakeWindowMs;
+      this.onWakeWord?.(match.phrase);
+      if (match.command) {
+        this._wakeArmedUntil = 0;
+        this.onTranscript?.(match.command, true);
       }
-    } else {
+      return;
+    }
+
+    if (Date.now() <= this._wakeArmedUntil) {
+      this._wakeArmedUntil = 0;
       this.onTranscript?.(cleaned, true);
     }
   }
 
+  _matchWakePhrase(transcript) {
+    const text = String(transcript || '').trim().toLowerCase();
+    const phrases = new Set(['hex', 'cardinal', 'hey hex', 'hey cardinal', this.wakeWord]);
+    for (const word of [...phrases]) this._wakeWordVariants(word).forEach((item) => phrases.add(item));
+    for (const phrase of [...phrases].filter(Boolean).sort((a, b) => b.length - a.length)) {
+      if (text === phrase) return { phrase, command: '' };
+      if (text.startsWith(phrase + ' ') || text.startsWith(phrase + ',')) {
+        return { phrase, command: text.slice(phrase.length).replace(/^[s,.:;!?-]+/, '').trim() };
+      }
+    }
+    return null;
+  }
   // ── Generate phonetic variants of a wake word for fuzzy matching ─
   _wakeWordVariants(wakeWord) {
     const variants = new Set();
@@ -474,7 +475,7 @@ class HexVoice {
           const arrBuf = await blob.arrayBuffer();
           const r = await window.hexAPI.voice.transcribeRaw(new Uint8Array(arrBuf), this._sttLang || 'en');
           const text = (r?.text || '').trim();
-          if (text) this.onTranscript?.(text, true);
+          if (text) this._routeTranscript(text);
         } catch (e) { console.warn('Fallback STT error:', e.message); }
       }
       if (this.isListening && this.continuous) this._doRecordCycle();
@@ -542,18 +543,15 @@ class HexVoice {
     this.synthesis?.cancel(); this.synthesis?.speak(u);
   }
 
-  async previewGCloud(voiceName, apiKey) {
-    const key = apiKey || this._gcloudKey;
-    if (!key) throw new Error('No API key provided');
-    const sk = this._gcloudKey, sv = this._gcloudVoice;
-    this._gcloudKey = key; this._gcloudVoice = voiceName || 'ka-GE-Standard-A';
-    try { await this._speakGCloud('სისტემა ჩართულია. ნეირო-კავშირი დამყარებულია.', { gcVoice: voiceName || 'ka-GE-Standard-A' }); }
-    finally { this._gcloudKey = sk; this._gcloudVoice = sv; }
+  async previewGCloud(voiceName) {
+    await this._speakGCloud('სისტემა ჩართულია. ნეირო-კავშირი დამყარებულია.', {
+      gcVoice: voiceName || 'ka-GE-Standard-A'
+    });
   }
 
   get supported() { return true; }
   get currentVoiceName() { return this._selectedVoice?.name || ''; }
-  get usingGCloud() { return this._useGCloud && !!this._gcloudKey; }
+  get usingGCloud() { return this._useGCloud; }
   get usingLocal() { return this._localSTT; }
 }
 

@@ -26,7 +26,7 @@ window.sendHexMessage = async function sendHexMessage() {
     stage = 'browser session preflight';
     const preflightBrowserState = await window.getBrowserSessionState();
     window.updateSessionContextForUser(text, preflightBrowserState);
-    resolvedReference = preflightBrowserState?.open ? window.resolveSessionReference?.(text, 'browser') : null;
+    resolvedReference = window.hexReferenceResolver?.resolveMixedReference?.(text, !!preflightBrowserState?.open) || null;
     if (resolvedReference) {
       addLog('CONTEXT', 'Resolved follow-up target: #' + resolvedReference.index + ' ' + (resolvedReference.label || resolvedReference.text || ''));
     }
@@ -47,11 +47,48 @@ window.sendHexMessage = async function sendHexMessage() {
     const directResult = await tryDirectCommand(text);
     if (directResult.handled) return;
 
-    window.hexPcAwareness?.refreshWindows?.().catch?.(() => {});
-    window.hexPcAwareness?.refreshProcesses?.().catch?.(() => {});
+    const preflightPlan = window.hexBrainActionPlanner?.classify?.(text, {
+      browserSession: preflightBrowserState,
+      sessionContext: {
+        resolvedReference,
+        lastResolvedReference: window.hexContextState?.state?.lastResolvedReference || null,
+        activeSurface: window.hexSessionContext?.activeSurface || 'chat'
+      },
+      desktopContext: window.hexPcAwareness?.getSnapshot?.() || null
+    }) || null;
+    window.hexPcAwarenessRefresh?.noteQueryIntent?.(text);
+    const refreshPlan = window.hexPcAwarenessRefresh?.planRefreshForTurn?.(preflightPlan, {
+      text,
+      surface: preflightPlan?.suggestedSurface || 'chat'
+    }) || {};
+    if (preflightPlan) {
+      window.hexBrainTelemetry?.record?.({
+        phase: 'preflight',
+        user: text,
+        actionDomain: preflightPlan.domain,
+        actionSurface: preflightPlan.suggestedSurface,
+        actionUrgency: preflightPlan.urgency,
+        providerRequired: preflightPlan.providerNeeded,
+        reason: (preflightPlan.reasons || []).join(', '),
+        details: { browserOpen: preflightPlan.browserOpen, hasResolvedReference: preflightPlan.hasResolvedReference }
+      });
+    }
+    if (refreshPlan.pulseDesktop) {
+      window.hexPcAwarenessLoop?.pulse?.('desktop', { followUp: true, inventoryBoost: !!refreshPlan.inventoryBoost });
+    }
+    if (refreshPlan.refreshWindows) {
+      window.hexPcAwareness?.refreshWindows?.(preflightPlan?.urgency === 'high').catch?.(() => {});
+    }
+    if (refreshPlan.refreshProcesses) {
+      window.hexPcAwareness?.refreshProcesses?.(preflightPlan?.urgency === 'high').catch?.(() => {});
+    }
 
     stage = 'context build';
-    const systemState = await window.buildAIContextState(text, { config, sysStats: window.sysStats, skipUserUpdate: true, resolvedReference });
+    let systemState = await window.buildAIContextState(text, { config, sysStats: window.sysStats, skipUserUpdate: true, resolvedReference });
+    if (preflightPlan) systemState.brainPreflightPlan = preflightPlan;
+    const cloudContext = await window.hexCloudSync?.getContextPacket?.(text, systemState).catch(() => null);
+    if (cloudContext) systemState.cloudContext = cloudContext;
+
     window.hexCloudSync?.runDetached?.('push live user snapshot', () => window.hexCloudSync.pushLiveSessionSnapshot(systemState, { force: true }));
     window.hexCloudSync?.runDetached?.('push user turn', () => window.hexCloudSync.pushTurn('user', text, systemState, {
       kind: 'chat',
@@ -95,21 +132,18 @@ window.sendHexMessage = async function sendHexMessage() {
     window.hexAudio.stop('processing');
     const hexText = result.text || '…';
     window.updateSessionContextForAssistant(hexText, result.actions || []);
-    addHexMessage(hexText);
+    addHexMessage(hexText, { feedback: { user: text, brainRoute: result.brainRoute || null } });
     addLog('HEX', `→ ${String(hexText).substring(0, 100)}${hexText.length > 100 ? '…' : ''}`);
 
     stage = 'post reply context';
-    const postReplyState = await window.buildAIContextState(text, { config, sysStats: window.sysStats, skipUserUpdate: true, resolvedReference });
+    let postReplyState = await window.buildAIContextState(text, { config, sysStats: window.sysStats, skipUserUpdate: true, resolvedReference });
+    if (cloudContext) postReplyState.cloudContext = cloudContext;
     window.hexMemory?.promoteLiveSession?.(postReplyState);
     window.hexCloudSync?.runDetached?.('push live assistant snapshot', () => window.hexCloudSync.pushLiveSessionSnapshot(postReplyState, { force: true }));
     window.hexCloudSync?.runDetached?.('push assistant turn', () => window.hexCloudSync.pushTurn('assistant', hexText, postReplyState, {
       kind: 'chat-response',
       actionTypes: (result.actions || []).map((action) => action.type)
     }));
-
-    if (window.hexMemory) {
-      window.hexMemory.extractFromExchange(text, hexText).catch(console.error);
-    }
 
     if (config.voice?.enabled !== false) speakWithConfig(hexText);
 
@@ -135,21 +169,49 @@ window.sendHexMessage = async function sendHexMessage() {
         this.durationMs = durationMs;
       }
     };
+    const recordActionOutcome = (action, result) => {
+      const success = result?.success !== false;
+      const summary = (success ? 'Completed ' : 'Failed ') + action.type;
+      window.hexCloudSync?.runDetached?.('record action outcome', () => window.hexCloudSync.recordActivity({
+        kind: 'action-result',
+        status: success ? 'success' : 'failure',
+        actionType: action.type,
+        surface: window.hexSessionContext?.activeSurface || 'chat',
+        summary,
+        details: {
+          durationMs: result?.durationMs || null
+        }
+      }));
+    };
 
+    const executeTrackedAction = async (action) => {
+      const start = Date.now();
+      let result;
+      try {
+        const rawResult = await handleAIAction(action);
+        result = new ActionResult({
+          success: rawResult ? rawResult.success !== false : true,
+          action: action.type,
+          data: rawResult?.data ?? rawResult,
+          durationMs: Date.now() - start
+        });
+      } catch (error) {
+        result = new ActionResult({
+          success: false,
+          action: action.type,
+          data: error?.message || String(error),
+          durationMs: Date.now() - start
+        });
+      }
+      recordActionOutcome(action, result);
+      return result;
+    };
     stage = 'action execution';
     if (parallelBatch.length > 0) {
       const batchStart = Date.now();
       const promises = parallelBatch.map(async (action) => {
         window.hexTaskBus?.push(`Executing: ${action.type} ${(action.args || []).join(' ')}`);
-        const start = Date.now();
-        const rawResult = await handleAIAction(action);
-        const actionResult = new ActionResult({
-          success: rawResult ? (rawResult.success !== false) : true,
-          action: action.type,
-          data: rawResult?.data || rawResult,
-          durationMs: Date.now() - start
-        });
-
+        const actionResult = await executeTrackedAction(action);
         if (actionResult && actionResult.data && typeof actionResult.data === 'string') {
           infoResults.push('[' + action.type.toUpperCase() + ' RESULT]: ' + actionResult.data);
         }
@@ -171,16 +233,17 @@ window.sendHexMessage = async function sendHexMessage() {
     if (infoResults.length > 0) {
       stage = 'system data follow-up';
       window.updateSessionContextForSystemData(infoResults);
-      await window.hexCloudSync?.pushLiveSessionSnapshot?.(
-        await window.buildAIContextState(text, { config, sysStats: window.sysStats, skipUserUpdate: true, resolvedReference }),
-        { force: true }
-      );
+      window.hexPcAwarenessLoop?.pulse?.('desktop', { inventoryBoost: true });
+      let systemDataState = await window.buildAIContextState(text, { config, sysStats: window.sysStats, skipUserUpdate: true, resolvedReference });
+      const systemDataCloudContext = await window.hexCloudSync?.getContextPacket?.(text, systemDataState).catch(() => null);
+      if (systemDataCloudContext) systemDataState.cloudContext = systemDataCloudContext;
+      await window.hexCloudSync?.pushLiveSessionSnapshot?.(systemDataState, { force: true });
       showTyping();
       window.hexTaskBus?.push('Processing system data with AI...');
       try {
         const followUp = await window.hexAI.chat(
           'SYSTEM DATA (just retrieved from this PC — use this to answer the user):\n' + infoResults.join('\n'),
-          await window.buildAIContextState(text, { config, sysStats: window.sysStats, skipUserUpdate: true, resolvedReference }),
+          systemDataState,
           config.language || 'en',
           window._webVisionData || null,
           800,
@@ -190,7 +253,7 @@ window.sendHexMessage = async function sendHexMessage() {
         const followText = followUp.text || '';
         if (followText && followText !== '…') {
           window.updateSessionContextForAssistant(followText, followUp.actions || []);
-          addHexMessage(followText);
+          addHexMessage(followText, { feedback: { user: text, brainRoute: followUp.brainRoute || null } });
           if (config.voice?.enabled !== false) speakWithConfig(followText);
         }
       } catch (_) {

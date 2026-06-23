@@ -509,3 +509,21 @@ body.mode-cardinal .vital-sep {
 body.mode-cardinal #vitals-strip {
   border-top-color: rgba(200, 57, 43, 0.12);
 }
+body.mode-cardinal .cyber-cursor {
+  background-image: url('../assets/cardinal/cursor/01.webp');
+  animation-name: cardinal-cursor-anim;
+}
+
+@keyframes cardinal-cursor-anim {
+  0%, 100% { background-image: url('../assets/cardinal/cursor/01.webp'); }
+  9.09% { background-image: url('../assets/cardinal/cursor/02.webp'); }
+  18.18% { background-image: url('../assets/cardinal/cursor/03.webp'); }
+  27.27% { background-image: url('../assets/cardinal/cursor/04.webp'); }
+  36.36% { background-image: url('../assets/cardinal/cursor/05.webp'); }
+  45.45% { background-image: url('../assets/cardinal/cursor/06.webp'); }
+  54.54% { background-image: url('../assets/cardinal/cursor/07.webp'); }
+  63.64% { background-image: url('../assets/cardinal/cursor/08.webp'); }
+  72.73% { background-image: url('../assets/cardinal/cursor/09.webp'); }
+  81.82% { background-image: url('../assets/cardinal/cursor/10.webp'); }
+  90.91% { background-image: url('../assets/cardinal/cursor/11.webp'); }
+}

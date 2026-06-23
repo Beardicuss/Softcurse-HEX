@@ -20,7 +20,6 @@ const _ns = {
 function nsUpdateModules() {
     const config = window._hexConfig || {};
 
-    // Memory module
     const memCell = document.getElementById('hex-memory');
     const memVal = document.getElementById('hex-val-memory');
     if (memCell && memVal) {
@@ -41,7 +40,6 @@ function nsUpdateModules() {
         } catch (_) { memVal.textContent = '—'; }
     }
 
-    // Voice module
     const voiceCell = document.getElementById('hex-voice');
     const voiceVal = document.getElementById('hex-val-voice');
     if (voiceCell && voiceVal) {
@@ -61,7 +59,6 @@ function nsUpdateModules() {
         }
     }
 
-    // Security module
     const secCell = document.getElementById('hex-security');
     const secVal = document.getElementById('hex-val-security');
     if (secCell && secVal) {
@@ -77,7 +74,6 @@ function nsUpdateModules() {
         }
     }
 
-    // Browser module
     const browCell = document.getElementById('hex-browser');
     const browVal = document.getElementById('hex-val-browser');
     if (browCell && browVal) {
@@ -87,7 +83,6 @@ function nsUpdateModules() {
         browCell.classList.remove('offline');
     }
 
-    // Plugins module
     const plugCell = document.getElementById('hex-plugins');
     const plugVal = document.getElementById('hex-val-plugins');
     if (plugCell && plugVal) {
@@ -102,7 +97,6 @@ function nsUpdateModules() {
         } catch (_) { plugVal.textContent = '0'; }
     }
 
-    // System module
     const sysCell = document.getElementById('hex-system');
     const sysVal = document.getElementById('hex-val-system');
     if (sysCell && sysVal) {
@@ -121,7 +115,6 @@ function nsUpdateModules() {
     }
 }
 
-// ── Quick Actions (Context-Aware) ─────────────────────────────
 function nsUpdateQuickActions() {
     const container = document.getElementById('quick-actions');
     if (!container) return;
@@ -131,13 +124,11 @@ function nsUpdateQuickActions() {
     const ram = _ns.lastVitals.ram;
     const disk = _ns.lastVitals.disk;
 
-    // Urgent context-aware actions
     if (disk > 85) actions.push({ icon: '⚠', text: nsT('qa_disk_cleanup', { disk }), task: 'disk_cleanup', urgent: true });
     if (ram > 90) actions.push({ icon: '⚠', text: nsT('qa_kill_processes', { ram }), fn: 'openProcesses', urgent: true });
     if (cpu > 90) actions.push({ icon: '⚠', text: nsT('qa_view_processes', { cpu }), fn: 'openProcesses', urgent: true });
 
-    // Always available
-    actions.push({ icon: '🕷', text: nsT('qa_credential_hunter'), task: 'hunter_scan' });
+    actions.push({ icon: '📸', text: 'Desktop Snapshot', task: 'screenshot' });
     actions.push({ icon: '🛡', text: nsT('qa_defender_scan'), task: 'defender_scan' });
     actions.push({ icon: '🔄', text: nsT('qa_check_updates'), task: 'update_check' });
     actions.push({ icon: '🧹', text: nsT('qa_browser_cache'), task: 'browser_cache' });
@@ -147,8 +138,6 @@ function nsUpdateQuickActions() {
     actions.push({ icon: '🔥', text: nsT('qa_firewall_status'), task: 'firewall_status' });
     actions.push({ icon: '🧠', text: nsT('qa_memory_diagnostics'), task: 'memory_diag' });
 
-    // Render top 6
-    // Render top 8
     const top = actions.slice(0, 8);
     window.hexRenderUtils.clearNode(container);
     top.forEach((action) => {
@@ -162,13 +151,11 @@ function nsUpdateQuickActions() {
     });
 }
 
-// ── Background Daemons ─────────────────────────────────────────
 function nsUpdateDaemons() {
-    // Replaces the old Vitals strip with smart daemon tracking
-    const config = window._hexConfig || {};    // 1. Remote Hunter Bridge
+    const config = window._hexConfig || {};
     const dHunter = document.getElementById('daemon-hunter');
     if (dHunter) {
-        const cloudEnabled = !!(window._hexConfig?.cloud?.enabled && window._hexConfig?.cloud?.serverUrl && window._hexConfig?.cloud?.accessToken);
+        const cloudEnabled = !!(config?.cloud?.enabled && config?.cloud?.serverUrl);
         if (!cloudEnabled || !window.hexAPI?.cloud?.hunterStatus) {
             dHunter.textContent = 'offline';
             dHunter.className = 'daemon-val offline';
@@ -188,7 +175,6 @@ function nsUpdateDaemons() {
         }
     }
 
-    // 2. Desktop Vision
     const dVision = document.getElementById('daemon-vision');
     if (dVision) {
         if (window.visionEnabled) {
@@ -200,7 +186,6 @@ function nsUpdateDaemons() {
         }
     }
 
-    // 3. Local LLM / Cloud
     const dLLM = document.getElementById('daemon-llm');
     if (dLLM) {
         const isCloud = config.llm?.provider !== 'ollama' && config.llm?.provider !== 'none';
@@ -217,16 +202,12 @@ function nsUpdateDaemons() {
     }
 }
 
-// ── Coherence Ring ────────────────────────────────────────────
 function nsUpdateCoherence() {
     const arc = document.getElementById('coherence-arc');
     const valEl = document.getElementById('coherence-val');
     if (!arc || !valEl) return;
 
-    // Coherence = weighted score from multiple signals
-    let score = 20; // baseline
-
-    // Memory depth
+    let score = 20;
     try {
         const brain = window.hexBrain;
         if (brain && brain.profile) {
@@ -238,33 +219,27 @@ function nsUpdateCoherence() {
         }
     } catch (_) { }
 
-    // Session activity
     score += Math.min(_ns.commandCount * 2, 20);
 
-    // System health bonus
     const { cpu, ram, disk } = _ns.lastVitals;
     if (cpu < 50 && ram < 70 && disk < 80) score += 10;
     else if (cpu > 90 || ram > 90) score -= 10;
 
-    // Voice active bonus
     if (window.hexVoice && (window.hexVoice._localSTT || window.hexVoice._localTTS)) score += 5;
 
     score = Math.max(0, Math.min(100, score));
 
-    // Animate ring
-    const circumference = 327; // 2 * π * 52
+    const circumference = 327;
     const offset = circumference - (score / 100) * circumference;
     arc.style.strokeDashoffset = offset;
     valEl.textContent = score;
 
-    // Color shift based on score
     if (score >= 80) arc.style.stroke = '#00ffc8';
     else if (score >= 50) arc.style.stroke = '#0088ff';
     else if (score >= 30) arc.style.stroke = '#ff9500';
     else arc.style.stroke = '#ff44aa';
 }
 
-// ── Personality + Trait Bars ──────────────────────────────────
 function nsUpdatePersonality() {
     const nameEl = document.getElementById('psyche-persona-name');
     if (!nameEl) return;
@@ -276,10 +251,7 @@ function nsUpdatePersonality() {
         nameEl.textContent = 'DEFAULT';
     }
 
-    // Trait mapping based on active personality characteristics
     const id = window.hexPersonalities?.activeId || 'hex_default';
-
-    // Different personalities emphasize different traits
     const traitMap = {
         'hex_default': { focus: 60, empathy: 50, precision: 55 },
         'hex_sarcastic': { focus: 70, empathy: 30, precision: 80 },
@@ -288,8 +260,6 @@ function nsUpdatePersonality() {
         'hex_creative': { focus: 50, empathy: 65, precision: 35 },
     };
     const traits = traitMap[id] || { focus: 50, empathy: 50, precision: 50 };
-
-    // Boost focus based on session activity
     traits.focus = Math.min(100, traits.focus + Math.min(_ns.commandCount, 20));
 
     const focusBar = document.getElementById('trait-focus');
@@ -300,7 +270,6 @@ function nsUpdatePersonality() {
     if (precBar) precBar.style.width = `${traits.precision}%`;
 }
 
-// ── Proactive Insights ────────────────────────────────────────
 function nsUpdateInsights() {
     const feed = document.getElementById('insight-feed');
     if (!feed) return;
@@ -308,7 +277,6 @@ function nsUpdateInsights() {
     const insights = [];
     const { cpu, ram, disk } = _ns.lastVitals;
 
-    // System state insights
     if (disk > 90) insights.push({ icon: '🔴', text: nsT('insight_disk_critical', { disk }), cls: 'critical' });
     else if (disk > 75) insights.push({ icon: '🟡', text: nsT('insight_disk_warn', { disk }), cls: 'warn' });
     else insights.push({ icon: '🟢', text: nsT('insight_disk_good', { disk }), cls: 'good' });
@@ -316,7 +284,6 @@ function nsUpdateInsights() {
     if (ram > 85) insights.push({ icon: '🟡', text: nsT('insight_ram_warn', { ram }), cls: 'warn' });
     if (cpu > 85) insights.push({ icon: '🟡', text: nsT('insight_cpu_warn', { cpu }), cls: 'warn' });
 
-    // Brain insights
     try {
         const brain = window.hexBrain;
         if (brain && brain.profile) {
@@ -335,7 +302,6 @@ function nsUpdateInsights() {
         }
     } catch (_) { }
 
-    // Session insights
     if (_ns.commandCount > 0) {
         insights.push({ icon: '⚡', text: nsT('insight_commands_session', { count: _ns.commandCount }), cls: '' });
     }
@@ -351,7 +317,6 @@ function nsUpdateInsights() {
     });
 }
 
-// ── Memory Feed ───────────────────────────────────────────────
 function nsUpdateMemoryFeed() {
     const feed = document.getElementById('memory-feed');
     if (!feed) return;
@@ -361,7 +326,6 @@ function nsUpdateMemoryFeed() {
     try {
         const brain = window.hexBrain;
         if (brain && brain.profile) {
-            // User preferences
             if (brain.profile.user?.expertise && brain.profile.user.expertise !== 'unknown') {
                 entries.push({
                     icon: '🎯',
@@ -383,7 +347,6 @@ function nsUpdateMemoryFeed() {
                 });
             }
 
-            // Recent insights
             const recent = (brain.profile.insights || []).slice(-3);
             for (const ins of recent) {
                 entries.push({
@@ -392,7 +355,6 @@ function nsUpdateMemoryFeed() {
                 });
             }
 
-            // Active hours
             if (brain.profile.user?.activeHours?.length > 0) {
                 entries.push({
                     icon: '🕐',
@@ -400,6 +362,16 @@ function nsUpdateMemoryFeed() {
                 });
             }
         }
+    } catch (_) { }
+
+    try {
+        const pcEntities = window.hexPcEntityMemory?.topHighlights?.(3) || [];
+        pcEntities.forEach((item) => {
+            entries.push({
+                icon: item.kind === 'app' ? '🧩' : item.kind === 'game' ? '🎮' : item.kind === 'folder' ? '📁' : item.kind === 'file' ? '📄' : '🧠',
+                text: `Known ${item.kind || 'item'}: ${item.label}`.substring(0, 72)
+            });
+        });
     } catch (_) { }
 
     if (entries.length === 0) {
@@ -415,7 +387,6 @@ function nsUpdateMemoryFeed() {
     });
 }
 
-// ── Session Stats ─────────────────────────────────────────────
 function nsUpdateSessionStats() {
     const cmdEl = document.getElementById('ss-commands');
     const actEl = document.getElementById('ss-actions');
@@ -430,13 +401,10 @@ function nsUpdateSessionStats() {
     }
 }
 
-// ── Public Increment Hooks ────────────────────────────────────
 window.nsTrackCommand = function () { _ns.commandCount++; };
 window.nsTrackAction = function () { _ns.actionCount++; };
 
-// ── Master Refresh ────────────────────────────────────────────
 function nsRefreshAll() {
-    // Skip if neural surface panel is not visible (e.g. Chat tab active)
     const nsPanel = document.getElementById('panel-left');
     if (nsPanel && nsPanel.offsetParent === null) return;
 
@@ -450,22 +418,16 @@ function nsRefreshAll() {
     nsUpdateDaemons();
 }
 
-// ── Init + Polling ────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-    // Initial render after a short delay to let other systems init
     setTimeout(nsRefreshAll, 2000);
-
-    // Refresh every 10 seconds
     setInterval(nsRefreshAll, 10000);
 
-    // Hook into vitals polling (intercept existing bar updates)
     const _origPoll = window._systemPollUpdate;
     window._systemPollUpdate = function (data) {
         if (_origPoll) _origPoll(data);
         if (data) _ns.lastVitals = { cpu: data.cpu || 0, ram: data.ram || 0, disk: data.disk || 0 };
     };
 
-    // Hex cell click handlers — open relevant settings tab
     document.querySelectorAll('.hex-cell').forEach(cell => {
         cell.addEventListener('click', () => {
             const module = cell.dataset.module;
@@ -485,12 +447,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-// ── Expose for external consumption ───────────────────────────
 window.neuralSurface = {
     refresh: nsRefreshAll,
     trackCommand: window.nsTrackCommand,
     trackAction: window.nsTrackAction,
 };
-
-
-

@@ -7,6 +7,87 @@ const DEFAULT_LOCAL_VOICE_OPTIONS = [
   { value: 'ka', label: 'Georgian — natia-medium' }
 ];
 
+function refreshBrainTelemetryTab() {
+  const list = document.getElementById('brain-telemetry-list');
+  const summary = document.getElementById('brain-telemetry-summary');
+  if (!list || !summary) return;
+  clearNode(list);
+  const events = window.hexBrainTelemetry?.recent?.(30) || [];
+  summary.textContent = events.length
+    ? events.length + ' recent brain event' + (events.length === 1 ? '' : 's') + ' captured this session.'
+    : 'No route events yet. Send a message to HEX, then return here.';
+
+  if (!events.length) {
+    const empty = window.hexRenderUtils.createEl('div', { text: 'No telemetry recorded yet.' });
+    empty.style.color = 'var(--muted)';
+    empty.style.padding = '12px';
+    empty.style.textAlign = 'center';
+    list.appendChild(empty);
+    return;
+  }
+
+  events.slice().reverse().forEach((event) => {
+    const card = window.hexRenderUtils.createEl('div');
+    card.style.border = '1px solid rgba(0,255,255,0.18)';
+    card.style.background = 'rgba(0,0,0,0.18)';
+    card.style.padding = '9px 10px';
+    card.style.display = 'grid';
+    card.style.gap = '5px';
+
+    const head = window.hexRenderUtils.createEl('div');
+    head.style.display = 'flex';
+    head.style.justifyContent = 'space-between';
+    head.style.gap = '10px';
+    head.style.alignItems = 'center';
+
+    const title = window.hexRenderUtils.createEl('strong', {
+      text: String(event.phase || 'brain').toUpperCase() + ' :: ' + (event.route || event.actionDomain || 'unknown')
+    });
+    title.style.color = event.providerRequired ? 'var(--orange)' : 'var(--cyan)';
+    title.style.fontFamily = 'var(--font-d)';
+    title.style.letterSpacing = '0.06em';
+
+    const time = window.hexRenderUtils.createEl('span', { text: event.at ? new Date(event.at).toLocaleTimeString() : '--' });
+    time.style.color = 'var(--muted)';
+    time.style.fontFamily = 'var(--font-m)';
+    time.style.fontSize = '12px';
+
+    head.appendChild(title);
+    head.appendChild(time);
+    card.appendChild(head);
+
+    const user = window.hexRenderUtils.createEl('div', { text: 'User: ' + (event.user || '—') });
+    user.style.color = 'var(--text)';
+    user.style.fontSize = '13px';
+    user.style.wordBreak = 'break-word';
+    card.appendChild(user);
+
+    const meta = [
+      'reason=' + (event.reason || 'none'),
+      'surface=' + (event.actionSurface || 'chat'),
+      'urgency=' + (event.actionUrgency || 'normal'),
+      'provider=' + (event.providerRequired ? 'yes' : 'no'),
+      'server=' + (event.serverPacket ? 'yes' : 'no'),
+      'mem=' + (event.serverMemoryHits || 0)
+    ];
+    const details = window.hexRenderUtils.createEl('div', { text: meta.join('  |  ') });
+    details.style.color = 'var(--muted)';
+    details.style.fontFamily = 'var(--font-m)';
+    details.style.fontSize = '12px';
+    card.appendChild(details);
+
+    if (event.sources?.length) {
+      const sources = window.hexRenderUtils.createEl('div', { text: 'sources: ' + event.sources.join(', ') });
+      sources.style.color = 'var(--accent)';
+      sources.style.fontSize = '12px';
+      card.appendChild(sources);
+    }
+
+    list.appendChild(card);
+  });
+}
+window.refreshBrainTelemetryTab = refreshBrainTelemetryTab;
+
 function clearNode(node) {
   window.hexRenderUtils.clearNode(node);
 }
@@ -15,7 +96,6 @@ function appendText(parent, text) {
   parent.appendChild(document.createTextNode(text));
 }
 
-const LIVE_PROVIDER_PRIORITY = ['ollama', 'anthropic', 'openai', 'mistral', 'together', 'grok', 'gemini', 'cohere', 'hf', 'replicate', 'groq', 'openrouter'];
 const AUTO_MODEL_PROVIDERS = new Set(['anthropic', 'openai', 'mistral', 'together', 'grok', 'gemini', 'cohere', 'hf', 'replicate', 'groq', 'openrouter']);
 const LIVE_PROVIDER_LABELS = {
   ollama: 'OLLAMA',
@@ -41,12 +121,18 @@ const STALE_PROVIDER_MODELS = {
 let _lastLiveKeysMap = {};
 let _lastManualKeysMap = {};
 
+function capabilitiesToKeyMap(providers = {}) {
+  return Object.fromEntries(Object.entries(providers || {}).map(([provider, capability]) => [
+    provider,
+    Array(Math.max(0, Number(capability?.validKeys || 0))).fill(null)
+  ]));
+}
 function getProviderLabel(provider) {
   return LIVE_PROVIDER_LABELS[provider] || String(provider || '').trim().toUpperCase();
 }
 
 function getPreferredProviderFromKeys(keysMap) {
-  return LIVE_PROVIDER_PRIORITY.find((provider) => provider !== 'ollama' && keysMap[provider] && keysMap[provider].length > 0) || 'ollama';
+  return Object.keys(keysMap).find((provider) => provider !== 'ollama' && keysMap[provider]?.length > 0) || 'ollama';
 }
 
 function getPreferredModelForProvider(provider) {
@@ -90,13 +176,6 @@ function isStaleProviderModel(provider, modelName) {
   return (STALE_PROVIDER_MODELS[provider] || []).some((item) => model.includes(item));
 }
 
-function maskApiKey(apiKey) {
-  const key = String(apiKey || '').trim();
-  if (!key) return 'empty';
-  if (key.length <= 10) return key;
-  return key.slice(0, 4) + '...' + key.slice(-4);
-}
-
 function ensureProviderOption(selectEl, provider) {
   if (!selectEl || !provider) return;
   const existing = [...selectEl.options].find((option) => option.value === provider);
@@ -119,9 +198,6 @@ function syncProviderOptions(keysMap = {}) {
   if (!sel) return;
   ensureProviderOption(sel, 'none');
   ensureProviderOption(sel, 'ollama');
-  for (const provider of LIVE_PROVIDER_PRIORITY) {
-    if (provider !== 'ollama' && keysMap[provider] && keysMap[provider].length > 0) ensureProviderOption(sel, provider);
-  }
   for (const provider of Object.keys(keysMap)) ensureProviderOption(sel, provider);
 }
 
@@ -434,7 +510,7 @@ async function openSettings(targetTab = 'tab-general') {
     if (languageEl) languageEl.value = cfg.language || 'ka';
     if (cloudEnabledEl) cloudEnabledEl.value = String(cfg.cloud?.enabled === true);
     if (cloudUrlEl) cloudUrlEl.value = cfg.cloud?.serverUrl || '';
-    if (cloudTokenEl) cloudTokenEl.value = cfg.cloud?.accessToken || '';
+    if (cloudTokenEl) { cloudTokenEl.value = ''; cloudTokenEl.placeholder = cfg.cloud?.hasAccessToken ? 'Token configured - enter to replace' : ''; }
     const cloudStatus = document.getElementById('cfg-cloud-status');
     if (cloudStatus) {
       cloudStatus.textContent = cfg.cloud?.profileId
@@ -491,7 +567,7 @@ async function openSettings(targetTab = 'tab-general') {
   // GCloud TTS fields
   const gcKeyEl = document.getElementById('cfg-gcloud-tts-key');
   const gcVoiceEl = document.getElementById('cfg-gcloud-voice');
-  if (gcKeyEl) gcKeyEl.value = cfg.voice?.gcloudTtsKey || '';
+  if (gcKeyEl) { gcKeyEl.value = ''; gcKeyEl.placeholder = cfg.voice?.hasGcloudTtsKey ? 'Key configured - enter to replace' : ''; }
   if (gcVoiceEl) gcVoiceEl.value = cfg.voice?.gcloudVoice || 'ka-GE-Standard-A';
 
   populateVoiceSelect(cfg.voice?.voiceName || '');
@@ -542,6 +618,7 @@ async function openSettings(targetTab = 'tab-general') {
   // Pre-populate personality active display
   updatePersonaBadge();
   refreshPersonaList();
+  refreshBrainTelemetryTab();
   await loadLiveArsenal();
   await autoSyncProvider();
   if (AUTO_MODEL_PROVIDERS.has(document.getElementById('cfg-provider')?.value || '')) {
@@ -600,21 +677,14 @@ async function testCloudConnection() {
       return;
     }
 
-    const [providerStats, keySummary] = await Promise.all([
-      window.hexAPI.cloud.hunterProviderStats(),
-      window.hexAPI.cloud.hunterKeySummary()
-    ]);
-
-    if (!providerStats?.success) {
-      throw new Error(providerStats?.error || 'Hunter provider stats failed');
+    const capabilityResult = await window.hexAPI.getProviderCapabilities({ force: true });
+    if (!capabilityResult?.success) {
+      throw new Error(capabilityResult?.error || 'Hunter capability refresh failed');
     }
-    if (!keySummary?.success) {
-      throw new Error(keySummary?.error || 'Hunter key summary failed');
-    }
-
-    const providerCount = Array.isArray(providerStats.stats) ? providerStats.stats.length : 0;
-    const totalKeys = Number(keySummary.summary?.totals?.total_keys || 0);
-    const validKeys = Number(keySummary.summary?.totals?.valid_keys || 0);
+    const packet = capabilityResult.capabilities || {};
+    const providerCount = Number(packet.summary?.totalProviders || packet.providers?.length || 0);
+    const totalKeys = (packet.providers || []).reduce((sum, item) => sum + Number(item.totalKeys || 0), 0);
+    const validKeys = Number(packet.summary?.liveKeys || 0);
 
     statusEl.textContent = `Online: ${health.service || 'hex-server'} | Hunter bridge OK | Providers: ${providerCount} | Keys: ${validKeys}/${totalKeys} valid`;
     statusEl.style.color = 'var(--green)';
@@ -802,48 +872,29 @@ async function fetchAvailableModels() {
   statusEl.style.display = 'none';
   picker.style.display = 'none';
 
-  let providerKeys = [];
+  let discoveredModels = [];
   try {
-    const res = await window.hexAPI.getLiveKeys();
-    if (res && res.success) {
-      _lastLiveKeysMap = res.keys || {};
-      _lastManualKeysMap = res.manualKeys || {};
-      providerKeys = _lastLiveKeysMap[provider] || [];
-    }
+    const response = await window.hexAPI.getProviderCapabilities();
+    const capability = response?.capabilities?.providers?.find((item) => item.provider === provider);
+    discoveredModels = (capability?.models || []).map((id) => ({ id, free: false }));
   } catch (_) { }
 
-  if (!providerKeys.length) {
-    statusEl.textContent = '⚠ No live key for ' + getProviderLabel(provider) + ' yet.';
+  if (!discoveredModels.length) {
+    statusEl.textContent = 'No model inventory reported for ' + getProviderLabel(provider) + ' yet.';
     statusEl.style.display = '';
-    btn.textContent = '⬇ FETCH';
+    btn.textContent = 'FETCH';
     btn.disabled = false;
-    renderProviderFailurePanel();
     return;
   }
 
-  let lastError = null;
-  for (const apiKey of providerKeys) {
-    try {
-      _allFetchedModels = await window.hexAI.fetchModels(provider, apiKey, baseUrl);
-      setModelSelectOptions(_allFetchedModels, modelInput?.value || '');
-      renderModelPicker(false);
-      statusEl.textContent = '✅ ' + _allFetchedModels.length + ' models detected for ' + getProviderLabel(provider) + '.';
-      statusEl.style.display = '';
-      lastError = null;
-      break;
-    } catch (err) {
-      lastError = err;
-    }
-  }
-
-  if (lastError) {
-    statusEl.textContent = '⚠ ' + (lastError?.message || String(lastError));
-    statusEl.style.display = '';
-  }
-
-  renderProviderFailurePanel();
-  btn.textContent = '⬇ FETCH';
+  _allFetchedModels = discoveredModels;
+  setModelSelectOptions(_allFetchedModels, modelInput?.value || '');
+  renderModelPicker(false);
+  statusEl.textContent = _allFetchedModels.length + ' models detected for ' + getProviderLabel(provider) + '.';
+  statusEl.style.display = '';
+  btn.textContent = 'FETCH';
   btn.disabled = false;
+  renderProviderFailurePanel();
 }
 
 function renderModelPicker(freeOnly) {
@@ -1010,8 +1061,8 @@ async function saveSettings() {
   window.hexVoice._ttsEngine = config.voice.ttsEngine || 'os';
   window.hexVoice._localVoiceLang = config.voice.localVoiceLang || 'en';
   window.hexVoice._localSpeed = config.voice.localSpeed ?? 1.0;
-  window.hexVoice._gcloudKey = config.voice.gcloudTtsKey || '';
-  window.hexVoice._useGCloud = !!(config.voice.gcloudTtsKey);
+  window.hexVoice._gcloudKey = '';
+  window.hexVoice._useGCloud = config.voice.hasGcloudTtsKey === true;
   window.hexVoice._gcloudVoice = config.voice.gcloudVoice || 'ka-GE-Standard-A';
   // Push modelsDir to engine and refresh engine status
   if (config.voice.modelsDir) {
@@ -1082,9 +1133,9 @@ window.addEventListener('click', (e) => {
 
 async function loadLiveArsenal() {
   try {
-    const res = await window.hexAPI.refreshLiveKeys();
+    const res = await window.hexAPI.getProviderCapabilities();
     if (res && res.success) {
-      _lastLiveKeysMap = res.keys || {};
+      _lastLiveKeysMap = capabilitiesToKeyMap(res.providers);
       _lastManualKeysMap = res.manualKeys || {};
       syncProviderOptions(_lastLiveKeysMap);
       renderLiveArsenal(_lastLiveKeysMap);
@@ -1103,7 +1154,7 @@ function renderLiveArsenal(keysMap) {
   _lastLiveKeysMap = keysMap || {};
   syncProviderOptions(_lastLiveKeysMap);
   const activeProvider = document.getElementById('cfg-provider')?.value || '';
-  const sortedProviders = LIVE_PROVIDER_PRIORITY.filter((provider) => keysMap[provider] && keysMap[provider].length > 0);
+  const sortedProviders = Object.keys(keysMap).filter((provider) => keysMap[provider]?.length > 0);
   for (const provider of Object.keys(keysMap)) {
     if (!sortedProviders.includes(provider) && keysMap[provider].length > 0) sortedProviders.push(provider);
   }
@@ -1186,7 +1237,7 @@ function renderManualKeyList(manualKeysMap) {
 
   providers.sort((a, b) => a.localeCompare(b));
   providers.forEach((provider) => {
-    (manualKeysMap[provider] || []).forEach((apiKey) => {
+    (manualKeysMap[provider] || []).forEach((keyEntry) => {
       const row = window.hexRenderUtils.createEl('div');
       row.style.display = 'flex';
       row.style.justifyContent = 'space-between';
@@ -1197,14 +1248,14 @@ function renderManualKeyList(manualKeysMap) {
       row.style.background = 'rgba(0,0,0,0.12)';
 
       const label = window.hexRenderUtils.createEl('span', {
-        text: `${getProviderLabel(provider)}  ${maskApiKey(apiKey)}`
+        text: getProviderLabel(provider) + '  ' + (keyEntry.masked || 'configured')
       });
       label.style.fontFamily = 'var(--font-m)';
       label.style.fontSize = '12px';
 
       const removeBtn = window.hexRenderUtils.createEl('button', {
         text: 'REMOVE',
-        dataset: { manualKeyProvider: provider, manualKeyValue: apiKey }
+        dataset: { manualKeyProvider: provider, manualKeyId: keyEntry.id }
       });
       removeBtn.className = 'text-btn';
       removeBtn.style.cursor = 'pointer';
@@ -1234,11 +1285,7 @@ async function addManualApiKey() {
   try {
     const res = await window.hexAPI.addManualApiKey({ apiKey });
     if (!res?.success) throw new Error(res?.error || 'Could not add API key.');
-    _lastLiveKeysMap = res.keys || {};
-    _lastManualKeysMap = res.manualKeys || {};
-    syncProviderOptions(_lastLiveKeysMap);
-    renderLiveArsenal(_lastLiveKeysMap);
-    renderManualKeyList(_lastManualKeysMap);
+    await loadLiveArsenal();
     input.value = '';
     if (statusEl) statusEl.textContent = `${getProviderLabel(res.provider)} key added.`;
     selectLiveProvider(res.provider);
@@ -1248,16 +1295,13 @@ async function addManualApiKey() {
   }
 }
 
-async function removeManualApiKey(provider, apiKey) {
+async function removeManualApiKey(provider, keyId) {
   const statusEl = document.getElementById('manual-key-status');
   if (statusEl) statusEl.textContent = 'Removing manual key...';
   try {
-    const res = await window.hexAPI.removeManualApiKey({ provider, apiKey });
+    const res = await window.hexAPI.removeManualApiKey({ provider, keyId });
     if (!res?.success) throw new Error(res?.error || 'Could not remove API key.');
-    _lastLiveKeysMap = res.keys || {};
-    _lastManualKeysMap = res.manualKeys || {};
-    renderLiveArsenal(_lastLiveKeysMap);
-    renderManualKeyList(_lastManualKeysMap);
+    await loadLiveArsenal();
     if (statusEl) statusEl.textContent = `${getProviderLabel(provider)} key removed.`;
   } catch (error) {
     if (statusEl) statusEl.textContent = '⚠ ' + (error?.message || String(error));
@@ -1276,9 +1320,9 @@ function selectLiveProvider(providerName) {
 // Auto-sync provider dropdown to the best available provider and auto-fetch models
 async function autoSyncProvider() {
   try {
-    const res = await window.hexAPI.refreshLiveKeys();
+    const res = await window.hexAPI.getProviderCapabilities();
     if (!res || !res.success) return;
-    _lastLiveKeysMap = res.keys || {};
+    _lastLiveKeysMap = capabilitiesToKeyMap(res.providers);
     _lastManualKeysMap = res.manualKeys || {};
     syncProviderOptions(_lastLiveKeysMap);
     renderManualKeyList(_lastManualKeysMap);
@@ -1304,15 +1348,10 @@ async function autoSyncProvider() {
   } catch (_) { }
 }
 
-// Hook IPC continuous updater for hot-reloads
-window.hexAPI.on('ai:live-keys-updated', (keys) => {
-  _lastLiveKeysMap = keys || {};
-  syncProviderOptions(_lastLiveKeysMap);
-  renderLiveArsenal(_lastLiveKeysMap);
-  renderManualKeyList(_lastManualKeysMap);
-});
+// Capability state refreshes when Settings opens or changes.
 
 window.addEventListener('click', (event) => {
+  if (event.target.closest('#brain-telemetry-refresh')) { refreshBrainTelemetryTab(); return; }
   const providerRow = event.target.closest('[data-live-provider]');
   if (providerRow) {
     selectLiveProvider(providerRow.dataset.liveProvider);
@@ -1323,30 +1362,10 @@ window.addEventListener('click', (event) => {
     renderModelPicker(modelToggle.dataset.modelPickerToggle !== 'free');
     return;
   }
-  const removeBtn = event.target.closest('[data-manual-key-provider][data-manual-key-value]');
+  const removeBtn = event.target.closest('[data-manual-key-provider][data-manual-key-id]');
   if (removeBtn) {
-    removeManualApiKey(removeBtn.dataset.manualKeyProvider, removeBtn.dataset.manualKeyValue);
+    removeManualApiKey(removeBtn.dataset.manualKeyProvider, removeBtn.dataset.manualKeyId);
   }
 });
 
 document.getElementById('cfg-cloud-test')?.addEventListener('click', testCloudConnection);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

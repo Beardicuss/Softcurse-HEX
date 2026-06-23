@@ -9,7 +9,19 @@ async function tryDirectCommand(text) {
   const raw = text.trim();
   const t = raw.toLowerCase();
 
-  const do_ = async (type, args, msg) => {
+  const rememberResolvedReference = (resolved) => {
+    if (!resolved || !window.hexContextState?.state) return;
+    const surface = resolved.surface || (resolved.source === 'browser' ? 'browser' : 'desktop');
+    window.hexContextState.state.lastResolvedReference = {
+      ...resolved,
+      surface,
+      source: resolved.source || (surface === 'browser' ? 'browser' : 'desktop-memory')
+    };
+    window.hexContextState.persist?.();
+  };
+
+  const do_ = async (type, args, msg, resolved = null) => {
+    if (resolved) rememberResolvedReference(resolved);
     if (typeof updateSessionContextForAssistant === 'function') {
       updateSessionContextForAssistant(msg || '', [{ type, args: args || [] }]);
     }
@@ -18,6 +30,72 @@ async function tryDirectCommand(text) {
     return { handled: true };
   };
 
+  const isReferenceLikeTarget = (target) => {
+    const lower = String(target || '').trim().toLowerCase();
+    if (!lower) return false;
+    if (/^(it|that|this|them|those|these|one|ones|same one|that one|this one)$/.test(lower)) return true;
+    if (/^(the\s+)?(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last|next|previous)\b/.test(lower)) return true;
+    if (/\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last|next|previous)\s+(one|result|video|link|button|file|folder|app|game|window|process)\b/.test(lower)) return true;
+    if (/^(the\s+)?(same|previous|next)\s+(result|video|link|button|file|folder|app|game|window|process)\b/.test(lower)) return true;
+    if (/^(the\s+)?(file|folder|app|game|window|process|result|video|link|button|page)\b/.test(lower) && lower.split(/\s+/).length <= 4) return true;
+    return false;
+  };
+
+  const handleResolvedBrowserTarget = async (resolved, sourceText) => {
+    if (!resolved) return null;
+    const label = resolved.label || resolved.text || resolved.value || 'that item';
+    const isNavigate = /^(open|play|click|select|use|go\s+to)\b/i.test(sourceText);
+    if (!isNavigate) return null;
+    return do_('web_find_click', [label], 'Opening ' + label + ' in browser...', {
+      ...resolved,
+      surface: 'browser',
+      source: resolved.source || 'browser'
+    });
+  };
+  const handleResolvedDesktopTarget = async (resolved, sourceText) => {
+    if (!resolved) return null;
+    const resolvedKind = resolved.kind || 'file';
+    if (resolvedKind === 'game') {
+      return do_('launch_game', [resolved.label], `Opening ${resolved.label}...`, resolved);
+    }
+    if (resolvedKind === 'app') {
+      return do_('open_app', [resolved.label], `Opening ${resolved.label}...`, resolved);
+    }
+    if (resolvedKind === 'folder') {
+      const isReveal = /^(show|reveal|locate)\b/i.test(sourceText);
+      const msg = isReveal ? `Opening ${resolved.label}...` : `Opening ${resolved.label}...`;
+      return do_('open_folder', [resolved.path || resolved.value || resolved.label], msg, resolved);
+    }
+    if (resolvedKind === 'window') {
+      const verb = /^(close)\b/i.test(sourceText) ? 'close' : 'focus';
+      const msg = verb === 'close' ? `Closing ${resolved.label}...` : `Focusing ${resolved.label}...`;
+      return do_('window', [verb, resolved.label], msg, resolved);
+    }
+    if (resolvedKind === 'process') {
+      return do_('kill_process', [resolved.label], `Terminating ${resolved.label}...`, resolved);
+    }
+
+    if (/^(show|reveal|locate)\b/i.test(sourceText)) {
+      const folderPath = String(resolved.path || '')
+        .substring(0, Math.max(String(resolved.path || '').lastIndexOf('\\'), String(resolved.path || '').lastIndexOf('/')));
+      if (folderPath) {
+        return do_('open_folder', [folderPath], `Opening folder for ${resolved.label}...`, resolved);
+      }
+    }
+    return do_('open_file', [resolved.path || resolved.value || resolved.label], `Opening ${resolved.label}...`, resolved);
+  };
+
+  const tryMixedReference = async () => {
+    if (!window.hexReferenceResolver?.resolveMixedReference) return null;
+    if (!window.hexReferenceResolver?.isDesktopReferenceCommand?.(raw)) return null;
+    const browserOpen = !!window.hexContextState?.getBrowserSessionState?.()?.open;
+    const resolved = window.hexReferenceResolver.resolveMixedReference(raw, browserOpen);
+    if (!resolved) return null;
+    if (resolved.surface === 'browser' || resolved.source === 'browser') {
+      return handleResolvedBrowserTarget(resolved, raw);
+    }
+    return handleResolvedDesktopTarget(resolved, raw);
+  };
   const tryDesktopReference = async () => {
     if (!window.hexReferenceResolver?.isDesktopReferenceCommand?.(raw)) return null;
     const lower = raw.toLowerCase();
@@ -29,49 +107,45 @@ async function tryDirectCommand(text) {
           ? 'game'
           : /\b(app|program|software|browser)\b/.test(lower)
             ? 'app'
-            : null;
+            : /\b(folder|directory|location)\b/.test(lower)
+              ? 'folder'
+              : null;
     const resolved = window.hexReferenceResolver.resolveDesktopReference(raw, preferredKind);
-    if (!resolved) return null;
-
-    const resolvedKind = resolved.kind || preferredKind || 'file';
-    if (resolvedKind === 'game') {
-      return do_('launch_game', [resolved.label], `Opening ${resolved.label}...`);
-    }
-    if (resolvedKind === 'app') {
-      return do_('open_app', [resolved.label], `Opening ${resolved.label}...`);
-    }
-    if (resolvedKind === 'folder') {
-      return do_('open_folder', [resolved.path || resolved.value || resolved.label], 'Opening ' + resolved.label + '...');
-    }
-    if (resolvedKind === 'window') {
-      const verb = /^(close)\b/i.test(raw) ? 'close' : 'focus';
-      const msg = verb === 'close' ? `Closing ${resolved.label}...` : `Focusing ${resolved.label}...`;
-      return do_('window', [verb, resolved.label], msg);
-    }
-    if (resolvedKind === 'process') {
-      return do_('kill_process', [resolved.label], `Terminating ${resolved.label}...`);
-    }
-
-    if (/^(show|reveal|locate)\b/i.test(raw)) {
-      const folderPath = String(resolved.path || '')
-        .substring(0, Math.max(String(resolved.path || '').lastIndexOf('\\'), String(resolved.path || '').lastIndexOf('/')));
-      if (folderPath) {
-        return do_('open_folder', [folderPath], `Opening folder for ${resolved.label}...`);
-      }
-    }
-    return do_('open_file', [resolved.path || resolved.value || resolved.label], `Opening ${resolved.label}...`);
+    return handleResolvedDesktopTarget(resolved, raw);
   };
+
+  const resolvedMixedRef = await tryMixedReference();
+  if (resolvedMixedRef) return resolvedMixedRef;
 
   const resolvedDesktopRef = await tryDesktopReference();
   if (resolvedDesktopRef) return resolvedDesktopRef;
 
+  const naturalDesktopOpen = t.match(/^(?:open|show|reveal|locate|focus|close|run|launch|play|use)\s+(.+)$/);
+  if (naturalDesktopOpen) {
+    const target = naturalDesktopOpen[1].trim();
+    if (isReferenceLikeTarget(target)) {
+      const preferredKind = /\bwindow\b/.test(target) ? 'window'
+        : /\bprocess\b/.test(target) ? 'process'
+          : /\bgame\b/.test(target) ? 'game'
+            : /\bapp\b/.test(target) ? 'app'
+              : /\bfolder\b/.test(target) ? 'folder'
+                : /\bfile\b/.test(target) ? 'file'
+                  : null;
+      const browserOpen = !!window.hexContextState?.getBrowserSessionState?.()?.open;
+      const resolved = window.hexReferenceResolver?.resolveMixedReference?.(target, browserOpen)
+        || window.hexReferenceResolver?.resolveDesktopReference?.(target, preferredKind);
+      const handled = resolved?.surface === 'browser' || resolved?.source === 'browser'
+        ? await handleResolvedBrowserTarget(resolved, raw)
+        : await handleResolvedDesktopTarget(resolved, raw);
+      if (handled) return handled;
+    }
+  }
+
   // ── Learn ─────────────────────────────────────────────────────────────────
-  // Syntax: "hex learn [topic]"  |  "learn [topic]"  |  "study [topic]"
   const learnM = t.match(/^(?:hex\s+)?(?:learn|study)\s+(.+)$/);
   if (learnM) {
     const topic = learnM[1].trim();
     if (topic.length > 1 && !/^(nothing|me|more|better|faster)$/i.test(topic)) {
-      // Fire and forget the async learn flow — it will add its own messages
       (async () => {
         addHexMessage(`**Initiating knowledge acquisition sequence...**\nScanning data lattice for: **${topic}**\nThis will take a moment — stand by.`);
         try {
@@ -97,7 +171,6 @@ async function tryDirectCommand(text) {
     }
   }
 
-  // ── Websites ──────────────────────────────────────────────────────────────
   const SITES = {
     'facebook': 'https://facebook.com', 'fb': 'https://facebook.com',
     'instagram': 'https://instagram.com', 'insta': 'https://instagram.com',
@@ -135,7 +208,6 @@ async function tryDirectCommand(text) {
     return do_('open_url', [url], 'Opening ' + url + '...');
   }
 
-  // ── Games ─────────────────────────────────────────────────────────────────
   const gameM = t.match(/^(?:launch|play|start|run)\s+(.+)$/);
   if (gameM) {
     const target = gameM[1].trim();
@@ -153,31 +225,26 @@ async function tryDirectCommand(text) {
     }
   }
 
-  // ── Screenshots ───────────────────────────────────────────────────────────
   if (/^(?:take\s+(?:a\s+)?)?screenshot$/.test(t) || t === 'screen shot' ||
     /^capture\s+(?:the\s+)?(?:screen|desktop)$/.test(t)) {
     return do_('screenshot', [], 'Taking a screenshot...');
   }
 
-  // ── Lock / Power ──────────────────────────────────────────────────────────
   if (/^lock\s+(?:the\s+)?(?:screen|pc|computer|workstation)$/.test(t) || t === 'lock') {
     return do_('lock_screen', [], 'Locking the workstation...');
   }
 
-  // ── Folders ───────────────────────────────────────────────────────────────
   const FOLDERS = { desktop: 1, documents: 1, downloads: 1, pictures: 1, music: 1, videos: 1 };
   const folderM = t.match(/^(?:open|show|go\s+to|show\s+me)\s+(?:my\s+)?(\w+)(?:\s+folder)?$/);
   if (folderM && FOLDERS[folderM[1]]) {
     return do_('open_folder', [folderM[1]], 'Opening ' + folderM[1] + ' folder...');
   }
 
-  // ── Volume ────────────────────────────────────────────────────────────────
   const volM = t.match(/^(?:set\s+(?:the\s+)?volume\s+(?:to\s+)?|volume\s+)(\d+)%?$/);
   if (volM) return do_('set_volume', [volM[1]], 'Setting volume to ' + volM[1] + '%...');
   if (t === 'mute') return do_('mute', [], 'Muting audio...');
   if (t === 'unmute') return do_('unmute', [], 'Unmuting audio...');
 
-  // ── System info ───────────────────────────────────────────────────────────
   if (/^(?:show\s+)?(?:system\s+info|sysinfo|system\s+information)$/.test(t))
     return do_('sys_info', [], 'Fetching system info...');
   if (/^(?:show\s+)?(?:disk\s+usage|disk\s+space|storage)$/.test(t))
@@ -193,7 +260,6 @@ async function tryDirectCommand(text) {
   if (/^empty\s+(?:the\s+)?(?:trash|recycle\s*bin)$/.test(t))
     return do_('empty_trash', [], 'Emptying the Recycle Bin...');
 
-  // ── Open app (general) ────────────────────────────────────────────────────
   const appM = t.match(/^(?:open|launch|start|run)\s+(.+)$/);
   if (appM) {
     const name = appM[1].trim();
@@ -210,6 +276,3 @@ async function tryDirectCommand(text) {
 
   return { handled: false };
 }
-
-
-

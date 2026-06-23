@@ -6,6 +6,7 @@ window.hexCloudSync = {
   _lastLivePushAt: 0,
   _hydrated: false,
   _timeoutMs: 2500,
+  _contextPacketCache: null,
 
   _withTimeout(promise, label = 'cloud request', timeoutMs = this._timeoutMs) {
     return Promise.race([
@@ -45,6 +46,19 @@ window.hexCloudSync = {
     return !!(window._hexConfig?.cloud?.enabled && window._hexConfig?.cloud?.serverUrl);
   },
 
+  _invalidateContextCache() {
+    this._contextPacketCache = null;
+  },
+
+  _makeContextCacheKey(query, localState = {}) {
+    const profileId = config?.cloud?.profileId || '';
+    const sessionId = config?.cloud?.sessionId || '';
+    const deviceId = config?.cloud?.deviceId || '';
+    const surface = localState?.sessionContext?.activeSurface || 'chat';
+    const goal = localState?.sessionContext?.primaryGoal || '';
+    return [profileId, sessionId, deviceId, surface, goal, String(query || '').trim().toLowerCase()].join('::');
+  },
+
   async resolveProfile(overrides = {}) {
     if (!this.isEnabled()) return null;
     const result = await this._withTimeout(
@@ -68,6 +82,7 @@ window.hexCloudSync = {
     config.cloud.profileId = result.profile.id;
     window._hexConfig.cloud = { ...(window._hexConfig.cloud || {}), profileId: result.profile.id };
     this._profile = result.profile;
+    this._invalidateContextCache();
     return result.profile;
   },
 
@@ -87,6 +102,7 @@ window.hexCloudSync = {
     if (!remote) return;
 
     window.hexContextState?.hydrateRemote?.(remote, browser);
+    window.hexCloudContextRehydrator?.applyPacket?.(packet);
     if (window.hexMemory && remote.primaryGoal) {
       window.hexMemory.updateWorking({
         currentTask: remote.primaryGoal,
@@ -104,6 +120,99 @@ window.hexCloudSync = {
     addLog('CLOUD', 'Restored live continuity from cloud session.');
   },
 
+  async getContextPacket(query, localState = null) {
+    if (!this.isEnabled() || config?.onboarding?.completed === false) return null;
+    if (!config?.cloud?.profileId) {
+      await this.resolveProfile();
+    }
+    if (!config?.cloud?.profileId) return null;
+
+    const cacheKey = this._makeContextCacheKey(query, localState || {});
+    const now = Date.now();
+    if (this._contextPacketCache && this._contextPacketCache.key === cacheKey && (now - this._contextPacketCache.at) < 10000) {
+      return this._contextPacketCache.packet;
+    }
+
+    const result = await this._withTimeout(
+      window.hexAPI.cloud.getContextPacket({
+        profileId: config?.cloud?.profileId,
+        sessionId: config?.cloud?.sessionId || null,
+        deviceId: config?.cloud?.deviceId || null,
+        query: query || '',
+        surface: localState?.sessionContext?.activeSurface || 'chat'
+      }).catch((error) => ({ success: false, error: error.message })),
+      'context packet'
+    );
+
+    if (!result?.success || !result.packet) {
+      if (result?.error) addLog('CLOUD', `Context packet failed: ${result.error}`, 'warn');
+      return null;
+    }
+
+    window.hexCloudContextRehydrator?.applyPacket?.(result.packet);
+    this._contextPacketCache = { key: cacheKey, packet: result.packet, at: now };
+    return result.packet;
+  },
+
+
+  async rememberFact(content, options = {}) {
+    if (!this.isEnabled() || config?.onboarding?.completed === false) return false;
+    const fact = String(content || '').trim();
+    if (!fact) return false;
+    if (!config?.cloud?.profileId) {
+      await this.resolveProfile();
+    }
+    if (!config?.cloud?.profileId) return false;
+
+    const result = await this._withTimeout(
+      window.hexAPI.cloud.rememberFact({
+        profileId: config?.cloud?.profileId,
+        sessionId: config?.cloud?.sessionId || null,
+        kind: options.kind || 'explicit',
+        content: fact,
+        confidence: options.confidence || 0.97,
+        tags: Array.isArray(options.tags) ? options.tags : ['explicit', 'desktop', 'remember']
+      }).catch((error) => ({ success: false, error: error.message })),
+      'memory write'
+    );
+
+    if (!result?.success) {
+      addLog('CLOUD', 'Memory write failed: ' + (result?.error || 'unknown error'), 'warn');
+      return false;
+    }
+
+    this._invalidateContextCache();
+    addLog('CLOUD', 'Memory synced to server: ' + fact.slice(0, 80));
+    return result.memory || true;
+  },
+
+
+  async syncDeviceInventory(inventory) {
+    if (!this.isEnabled() || config?.onboarding?.completed === false) return false;
+    if (!config?.cloud?.profileId) {
+      await this.resolveProfile();
+    }
+    if (!config?.cloud?.profileId) return false;
+
+    const result = await this._withTimeout(
+      window.hexAPI.cloud.syncDeviceInventory({
+        profileId: config?.cloud?.profileId,
+        sessionId: config?.cloud?.sessionId || null,
+        deviceId: config?.cloud?.deviceId || null,
+        inventory: inventory || {}
+      }).catch((error) => ({ success: false, error: error.message })),
+      'device inventory sync',
+      4000
+    );
+
+    if (!result?.success) {
+      addLog('CLOUD', 'Device inventory sync failed: ' + (result?.error || 'unknown error'), 'warn');
+      return false;
+    }
+
+    this._invalidateContextCache();
+    return true;
+  },
   async ensureSession(systemState) {
     if (!this.isEnabled() || config?.onboarding?.completed === false) return null;
     if (!config?.cloud?.profileId) {
@@ -142,6 +251,7 @@ window.hexCloudSync = {
       sessionId: result.sessionId,
       deviceId: result.deviceId
     };
+    this._invalidateContextCache();
     return result;
   },
 
@@ -181,9 +291,32 @@ window.hexCloudSync = {
     }
 
     this._lastLivePushAt = now;
+    this._invalidateContextCache();
     return true;
   },
 
+  async recordActivity(activity = {}) {
+    if (!this.isEnabled() || config?.onboarding?.completed === false) return false;
+    const profileId = config?.cloud?.profileId;
+    if (!profileId || !activity.summary) return false;
+    const result = await this._withTimeout(
+      window.hexAPI.cloud.recordActivity({
+        profileId,
+        sessionId: config?.cloud?.sessionId || null,
+        deviceId: config?.cloud?.deviceId || null,
+        kind: activity.kind || 'action',
+        status: activity.status || 'unknown',
+        surface: activity.surface || window.hexSessionContext?.activeSurface || 'chat',
+        actionType: activity.actionType || null,
+        summary: String(activity.summary).slice(0, 500),
+        details: activity.details || null,
+        createdAt: activity.createdAt || new Date().toISOString()
+      }).catch((error) => ({ success: false, error: error.message })),
+      'activity sync'
+    );
+    if (result?.success) this._invalidateContextCache();
+    return result?.success === true;
+  },
   async pushTurn(role, content, systemState, metadata = {}) {
     if (!this.isEnabled() || config?.onboarding?.completed === false || !content) return false;
     let sessionId = config?.cloud?.sessionId || null;
@@ -211,6 +344,8 @@ window.hexCloudSync = {
       addLog('CLOUD', `Message sync failed: ${result?.error || 'unknown error'}`, 'warn');
       return false;
     }
+
+    this._invalidateContextCache();
     return true;
   }
 };

@@ -1,4 +1,6 @@
 window.hexSystemActionHandler = (() => {
+  const noteDesktopOutcome = (...args) => window.hexActionHelpers?.noteDesktopOutcome?.(...args);
+
   function recordMemoryOutcome(key, success, error) {
     if (window.hexMemory?.recordActionOutcome) {
       window.hexMemory.recordActionOutcome(key, success, error || '');
@@ -11,6 +13,8 @@ window.hexSystemActionHandler = (() => {
         const r = await window.hexAPI.butler.listProcesses();
         if (r.success) {
           window.hexCandidatePublishers?.publishProcesses(r.processes || []);
+          window.hexPcEntityMemory?.ingest?.((r.processes || []).map((p) => ({ kind: 'process', label: p.name || '', value: p.name || '', meta: { pid: p.pid || null, cpu: p.cpu || null, mem: p.mem || null } })), 'process', 1);
+          window.hexPcAwarenessRefresh?.noteAction?.('process');
           const top = r.processes
             .slice(0, 10)
             .map((p) => `${p.name} CPU:${p.cpu} RAM:${p.mem}`)
@@ -28,11 +32,19 @@ window.hexSystemActionHandler = (() => {
         addLog('BUTLER', r.success ? `Killed: ${procName}` : `Kill: ${r.error}`);
         addHexMessage(r.success ? `**Process terminated:** ${procName}` : `Kill failed: ${r.error}`);
         if (r.success) {
-          window.hexCandidatePublishers?.rememberRecent({
+          noteDesktopOutcome({
             kind: 'process',
             label: procName,
-            value: procName
-          });
+            value: procName,
+            meta: { action: 'kill', source: 'process-action' }
+          }, 'process', true);
+        } else {
+          noteDesktopOutcome({
+            kind: 'process',
+            label: procName,
+            value: procName,
+            meta: { action: 'kill', source: 'process-action' }
+          }, 'process', false, r.error || '');
         }
         recordMemoryOutcome(`kill_process:${procName}`, r.success, r.error);
         return { handled: true };
@@ -184,6 +196,8 @@ window.hexSystemActionHandler = (() => {
         const r = await window.hexAPI.butler.listWindows();
         if (r.success) {
           window.hexCandidatePublishers?.publishWindows(r.windows || []);
+          window.hexPcEntityMemory?.ingest?.((r.windows || []).map((w) => ({ kind: 'window', label: w.MainWindowTitle || '', value: w.MainWindowTitle || '', meta: { pid: w.Id || null, processName: w.ProcessName || '' } })), 'window', 1);
+          window.hexPcAwarenessRefresh?.noteAction?.('window');
           const wins = r.windows.map((w) => w.MainWindowTitle).slice(0, 15).join(', ');
           addLog('BUTLER', `Found ${r.windows.length} open windows.`);
           return { handled: true, result: { data: `Open Windows: ${wins}` } };
@@ -196,14 +210,12 @@ window.hexSystemActionHandler = (() => {
         const title = action.args.slice(1).join(':');
         const r = await window.hexAPI.butler.windowAction(act, title);
         addHexMessage(r.success ? `Window ${act}: \`${title}\`` : `Window action failed: ${r.error}`);
-        if (r.success) {
-          window.hexCandidatePublishers?.rememberRecent({
-            kind: 'window',
-            label: title,
-            value: title,
-            meta: { action: act }
-          });
-        }
+        noteDesktopOutcome({
+          kind: 'window',
+          label: title,
+          value: title,
+          meta: { action: act, source: 'window-action' }
+        }, 'window', !!r.success, r.error || '');
         return { handled: true };
       }
 
@@ -211,6 +223,12 @@ window.hexSystemActionHandler = (() => {
         const title = action.args.join(':');
         const r = await window.hexAPI.butler.windowAction('close', title);
         addHexMessage(r.success ? `Closed window: \`${title}\`` : `Failed to close: ${r.error}`);
+        noteDesktopOutcome({
+          kind: 'window',
+          label: title,
+          value: title,
+          meta: { action: 'close', source: 'window-action' }
+        }, 'window', !!r.success, r.error || '');
         return { handled: true };
       }
 
@@ -221,5 +239,7 @@ window.hexSystemActionHandler = (() => {
 
   return { handle };
 })();
+
+
 
 

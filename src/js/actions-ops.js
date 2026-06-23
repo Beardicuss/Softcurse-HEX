@@ -5,6 +5,7 @@ window.hexOpsActionHandler = (() => {
         const r = await window.hexAPI.butler.listSoftware();
         if (r.success) {
           window.hexCandidatePublishers?.publishApps(r.software || []);
+          window.hexPcEntityMemory?.ingest?.((r.software || []).map((s) => ({ kind: 'app', label: s.DisplayName || s.name || '', path: s.path || null, value: s.DisplayName || s.name || '', meta: { version: s.DisplayVersion || null } })), 'app', 1.1);
 
           const top = r.software
             .slice(0, 15)
@@ -114,4 +115,5 @@ window.hexOpsActionHandler = (() => {
 
   return { handle };
 })();
+
 

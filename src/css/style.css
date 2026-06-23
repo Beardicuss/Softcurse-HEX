@@ -2891,7 +2891,7 @@ input[type="range"]::-webkit-slider-thumb {
   z-index: 9999999;
   width: 32px;
   height: 32px;
-  background-image: url('../assets/cursor/01.png');
+  background-image: url('../assets/cursor/01.webp');
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
@@ -2906,51 +2906,51 @@ input[type="range"]::-webkit-slider-thumb {
 
 @keyframes cyber-cursor-anim {
   0% {
-    background-image: url('../assets/cursor/01.png');
+    background-image: url('../assets/cursor/01.webp');
   }
 
   9.09% {
-    background-image: url('../assets/cursor/02.png');
+    background-image: url('../assets/cursor/02.webp');
   }
 
   18.18% {
-    background-image: url('../assets/cursor/03.png');
+    background-image: url('../assets/cursor/03.webp');
   }
 
   27.27% {
-    background-image: url('../assets/cursor/04.png');
+    background-image: url('../assets/cursor/04.webp');
   }
 
   36.36% {
-    background-image: url('../assets/cursor/05.png');
+    background-image: url('../assets/cursor/05.webp');
   }
 
   45.45% {
-    background-image: url('../assets/cursor/06.png');
+    background-image: url('../assets/cursor/06.webp');
   }
 
   54.54% {
-    background-image: url('../assets/cursor/07.png');
+    background-image: url('../assets/cursor/07.webp');
   }
 
   63.64% {
-    background-image: url('../assets/cursor/08.png');
+    background-image: url('../assets/cursor/08.webp');
   }
 
   72.73% {
-    background-image: url('../assets/cursor/09.png');
+    background-image: url('../assets/cursor/09.webp');
   }
 
   81.82% {
-    background-image: url('../assets/cursor/10.png');
+    background-image: url('../assets/cursor/10.webp');
   }
 
   90.91% {
-    background-image: url('../assets/cursor/11.png');
+    background-image: url('../assets/cursor/11.webp');
   }
 
   100% {
-    background-image: url('../assets/cursor/01.png');
+    background-image: url('../assets/cursor/01.webp');
   }
 }
 

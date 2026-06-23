@@ -16,6 +16,32 @@ function handleToastAction(action, toast) {
   }
 }
 
+async function recordHexFeedback(kind, feedbackId) {
+  const buffer = window.hexFeedbackBuffer;
+  const item = buffer?.get?.(feedbackId);
+  if (!item) return;
+  let correction = '';
+  if (kind === 'fix') {
+    correction = window.prompt('Write the corrected answer or instruction for HEX:') || '';
+    if (!correction.trim()) return;
+  }
+
+  if (kind === 'wrong' || kind === 'fix') {
+    window.hexMemory?.learnFromCorrection?.(item.assistant || 'assistant response', correction || 'User marked this answer as wrong.');
+  }
+  if (kind === 'good') {
+    window.hexBrainCore?.saveLocalFact?.('User approved a HEX response style or answer: ' + String(item.assistant || '').slice(0, 500));
+  }
+
+  const result = await window.hexBrainEvolution?.record?.(kind, item, correction.trim());
+  if (result?.success) {
+    addLog('BRAIN', 'Feedback captured: ' + kind);
+    showToast('◆ FEEDBACK CAPTURED', kind === 'fix' ? 'Correction stored for future evolution.' : 'Signal stored for future evolution.', '', 2600);
+  } else {
+    showToast('◆ FEEDBACK FAILED', result?.error || 'Could not store feedback.', 'warn', 3500);
+  }
+}
+
 function showToast(title, body, type = '', duration = 5000, actions = []) {
   const container = document.getElementById('toast-container');
   if (!container) return;
@@ -80,6 +106,12 @@ document.addEventListener('click', async (event) => {
   const toastButton = event.target.closest('[data-toast-action]');
   if (toastButton) {
     handleToastAction(toastButton.dataset.toastAction, toastButton.closest('.toast'));
+    return;
+  }
+
+  const feedbackButton = event.target.closest('[data-hex-feedback][data-feedback-id]');
+  if (feedbackButton) {
+    await recordHexFeedback(feedbackButton.dataset.hexFeedback, feedbackButton.dataset.feedbackId);
     return;
   }
 
@@ -181,6 +213,7 @@ document.addEventListener('click', async (event) => {
 
 window.dismissToast = dismissToast;
 window.handleToastAction = handleToastAction;
+window.recordHexFeedback = recordHexFeedback;
 window.showToast = showToast;
 window.addLog = addLog;
 window.clearTerminal = clearTerminal;

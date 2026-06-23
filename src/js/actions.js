@@ -150,6 +150,13 @@ async function handleAIAction(action) {
         window.hexAPI.butler.getEpicGames().catch(function () { return { success: false, games: [] }; }),
       ]);
       _publishGameCandidates([...(stR.games || []), ...(epR.games || [])]);
+      window.hexPcEntityMemory?.ingest?.([...(stR.games || []), ...(epR.games || [])].map(function (g) { return {
+        kind: 'game',
+        label: g.name || '',
+        value: g.name || '',
+        path: g.path || null,
+        meta: { platform: g.platform || null, source: 'list-games' }
+      }; }), 'game', 1.2);
       const gParts = [];
       if (stR.success && stR.games.length) gParts.push('Steam (' + stR.games.length + '): ' + stR.games.map(function (g) { return g.name; }).join(', '));
       if (epR.success && epR.games.length) gParts.push('Epic (' + epR.games.length + '): ' + epR.games.map(function (g) { return g.name; }).join(', '));

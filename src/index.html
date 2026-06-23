@@ -146,6 +146,7 @@
         <button class="stab" data-tab="tab-voice">🎙 VOICE</button>
         <button class="stab" data-tab="tab-persona">◆ PERSONA</button>
         <button class="stab" data-tab="tab-memory">🧠 MEMORY</button>
+        <button class="stab" data-tab="tab-brain">◇ BRAIN</button>
         <button class="stab" data-tab="tab-security">🛡 SECURITY</button>
         <button class="stab" data-tab="tab-plugins">🔌 PLUGINS</button>
       </div>
@@ -611,6 +612,20 @@
         <div class="form-hint" style="margin-top:8px;color:rgba(255,107,53,0.5);">
           Cleared memory cannot be recovered.
         </div>
+      </div>
+
+
+      <!-- ══ TAB: BRAIN ═════════════════════════════════════ -->
+      <div class="stab-panel" id="tab-brain">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:10px;">
+          <div class="settings-section-label" style="margin:0;">◆ BRAIN ROUTE TELEMETRY</div>
+          <button type="button" id="brain-telemetry-refresh" class="btn btn-secondary" style="font-size:13px;padding:4px 10px;">↻ REFRESH</button>
+        </div>
+        <div class="form-hint" style="margin-bottom:10px;line-height:1.5;">
+          Shows why HEX chose memory, browser, desktop, local reflex, or provider routing. This is a debug view for dialogue intelligence.
+        </div>
+        <div id="brain-telemetry-summary" class="form-hint" style="margin-bottom:8px;color:var(--cyan);">No route events yet.</div>
+        <div id="brain-telemetry-list" style="display:grid;gap:8px;max-height:440px;overflow-y:auto;border:1px solid var(--accent);background:var(--surface2);padding:8px;"></div>
       </div>
 
       <!-- ══ TAB: SECURITY ══════════════════════════════════ -->
@@ -1147,8 +1162,14 @@
   <script src="js/candidate-publishers.js"></script>
   <script src="js/recent-promoter.js"></script>
   <script src="js/pc-awareness-refresh.js"></script>
+  <script src="js/pc-known-locations.js"></script>
   <script src="js/pc-awareness.js"></script>
+  <script src="js/pc-awareness-loop.js"></script>
+  <script src="js/pc-entity-memory.js"></script>
+  <script src="js/pc-entity-promoter.js"></script>
   <script src="js/pc-inventory.js"></script>
+  <script src="js/cloud-context-rehydrator.js"></script>
+  <script src="js/pc-bootstrap.js"></script>
   <script src="js/reference-resolver.js"></script>
   <script src="js/renderer-context.js"></script>
   <script src="js/ai-prompt-context.js"></script>
@@ -1159,6 +1180,11 @@
   <script src="js/ai-prompt-brain.js"></script>
   <script src="js/ai-prompt-assembler.js"></script>
   <script src="js/ai-prompt.js"></script>
+  <script src="js/brain-core.js"></script>
+    <script src="js/brain-response-composer.js"></script>
+    <script src="js/brain-action-planner.js"></script>
+    <script src="js/brain-telemetry.js"></script>
+  <script src="js/brain-router.js"></script>
   <script src="js/ai.js"></script>
   <script src="js/activity.js"></script>
   <script src="js/reminders.js"></script>
@@ -1179,6 +1205,7 @@
   <script src="js/personalities.js"></script>
   <script src="js/orb.js"></script>
   <script src="js/renderer-chat.js"></script>
+  <script src="js/brain-evolution-recorder.js"></script>
   <script src="js/renderer-feedback.js"></script>
   <script src="js/renderer-system-ui.js"></script>
   <script src="js/renderer-processes.js"></script>
@@ -1256,16 +1283,3 @@
 </body>
 
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-

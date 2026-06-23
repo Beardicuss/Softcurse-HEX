@@ -163,16 +163,18 @@ async function createProfile(event) {
 }
 
 async function boot() {
+  const authShell = document.getElementById('auth-shell');
+  const layout = document.querySelector('.layout');
+  const status = document.getElementById('token-status');
   try {
     const health = await fetchJson('/api/health');
     setHealth('ONLINE', health.now);
 
-    const authShell = document.getElementById('auth-shell');
-    const layout = document.querySelector('.layout');
     if (!state.token) {
       if (authShell) authShell.style.display = '';
       if (layout) layout.style.display = 'none';
-      setText('version-value', 'locked');
+      setText('version-value', 'token required');
+      if (status) status.textContent = 'Server is online. Enter your access token to unlock data.';
       return;
     }
     if (authShell) authShell.style.display = 'none';
@@ -194,12 +196,19 @@ async function boot() {
       renderMemories();
     }
   } catch (error) {
-    setHealth('OFFLINE', error.message);
-    setText('version-value', 'unreachable');
-    const status = document.getElementById('token-status');
-    if (status && /Unauthorized/i.test(error.message)) {
-      status.textContent = 'Invalid token. Try again.';
+    const message = String(error?.message || 'Unknown error');
+    if (/Unauthorized/i.test(message)) {
+      setHealth('LOCKED', message);
+      if (authShell) authShell.style.display = '';
+      if (layout) layout.style.display = 'none';
+      setText('version-value', 'auth required');
+      if (status) status.textContent = 'Invalid or missing token. The server is reachable but locked.';
+      return;
     }
+
+    setHealth('OFFLINE', message);
+    setText('version-value', 'unreachable');
+    if (status) status.textContent = 'Could not reach HEX server.';
     console.error(error);
   }
 }

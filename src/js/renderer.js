@@ -81,11 +81,11 @@ function buildModeLogo(mode) {
   icon.style.cssText = 'width:28px;height:28px;object-fit:contain;border-radius:4px;';
 
   if (mode === 'cardinal') {
-    icon.src = 'assets/cardinal/cardinal_icon.png';
+    icon.src = 'assets/cardinal/cardinal_icon.webp';
     icon.style.boxShadow = '0 0 12px rgba(200,57,43,0.6), 0 0 30px rgba(200,57,43,0.2)';
     icon.style.background = 'rgba(200,57,43,0.1)';
   } else {
-    icon.src = 'assets/hex.png';
+    icon.src = 'assets/hex.webp';
     icon.style.boxShadow = '0 0 12px rgba(0,255,255,0.6), 0 0 30px rgba(0,255,255,0.2)';
     icon.style.background = 'rgba(0,255,255,0.1)';
   }
@@ -107,13 +107,13 @@ window.hexAudio = {
   _sounds: {},
   init() {
     const sfx = {
-      processing: 'assets/sounds/processing.wav',
-      toast: 'assets/sounds/toast_notify.wav',
-      threat: 'assets/sounds/threat_detect.wav',
-      mic_on: 'assets/sounds/mic_on.wav',
-      action: 'assets/sounds/action_exec.wav',
-      reroute: 'assets/sounds/network_reroute.wav',
-      hover: 'assets/sounds/ui_hover.wav'
+      processing: 'assets/sounds/processing.ogg',
+      toast: 'assets/sounds/toast_notify.ogg',
+      threat: 'assets/sounds/threat_detect.ogg',
+      mic_on: 'assets/sounds/mic_on.ogg',
+      action: 'assets/sounds/action_exec.ogg',
+      reroute: 'assets/sounds/network_reroute.ogg',
+      hover: 'assets/sounds/ui_hover.ogg'
     };
     for (const [key, path] of Object.entries(sfx)) {
       const a = new Audio(path);
@@ -187,19 +187,18 @@ async function init() {
 
   // ── Auto-select best provider from live key pool ──
   try {
-    const liveRes = await window.hexAPI.getLiveKeys();
+    const liveRes = await window.hexAPI.getProviderCapabilities();
     if (liveRes && liveRes.success) {
-      const PRIORITY = ['anthropic', 'openai', 'mistral', 'together', 'grok', 'gemini', 'cohere', 'hf', 'replicate'];
       const currentP = config.llm?.provider || 'none';
-      const hasKey = currentP === 'ollama' || (liveRes.keys[currentP] && liveRes.keys[currentP].length > 0);
+      const hasKey = currentP === 'ollama' || (liveRes.providers?.[currentP]?.validKeys > 0);
       if (!hasKey && currentP !== 'ollama') {
         // Find the first provider with valid keys
-        const bestProvider = PRIORITY.find(p => liveRes.keys[p] && liveRes.keys[p].length > 0);
+        const bestProvider = liveRes.capabilities?.activeProvider || Object.values(liveRes.providers || {}).find((item) => item.status === 'ready')?.provider;
         if (bestProvider) {
           config.llm = config.llm || {};
           config.llm.provider = bestProvider;
           window.hexAI.configure(config);
-          addLog('AI', `Auto-selected provider: ${bestProvider.toUpperCase()} (${liveRes.keys[bestProvider].length} valid keys)`);
+          addLog('AI', `Auto-selected provider: ${bestProvider.toUpperCase()} (${liveRes.providers[bestProvider].validKeys} valid keys)`);
         }
       }
     }
@@ -237,8 +236,8 @@ async function init() {
     window.hexVoice._ttsEngine = config.voice?.ttsEngine || 'os';
     window.hexVoice._localVoiceLang = config.voice?.localVoiceLang || 'en';
     window.hexVoice._localSpeed = config.voice?.localSpeed ?? 1.0;
-    window.hexVoice._gcloudKey = config.voice?.gcloudTtsKey || '';
-    window.hexVoice._useGCloud = !!(config.voice?.gcloudTtsKey);
+    window.hexVoice._gcloudKey = '';
+    window.hexVoice._useGCloud = config.voice?.hasGcloudTtsKey === true;
     window.hexVoice._gcloudVoice = config.voice?.gcloudVoice || 'ka-GE-Standard-A';
   };
   window.reminders.init();
@@ -252,6 +251,10 @@ async function init() {
       addLog('VOICE', `Heard: "${text}"`);
       sendMessage();
     }
+  };
+  window.hexVoice.onWakeWord = () => {
+    window.hexAudio?.play('mic_on', 0.55);
+    addLog('VOICE', 'Wake word detected. Listening for one command.');
   };
   window.hexVoice.onStateChange = (listening) => updateMicUI(listening);
   window.hexVoice.setLanguage(lang);
@@ -343,12 +346,59 @@ async function init() {
     }
   }, 1000);
 
+  window.hexPcAwarenessLoop?.start?.();
+  window.hexPcBootstrap?.bootstrap?.()
+    .then((result) => {
+      if (!result) return;
+      addLog('SYSTEM', `Local folders/files indexed from startup snapshot (${result.folders} folders, ${result.files} files).`);
+    })
+    .catch(() => { });
+
+  async function bootstrapPcAwareness() {
+    try {
+      await Promise.allSettled([
+        window.hexPcAwareness?.refreshWindows?.(true),
+        window.hexPcAwareness?.refreshProcesses?.(true)
+      ]);
+
+      const scanRes = await window.hexAPI.butler.scanApps().catch(() => null);
+      if (scanRes?.success && Array.isArray(scanRes.apps)) {
+        window.hexAppCache = scanRes.apps;
+        window.hexCandidatePublishers?.publishApps?.(scanRes.apps.slice(0, 80));
+      }
+
+      const gameResults = await Promise.allSettled([
+        window.hexAPI.butler.getSteamGames?.().catch(() => ({ success: false, games: [] })),
+        window.hexAPI.butler.getEpicGames?.().catch(() => ({ success: false, games: [] }))
+      ]);
+      const mergedGames = gameResults
+        .filter((entry) => entry.status === 'fulfilled' && entry.value?.success)
+        .flatMap((entry) => entry.value.games || []);
+      if (mergedGames.length) {
+        window.hexCandidatePublishers?.publishGames?.(mergedGames.slice(0, 60));
+      }
+
+      const syncedInventory = window.hexPcInventory?.persistNow?.();
+      window.hexPcEntityPromoter?.promoteInventorySnapshot?.();
+      if (syncedInventory) {
+        window.hexCloudSync?.runDetached?.('device inventory sync', () => window.hexCloudSync.syncDeviceInventory(syncedInventory));
+      }
+      addLog('SYSTEM', 'Desktop awareness bootstrap complete.');
+    } catch (error) {
+      addLog('SYSTEM', 'Desktop awareness bootstrap failed: ' + (error?.message || String(error)), 'error');
+    }
+  }
+  bootstrapPcAwareness().catch(() => { });
+
   // Background Omni-Launcher Scan
   setTimeout(() => {
     addLog('BUTLER', 'Caching local software registry in background...');
     window.hexAPI.butler.scanApps().then(res => {
       if (res.success) {
         window.hexAppCache = res.apps;
+        window.hexCandidatePublishers?.publishApps?.(res.apps.slice(0, 80));
+        window.hexPcInventory?.persistNow?.();
+        window.hexPcEntityPromoter?.promoteInventorySnapshot?.();
         addLog('BUTLER', `Omni-Launcher ready (${res.apps.length} items logged).`);
       }
     }).catch(() => { });
@@ -562,6 +612,7 @@ function switchSettingsTab(tabId) {
   // Refresh dynamic content when switching
   if (tabId === 'tab-persona') refreshPersonaList();
   if (tabId === 'tab-memory') refreshMemoryTab();
+  if (tabId === 'tab-brain' && typeof refreshBrainTelemetryTab === 'function') refreshBrainTelemetryTab();
   if (tabId === 'tab-plugins') {
     if (typeof loadPluginsList === 'function') loadPluginsList();
   }

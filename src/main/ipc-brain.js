@@ -8,7 +8,7 @@ const path = require('path');
 module.exports = function registerBrainIPC({ ipcMain, app }) {
   const BRAIN_PATH    = path.join(app.getPath('userData'), 'hex-profile.json');
   const MEMORY_PATH   = path.join(app.getPath('userData'), 'memory.json');
-  const FINETUNE_PATH = path.join(app.getAppPath(),        'hex-finetune.jsonl');
+  const FINETUNE_PATH = path.join(app.getPath('userData'), 'hex-finetune.jsonl');
 
   // ── Adaptive Intelligence (brain profile) ──────────────────────────────────
   ipcMain.handle('brain:load', async () => {

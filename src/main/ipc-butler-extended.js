@@ -217,6 +217,63 @@ module.exports = function registerButlerExtendedIPC({
     return { success: true };
   });
 
+  function resolveDirectoryAlias(input) {
+    const raw = String(input || '').trim();
+    const home = os.homedir();
+    const aliases = {
+      desktop: path.join(home, 'Desktop'),
+      documents: path.join(home, 'Documents'),
+      downloads: path.join(home, 'Downloads'),
+      pictures: path.join(home, 'Pictures'),
+      music: path.join(home, 'Music'),
+      videos: path.join(home, 'Videos'),
+      home
+    };
+    const key = raw.toLowerCase();
+    if (aliases[key]) return aliases[key];
+    return raw || aliases.desktop;
+  }
+
+  ipcMain.handle('butler:list-dir', async (_, payload = {}) => {
+    try {
+      const dirPath = resolveDirectoryAlias(payload?.dirPath);
+      if (!fs.existsSync(dirPath)) return { success: false, error: 'Directory not found: ' + dirPath };
+      const stat = fs.statSync(dirPath);
+      if (!stat.isDirectory()) return { success: false, error: 'Path is not a directory: ' + dirPath };
+
+      const items = fs.readdirSync(dirPath, { withFileTypes: true })
+        .map((entry) => {
+          const fullPath = path.join(dirPath, entry.name);
+          let size = 0;
+          let modified = null;
+          try {
+            const entryStat = fs.statSync(fullPath);
+            size = entryStat.isFile() ? entryStat.size : 0;
+            modified = entryStat.mtime?.toISOString?.() || null;
+          } catch (_) {}
+          return {
+            name: entry.name,
+            path: fullPath,
+            type: entry.isDirectory() ? 'dir' : 'file',
+            size,
+            modified
+          };
+        })
+        .sort((a, b) => {
+          if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        });
+
+      return {
+        success: true,
+        path: dirPath,
+        count: items.length,
+        items
+      };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
   // ── Smart file operations ──────────────────────────────────────────────────
   ipcMain.handle('butler:batch-rename', async (_, { dir, pattern, replacement }) => {
     try {
@@ -539,3 +596,4 @@ module.exports = function registerButlerExtendedIPC({
     return result.response === 1;
   }
 };
+

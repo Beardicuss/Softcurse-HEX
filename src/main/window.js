@@ -108,7 +108,7 @@ module.exports = function registerWindow({
     if (config.system.minimizeToTray) {
       if (!tray) {
         try {
-          const iconPath = path.join(__dirname, '..', 'assets', 'hex.png');
+          const iconPath = path.join(__dirname, '..', 'assets', 'hex.webp');
           const icon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
           tray = new Tray(icon);
           tray.setToolTip('Softcurse H.E.X.');

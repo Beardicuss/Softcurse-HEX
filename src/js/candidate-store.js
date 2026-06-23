@@ -4,6 +4,7 @@ window.hexCandidateStore = (() => {
   const MAX_ITEMS = 20;
   const buckets = {
     file: [],
+    folder: [],
     app: [],
     game: [],
     window: [],
@@ -31,6 +32,22 @@ window.hexCandidateStore = (() => {
     return buckets[kind];
   }
 
+  function merge(kind, items) {
+    if (!buckets[kind]) return [];
+    const incoming = normalize(kind, items);
+    const seen = new Set();
+    buckets[kind] = [...incoming, ...buckets[kind]]
+      .filter((item) => {
+        const key = [item.kind, item.path || '', item.value || '', item.label || ''].join('::').toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, MAX_ITEMS)
+      .map((item, index) => ({ ...item, index: index + 1 }));
+    return buckets[kind];
+  }
+
   function get(kind) {
     return Array.isArray(buckets[kind]) ? buckets[kind].map((item) => ({ ...item })) : [];
   }
@@ -38,6 +55,7 @@ window.hexCandidateStore = (() => {
   function snapshot() {
     return {
       file: get('file'),
+      folder: get('folder'),
       app: get('app'),
       game: get('game'),
       window: get('window'),
@@ -46,6 +64,5 @@ window.hexCandidateStore = (() => {
     };
   }
 
-  return { set, get, snapshot };
+  return { set, merge, get, snapshot };
 })();
-
