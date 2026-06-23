@@ -16,13 +16,77 @@ function handleToastAction(action, toast) {
   }
 }
 
+function requestFeedbackCorrection(item) {
+  return new Promise((resolve) => {
+    const overlay = window.hexRenderUtils.createEl('div');
+    overlay.style.position = 'fixed';
+    overlay.style.inset = '0';
+    overlay.style.zIndex = '99999';
+    overlay.style.background = 'rgba(0,0,0,0.72)';
+    overlay.style.display = 'grid';
+    overlay.style.placeItems = 'center';
+
+    const panel = window.hexRenderUtils.createEl('div');
+    panel.style.width = 'min(720px, calc(100vw - 48px))';
+    panel.style.border = '1px solid var(--cyan)';
+    panel.style.background = 'var(--bg)';
+    panel.style.boxShadow = '0 0 30px rgba(0,255,255,0.22)';
+    panel.style.padding = '16px';
+    panel.style.display = 'grid';
+    panel.style.gap = '10px';
+
+    const title = window.hexRenderUtils.createEl('div', { className: 'settings-section-label', text: '◆ FIX HEX RESPONSE' });
+    const hint = window.hexRenderUtils.createEl('div', { className: 'form-hint', text: 'Write the corrected answer or instruction. This becomes future evolution data.' });
+    const original = window.hexRenderUtils.createEl('div', { text: 'Original: ' + String(item?.assistant || '').slice(0, 500) });
+    original.style.color = 'var(--muted)';
+    original.style.fontSize = '12px';
+    original.style.lineHeight = '1.45';
+
+    const input = window.hexRenderUtils.createEl('textarea', { className: 'form-control' });
+    input.rows = 7;
+    input.placeholder = 'Corrected answer / instruction for HEX...';
+    input.style.resize = 'vertical';
+
+    const row = window.hexRenderUtils.createEl('div');
+    row.style.display = 'flex';
+    row.style.justifyContent = 'flex-end';
+    row.style.gap = '10px';
+
+    const cancel = window.hexRenderUtils.createEl('button', { className: 'btn btn-secondary', text: 'CANCEL' });
+    const save = window.hexRenderUtils.createEl('button', { className: 'btn btn-primary', text: 'SAVE FIX' });
+
+    const close = (value) => {
+      overlay.remove();
+      resolve(value);
+    };
+    cancel.addEventListener('click', () => close(''));
+    save.addEventListener('click', () => close(input.value.trim()));
+    overlay.addEventListener('click', (event) => { if (event.target === overlay) close(''); });
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') close('');
+      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) close(input.value.trim());
+    });
+
+    row.appendChild(cancel);
+    row.appendChild(save);
+    panel.appendChild(title);
+    panel.appendChild(hint);
+    panel.appendChild(original);
+    panel.appendChild(input);
+    panel.appendChild(row);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+    setTimeout(() => input.focus(), 30);
+  });
+}
+
 async function recordHexFeedback(kind, feedbackId) {
   const buffer = window.hexFeedbackBuffer;
   const item = buffer?.get?.(feedbackId);
   if (!item) return;
   let correction = '';
   if (kind === 'fix') {
-    correction = window.prompt('Write the corrected answer or instruction for HEX:') || '';
+    correction = await requestFeedbackCorrection(item);
     if (!correction.trim()) return;
   }
 

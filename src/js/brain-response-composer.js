@@ -109,6 +109,69 @@
     return head + '\n' + lines.map((item) => '- ' + item).join('\n');
   }
 
+
+  function isDiagnosticsRequest(text) {
+    return /debug|diagnostic|telemetry|context packet|memory dump|brain route|show context|покажи контекст|диагност|კონტექსტი|დიაგნოსტ/i.test(text || '');
+  }
+
+  function isRawMemoryContext(text) {
+    return /\[(SESSION CONTEXT|CONTINUITY MEMORY|KNOWN FACTS ABOUT USER|ACTIVE BROWSER SESSION|SYSTEM STATE)\]/i.test(text || '');
+  }
+
+  function summarizeLocalMemory(query) {
+    const recall = clean(window.hexBrainCore?.memoryRecall?.(query));
+    if (recall && !isRawMemoryContext(recall)) return recall.split('\n').filter(Boolean).slice(0, 3).join('\n');
+    try {
+      const summary = clean(window.hexMemory?.summary || '');
+      return isRawMemoryContext(summary) ? '' : summary.slice(0, 280);
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function companionReply(lang, userMsg, systemState = {}) {
+    const l = normalizeLang(lang);
+    const msg = clean(userMsg);
+    const lower = msg.toLowerCase();
+    const wantsDiagnostics = isDiagnosticsRequest(msg);
+    const asksFeeling = /how are you|are you okay|what'?s up|what up|sup|как ты|ты как|как дела|что нового|როგორ ხარ|კარგად ხარ|რა ხდება/i.test(msg);
+    const asksHelp = /what can you do|help me|can you help|что ты можешь|помоги|რა შეგიძლია|დამეხმარ/i.test(msg);
+
+    let base;
+    if (asksFeeling) {
+      base = l === 'ru'
+        ? 'Я здесь, Данте. Локальный мозг включён, контекст держу. Готов слушать или действовать.'
+        : l === 'ka'
+          ? 'აქ ვარ, დანტე. ლოკალური ბირთვი ჩართულია, კონტექსტს ვიჭერ. მზად ვარ მოვუსმინო ან ვიმოქმედო.'
+          : 'I am here, Dante. Local brain is awake, context is staying with us, and I am ready to listen or act.';
+    } else if (asksHelp) {
+      base = l === 'ru'
+        ? 'Да. Я могу вести диалог, помнить важные факты, работать с файлами, приложениями, браузером и простыми командами ПК.'
+        : l === 'ka'
+          ? 'დიახ. შემიძლია დიალოგი, მნიშვნელოვანი ფაქტების დამახსოვრება, ფაილებთან, აპებთან, ბრაუზერთან და მარტივ ПК ბრძანებებთან მუშაობა.'
+          : 'Yes. I can keep dialogue context, remember important facts, work with files, apps, browser state, and simple PC commands.';
+    } else if (/^(ok|okay|alright|good|nice|cool|ясно|хорошо|ладно|კარგი|გასაგებია)$/i.test(lower)) {
+      base = l === 'ru' ? 'Принял. Держу контекст.' : l === 'ka' ? 'მივიღე. კონტექსტს ვიჭერ.' : 'Understood. I am keeping the context.';
+    } else {
+      base = l === 'ru'
+        ? 'Понял. Продолжаю с текущего контекста.'
+        : l === 'ka'
+          ? 'გავიგე. მიმდინარე კონტექსტიდან ვაგრძელებ.'
+          : 'Understood. I am continuing from the current context.';
+    }
+
+    if (!wantsDiagnostics) return base;
+
+    const memory = summarizeLocalMemory(msg);
+    const cloud = systemState?.cloudContext || window.hexCloudSync?._contextPacketCache?.packet || null;
+    const topic = clean(cloud?.topics?.active?.label || cloud?.activeGoal?.text || cloud?.session?.primaryGoal || '');
+    const browser = cloud?.browser?.open && clean(cloud?.browser?.title) ? clean(cloud.browser.title) : '';
+    const suffix = [];
+    if (topic) suffix.push(l === 'ru' ? 'Фокус: ' + topic : l === 'ka' ? 'ფოკუსი: ' + topic : 'Focus: ' + topic);
+    if (browser) suffix.push(l === 'ru' ? 'Браузер: ' + browser : l === 'ka' ? 'ბრაუზერი: ' + browser : 'Browser: ' + browser);
+    if (memory) suffix.push(l === 'ru' ? 'Память: ' + memory : l === 'ka' ? 'მეხსიერება: ' + memory : 'Memory: ' + memory);
+    return suffix.length ? base + '\n\n' + suffix.slice(0, 3).join('\n') : base;
+  }
   function statusReply(lang, systemState, providerHealth) {
     const l = normalizeLang(lang);
     const serverOnline = systemState?.cloudContext ? 'packet-ready' : (window.hexCloudSync?.isEnabled?.() ? 'enabled' : 'disabled');
@@ -128,6 +191,8 @@
     continuityReply,
     browserReply,
     inventoryReply,
-    statusReply
+    statusReply,
+    companionReply
   };
 })();
+

@@ -65,6 +65,7 @@ try {
 
 // ── Window ref (shared mutable — modules use getWindow()) ─────────────────────
 let mainWindow = null;
+let localLlmProcess = null;
 const getWindow = () => mainWindow;
 
 // ── safeSend / sendLog (need window ref) ──────────────────────────────────────
@@ -79,6 +80,99 @@ function safeSend(channel, data) {
 }
 function sendLog(source, message, level = 'info') {
   safeSend('log:entry', { source, message, level, ts: Date.now() });
+}
+function getBundledLlamaServerPath() {
+  const candidates = [
+    path.join('D:', 'Dev', 'Artificial intelligence', 'llama.cpp', 'llama-server.exe'),
+    path.join(__dirname, 'bin', 'llama.cpp', 'llama-server.exe'),
+    path.join(__dirname, 'llama-server.exe')
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) || null;
+}
+
+async function isLocalLlmReachable(baseUrl) {
+  try {
+    const url = String(baseUrl || 'http://127.0.0.1:8080').replace(/\/+$/, '') + '/v1/models';
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 1200);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    return res.ok;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function startConfiguredLocalLlm() {
+  const cfg = getConfig();
+  if (!cfg.llm?.autoOllama) return;
+
+  if (cfg.llm?.provider === 'llamacpp') {
+    if (localLlmProcess && !localLlmProcess.killed) return;
+    if (await isLocalLlmReachable(cfg.llm.baseUrl)) {
+      console.log('Softcurse: llama.cpp server already reachable');
+      sendLog('SYSTEM', 'Local Qwen brain already online.');
+      return;
+    }
+    const serverPath = getBundledLlamaServerPath();
+    const configuredModelPath = cfg.llm.ggufPath || path.join('models', 'qwen3', 'Qwen3-8B-Q4_K_M.gguf');
+    const modelPath = path.isAbsolute(configuredModelPath) ? configuredModelPath : path.join(__dirname, configuredModelPath);
+    if (!serverPath || !fs.existsSync(modelPath)) {
+      console.warn('Softcurse: llama.cpp autostart skipped; missing server or model');
+      sendLog('SYSTEM', 'Local Qwen autostart skipped: server or model file missing.');
+      return;
+    }
+    const cpuCount = require('os').cpus()?.length || 8;
+    const args = [
+      '--model', modelPath,
+      '--host', '127.0.0.1',
+      '--port', '8080',
+      '--ctx-size', '8192',
+      '--threads', String(Math.max(4, Math.min(8, cpuCount)))
+    ];
+    localLlmProcess = spawn(serverPath, args, {
+      cwd: path.dirname(serverPath),
+      windowsHide: true,
+      stdio: 'ignore'
+    });
+    localLlmProcess.unref();
+    localLlmProcess.on('exit', () => { localLlmProcess = null; });
+    console.log('Softcurse: llama.cpp Qwen auto-start requested');
+    sendLog('SYSTEM', 'Starting local Qwen brain via llama.cpp...');
+    return;
+  }
+
+  if (cfg.llm?.provider === 'ollama') {
+    try {
+      const vbsPath = path.join(__dirname, 'scripts', 'ollama', 'run-ollama.vbs');
+      require('child_process').exec(`wscript.exe "${vbsPath}"`, (err) => {
+        if (err) console.warn('Softcurse: Failed to auto-start local Ollama', err);
+        else console.log('Softcurse: Ollama auto-started via bundled script');
+      });
+    } catch (_) { }
+  }
+}
+
+function stopConfiguredLocalLlm() {
+  const cfg = getConfig();
+  if (!cfg.llm?.autoOllama) return;
+  if (cfg.llm?.provider === 'llamacpp') {
+    try {
+      if (localLlmProcess && !localLlmProcess.killed) localLlmProcess.kill();
+    } catch (err) {
+      console.warn('Softcurse: Failed to stop llama.cpp process', err);
+    }
+    localLlmProcess = null;
+    return;
+  }
+  if (cfg.llm?.provider === 'ollama') {
+    try {
+      const stopVbs = path.join(__dirname, 'scripts', 'ollama', 'stop-ollama.vbs');
+      require('child_process').execSync(`wscript.exe "${stopVbs}"`, { timeout: 4000 });
+    } catch (err) {
+      console.warn('Softcurse: Failed to auto-stop local Ollama', err);
+    }
+  }
 }
 
 // ── Telemetry ─────────────────────────────────────────────────────────────────
@@ -198,16 +292,11 @@ app.whenReady().then(() => {
   createWindow();
   applySystemSettings();
 
-  // Auto-start Ollama if configured
-  if (config.llm?.autoOllama) {
-    try {
-      const vbsPath = path.join(__dirname, 'scripts', 'ollama', 'run-ollama.vbs');
-      require('child_process').exec(`wscript.exe "${vbsPath}"`, (err) => {
-        if (err) console.warn('Softcurse: Failed to auto-start local Ollama', err);
-        else console.log('Softcurse: Ollama auto-started via bundled script');
-      });
-    } catch (_) { }
-  }
+  // Auto-start the selected local engine if configured.
+  startConfiguredLocalLlm().catch((err) => {
+    console.warn('Softcurse: Failed to auto-start local LLM', err);
+    sendLog('SYSTEM', 'Local engine autostart failed: ' + (err?.message || String(err)), 'warn');
+  });
 
   // Load persisted reminders and schedules
   loadPersistedReminders();
@@ -240,16 +329,13 @@ app.whenReady().then(() => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
 
-  // Stop Ollama if it was auto-started
-  if (config.llm?.autoOllama) {
-    try {
-      const stopVbs = path.join(__dirname, 'scripts', 'ollama', 'stop-ollama.vbs');
-      require('child_process').execSync(`wscript.exe "${stopVbs}"`, { timeout: 4000 });
-    } catch (err) {
-      console.warn('Softcurse: Failed to auto-stop local Ollama', err);
-    }
-  }
+  // Stop the selected local engine if HEX started it.
+  stopConfiguredLocalLlm();
 });
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (!mainWindow) createWindow(); });
+
+
+
+

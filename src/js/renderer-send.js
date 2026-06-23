@@ -26,7 +26,8 @@ window.sendHexMessage = async function sendHexMessage() {
     stage = 'browser session preflight';
     const preflightBrowserState = await window.getBrowserSessionState();
     window.updateSessionContextForUser(text, preflightBrowserState);
-    resolvedReference = window.hexReferenceResolver?.resolveMixedReference?.(text, !!preflightBrowserState?.open) || null;
+    const shouldResolveReference = window.hexReferenceResolver?.isReferenceCommand?.(text, !!preflightBrowserState?.open) === true;
+    resolvedReference = shouldResolveReference ? (window.hexReferenceResolver?.resolveMixedReference?.(text, !!preflightBrowserState?.open) || null) : null;
     if (resolvedReference) {
       addLog('CONTEXT', 'Resolved follow-up target: #' + resolvedReference.index + ' ' + (resolvedReference.label || resolvedReference.text || ''));
     }
@@ -302,3 +303,4 @@ if (document.readyState === 'loading') {
 } else {
   window.ensureChatInputBinding();
 }
+

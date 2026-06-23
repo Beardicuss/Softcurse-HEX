@@ -1,7 +1,7 @@
 {
   "name": "softcurse-hex",
   "version": "1.1.0",
-  "description": "Softcurse H.E.X. — Intelligent Cyberpunk Desktop Assistant",
+  "description": "Softcurse HEX - The Quiet Cardinal desktop companion",
   "author": "Softcurse Lab",
   "main": "main.js",
   "scripts": {
@@ -10,7 +10,8 @@
     "rebuild": "node scripts/rebuild.js",
     "postinstall": "electron-builder install-app-deps",
     "cf:dev": "npx wrangler dev cloudflare/hex-server/src/index.js --config cloudflare/hex-server/wrangler.jsonc",
-    "cf:deploy": "npx wrangler deploy --config cloudflare/hex-server/wrangler.jsonc"
+    "cf:deploy": "npx wrangler deploy --config cloudflare/hex-server/wrangler.jsonc",
+    "llama:qwen": "powershell -ExecutionPolicy Bypass -File scripts/llamacpp/start-qwen3.ps1"
   },
   "dependencies": {
     "cheerio": "^1.2.0",
@@ -39,7 +40,9 @@
       "local-voice/**/*",
       "!local-voice/models",
       "!local-voice/models/**/*",
-      "scripts/**/*"
+      "scripts/**/*",
+      "!src/assets/cardinal/**/*",
+      "!src/css/cardinal-theme.css"
     ],
     "win": {
       "target": "nsis",

@@ -88,6 +88,71 @@ function refreshBrainTelemetryTab() {
 }
 window.refreshBrainTelemetryTab = refreshBrainTelemetryTab;
 
+async function refreshBrainDatasetInspector() {
+  const summary = document.getElementById('brain-dataset-summary');
+  const grid = document.getElementById('brain-dataset-grid');
+  const pathEl = document.getElementById('brain-dataset-path');
+  if (!summary || !grid || !pathEl) return;
+  clearNode(grid);
+  summary.textContent = 'Scanning local evolution dataset...';
+  pathEl.textContent = '';
+
+  const result = await window.hexAPI?.getFinetuneStats?.();
+  if (!result?.success) {
+    summary.textContent = 'Dataset scan failed: ' + (result?.error || 'unknown error');
+    summary.style.color = 'var(--orange)';
+    return;
+  }
+
+  const stats = result.stats || {};
+  const enoughPositive = Number(stats.good || 0) >= 20;
+  const enoughCorrections = Number(stats.fix || 0) >= 10;
+  const enoughPreference = Number(stats.preferencePairs || 0) >= 10;
+  const readiness = enoughPositive && enoughCorrections && enoughPreference
+    ? 'READY FOR LOCAL TRAINING PREP'
+    : 'COLLECT MORE GOOD/FIX SIGNALS';
+
+  summary.style.color = enoughPositive && enoughCorrections ? 'var(--cyan)' : 'var(--orange)';
+  summary.textContent = stats.exists
+    ? readiness + ' · ' + (stats.evolutionRecords || 0) + ' feedback records · ' + (stats.lines || 0) + ' JSONL lines'
+    : 'No local evolution dataset yet. Use GOOD / WRONG / FIX on HEX replies to start collecting.';
+
+  const cells = [
+    ['GOOD', stats.good || 0, 'positive style/answer samples'],
+    ['FIX', stats.fix || 0, 'corrected answers'],
+    ['WRONG', stats.wrong || 0, 'negative signals'],
+    ['CHAT', stats.chatSamples || 0, 'chat training samples'],
+    ['PREF', stats.preferencePairs || 0, 'chosen vs rejected pairs'],
+    ['SIZE', Math.round(Number(stats.bytes || 0) / 1024) + ' KB', 'local JSONL size']
+  ];
+
+  cells.forEach(([label, value, hint]) => {
+    const card = window.hexRenderUtils.createEl('div');
+    card.style.border = '1px solid rgba(0,255,255,0.18)';
+    card.style.background = 'rgba(0,0,0,0.20)';
+    card.style.padding = '9px';
+    const title = window.hexRenderUtils.createEl('div', { text: label });
+    title.style.color = 'var(--muted)';
+    title.style.fontFamily = 'var(--font-d)';
+    title.style.fontSize = '11px';
+    const num = window.hexRenderUtils.createEl('div', { text: String(value) });
+    num.style.color = 'var(--cyan)';
+    num.style.fontFamily = 'var(--font-m)';
+    num.style.fontSize = '18px';
+    num.style.margin = '4px 0';
+    const desc = window.hexRenderUtils.createEl('div', { text: hint });
+    desc.style.color = 'var(--muted)';
+    desc.style.fontSize = '11px';
+    card.appendChild(title);
+    card.appendChild(num);
+    card.appendChild(desc);
+    grid.appendChild(card);
+  });
+
+  pathEl.textContent = 'Path: ' + (stats.path || 'unknown') + (stats.lastCreatedAt ? ' · Last feedback: ' + new Date(stats.lastCreatedAt).toLocaleString() : '');
+}
+window.refreshBrainDatasetInspector = refreshBrainDatasetInspector;
+
 function clearNode(node) {
   window.hexRenderUtils.clearNode(node);
 }
@@ -96,7 +161,7 @@ function appendText(parent, text) {
   parent.appendChild(document.createTextNode(text));
 }
 
-const AUTO_MODEL_PROVIDERS = new Set(['anthropic', 'openai', 'mistral', 'together', 'grok', 'gemini', 'cohere', 'hf', 'replicate', 'groq', 'openrouter']);
+const AUTO_MODEL_PROVIDERS = new Set(['anthropic', 'openai', 'mistral', 'together', 'grok', 'gemini', 'cohere', 'hf', 'replicate', 'groq', 'openrouter', 'llamacpp']);
 const LIVE_PROVIDER_LABELS = {
   ollama: 'OLLAMA',
   anthropic: 'ANTHROPIC',
@@ -182,7 +247,9 @@ function ensureProviderOption(selectEl, provider) {
   const count = (_lastLiveKeysMap[provider] || []).length;
   const label = provider === 'ollama'
     ? '🖥 Ollama (Local / Free)'
-    : getProviderLabel(provider) + ' (' + count + ' key' + (count === 1 ? '' : 's') + ')';
+    : provider === 'llamacpp'
+      ? '🧠 llama.cpp / GGUF (Local)'
+      : getProviderLabel(provider) + ' (' + count + ' key' + (count === 1 ? '' : 's') + ')';
   if (existing) {
     existing.textContent = label;
     return;
@@ -198,14 +265,21 @@ function syncProviderOptions(keysMap = {}) {
   if (!sel) return;
   ensureProviderOption(sel, 'none');
   ensureProviderOption(sel, 'ollama');
+  ensureProviderOption(sel, 'llamacpp');
   for (const provider of Object.keys(keysMap)) ensureProviderOption(sel, provider);
 }
 
 function getSelectedProviderStatus(provider) {
-  if (provider === 'ollama') return 'Local provider is available.';
+  if (provider === 'ollama') return 'Local Ollama provider is available when Ollama is running.';
+  if (provider === 'llamacpp') return 'Local llama.cpp GGUF provider. Start llama.cpp server on the configured Base URL.';
   const count = (_lastLiveKeysMap[provider] || []).length;
-  if (count > 0) return count + ' live key' + (count === 1 ? '' : 's') + ' available for ' + getProviderLabel(provider) + '.';
-  return getProviderLabel(provider) + ' has no live keys yet. HEX will fall back automatically.';
+  const cap = _lastCapabilityPacket?.providers?.find((item) => item.provider === provider);
+  const packetNote = _lastCapabilityPacket?.stale
+    ? ' Capability packet is stale.'
+    : (_lastCapabilityPacket?.degraded ? ' Capability packet is degraded.' : '');
+  if (count > 0) return count + ' live key' + (count === 1 ? '' : 's') + ' available for ' + getProviderLabel(provider) + '.' + packetNote;
+  if (cap?.status && cap.status !== 'ready') return getProviderLabel(provider) + ' status: ' + cap.status + '.' + packetNote;
+  return getProviderLabel(provider) + ' has no live keys yet. HEX will fall back automatically.' + packetNote;
 }
 
 function renderProviderFailurePanel() {
@@ -619,6 +693,7 @@ async function openSettings(targetTab = 'tab-general') {
   updatePersonaBadge();
   refreshPersonaList();
   refreshBrainTelemetryTab();
+  await refreshBrainDatasetInspector();
   await loadLiveArsenal();
   await autoSyncProvider();
   if (AUTO_MODEL_PROVIDERS.has(document.getElementById('cfg-provider')?.value || '')) {
@@ -805,13 +880,13 @@ function updateProviderUI() {
   window._currentProvider = p;
   const autoOllamaEnabled = document.getElementById('cfg-autoollama')?.value === 'true';
   const baseUrlGroup = document.getElementById('cfg-baseurl-group');
-  if (baseUrlGroup) baseUrlGroup.style.display = p === 'ollama' && autoOllamaEnabled ? '' : 'none';
+  if (baseUrlGroup) baseUrlGroup.style.display = (p === 'ollama' && autoOllamaEnabled) || p === 'llamacpp' ? '' : 'none';
 
   const providerHint = document.getElementById('provider-auto-hint');
   if (providerHint) providerHint.textContent = getSelectedProviderStatus(p);
 
   const mh = document.getElementById('model-hint');
-  if (mh) mh.textContent = p === 'ollama' ? 'Local models come from your Ollama server.' : 'Models are discovered automatically from the selected provider key.';
+  if (mh) mh.textContent = p === 'ollama' ? 'Local models come from your Ollama server.' : p === 'llamacpp' ? 'Local GGUF model served by llama.cpp. Default: Qwen3-8B-Q4_K_M.' : 'Models are discovered automatically from the selected provider key.';
 
   const modelSelect = document.getElementById('cfg-model');
   if (modelSelect) {
@@ -848,7 +923,7 @@ async function fetchAvailableModels() {
     return;
   }
 
-  if (provider === 'ollama') {
+  if (provider === 'ollama' || provider === 'llamacpp') {
     btn.textContent = '⏳ ...';
     btn.disabled = true;
     statusEl.style.display = 'none';
@@ -907,7 +982,7 @@ function renderModelPicker(freeOnly) {
   const allCount = _allFetchedModels.length;
 
   // Auto-fill if input is blank or a bare provider name
-  const bare = ['gemini', 'grok', 'openai', 'anthropic', 'mistral', 'groq', 'ollama', 'together', 'cohere', 'openrouter'];
+  const bare = ['gemini', 'grok', 'openai', 'anthropic', 'mistral', 'groq', 'ollama', 'llamacpp', 'together', 'cohere', 'openrouter'];
   if (!mi.value || bare.includes(mi.value.toLowerCase().trim())) {
     const firstFree = _allFetchedModels.find(m => m.free);
     mi.value = (firstFree || _allFetchedModels[0] || {}).id || '';
@@ -1005,6 +1080,7 @@ async function saveSettings() {
       autoOllama: document.getElementById('cfg-autoollama')?.value === 'true',
       baseUrl: document.getElementById('cfg-baseurl').value,
       model: document.getElementById('cfg-model').value,
+      ggufPath: config.llm?.ggufPath || 'models/qwen3/Qwen3-8B-Q4_K_M.gguf',
       apiKey: '',
       apiKeys: config.llm?.apiKeys || {},
       manualApiKeys: config.llm?.manualApiKeys || {},
@@ -1135,6 +1211,7 @@ async function loadLiveArsenal() {
   try {
     const res = await window.hexAPI.getProviderCapabilities();
     if (res && res.success) {
+      _lastCapabilityPacket = res.capabilities || null;
       _lastLiveKeysMap = capabilitiesToKeyMap(res.providers);
       _lastManualKeysMap = res.manualKeys || {};
       syncProviderOptions(_lastLiveKeysMap);
@@ -1322,6 +1399,7 @@ async function autoSyncProvider() {
   try {
     const res = await window.hexAPI.getProviderCapabilities();
     if (!res || !res.success) return;
+    _lastCapabilityPacket = res.capabilities || null;
     _lastLiveKeysMap = capabilitiesToKeyMap(res.providers);
     _lastManualKeysMap = res.manualKeys || {};
     syncProviderOptions(_lastLiveKeysMap);
@@ -1329,7 +1407,7 @@ async function autoSyncProvider() {
 
     const sel = document.getElementById('cfg-provider');
     const current = sel?.value || 'none';
-    const hasKey = current === 'ollama' || (_lastLiveKeysMap[current] && _lastLiveKeysMap[current].length > 0);
+    const hasKey = current === 'ollama' || current === 'llamacpp' || (_lastLiveKeysMap[current] && _lastLiveKeysMap[current].length > 0);
     if ((!hasKey && current !== 'ollama') || current === 'none') {
       const best = getPreferredProviderFromKeys(_lastLiveKeysMap);
       if (best && sel) {
@@ -1352,6 +1430,7 @@ async function autoSyncProvider() {
 
 window.addEventListener('click', (event) => {
   if (event.target.closest('#brain-telemetry-refresh')) { refreshBrainTelemetryTab(); return; }
+  if (event.target.closest('#brain-dataset-refresh')) { refreshBrainDatasetInspector(); return; }
   const providerRow = event.target.closest('[data-live-provider]');
   if (providerRow) {
     selectLiveProvider(providerRow.dataset.liveProvider);
@@ -1369,3 +1448,7 @@ window.addEventListener('click', (event) => {
 });
 
 document.getElementById('cfg-cloud-test')?.addEventListener('click', testCloudConnection);
+
+
+
+

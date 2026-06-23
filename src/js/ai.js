@@ -14,6 +14,7 @@ class HexAI {
     // Complexity-aware routing: fast models for simple queries
     this.FAST_MODELS = {
       ollama: 'qwen2.5:7b',  // default local model (overridden by user config)
+      llamacpp: 'Qwen3-8B-Q4_K_M',
       openai: 'gpt-4o-mini',
       anthropic: 'claude-haiku-4-5-20251001',
       gemini: 'gemini-2.0-flash-lite',
@@ -45,7 +46,39 @@ class HexAI {
       this.history = this.history.slice(-this.MAX_HISTORY * 2);
   }
 
-  // ── Main chat entry ───────────────────────────────────────
+  
+  _finalizeModelOutput(text) {
+    let out = String(text || '').replace(/\r\n/g, '\n').trim();
+    if (!out) return '';
+
+    out = out
+      .replace(/<think>[\s\S]*?<\/think>/gi, '')
+      .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+      .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '')
+      .replace(/```(?:thinking|reasoning|thoughts?|analysis)[\s\S]*?```/gi, '')
+      .trim();
+
+    const hiddenSection = /(?:^|\n)\s*(?:thought process|thinking process|reasoning|analysis|internal thoughts?|chain of thought)\s*:\s*/i;
+    const match = out.search(hiddenSection);
+    if (match >= 0) {
+      const before = out.slice(0, match).trim();
+      const after = out.slice(match).replace(hiddenSection, '').trim();
+      const finalMatch = after.match(/(?:final answer|answer|result|response)\s*:\s*([\s\S]*)$/i);
+      out = (finalMatch?.[1] || before || after).trim();
+    }
+
+    const finalMarkers = [
+      /(?:^|\n)\s*(?:final answer|final response|answer|result)\s*:\s*/i,
+      /(?:^|\n)\s*(?:итог|ответ)\s*:\s*/i,
+      /(?:^|\n)\s*(?:საბოლოო პასუხი|პასუხი)\s*:\s*/i
+    ];
+    for (const marker of finalMarkers) {
+      const parts = out.split(marker);
+      if (parts.length > 1) out = parts[parts.length - 1].trim();
+    }
+
+    return out.replace(/\n{3,}/g, '\n\n').trim();
+  }// ── Main chat entry ───────────────────────────────────────
   async chat(userMsg, systemState, lang = 'ka', visionData = null, maxTokens = 800, options = {}) {
     this._maxTokens = maxTokens;
     this._lastSystemState = systemState || null;
@@ -174,7 +207,7 @@ class HexAI {
         // Build an array of keys to test for this provider
         let keysToTry = [];
         let usingLivePool = false;
-        if (currProvider === 'ollama') {
+        if (currProvider === 'ollama' || currProvider === 'llamacpp') {
           keysToTry = [null]; // No API key required
         } else if (liveKeys[currProvider] && liveKeys[currProvider].length > 0) {
           keysToTry = [null]; // Main process owns and cycles provider keys
@@ -202,6 +235,7 @@ class HexAI {
 
             switch (currProvider) {
               case 'ollama': text = await this._ollama(sysPrompt, visionData); break;
+              case 'llamacpp': text = await this._llamaCpp(sysPrompt, visionData); break;
               case 'openai':
               case 'anthropic':
               case 'gemini':
@@ -273,7 +307,8 @@ class HexAI {
 
       window._hexLastProviderFailures = [];
 
-      // Guard: some providers return null content
+      // Guard: some providers return null content; never expose hidden reasoning.
+      text = this._finalizeModelOutput(text);
       if (!text || typeof text !== 'string') text = '…';
 
       // Restore original config parameters
@@ -286,6 +321,7 @@ class HexAI {
         ? window.hexBrainCore.survivalReply({ userMsg, lang, error: e })
         : ('Neural link disrupted: ' + (e?.message || String(e)));
       window.hexTaskBus?.push('Neural layer error caught. Local Brain Core survival response used.');
+      text = this._finalizeModelOutput(text);
     } finally {
       this._transientMessages = null;
     }
@@ -338,8 +374,31 @@ class HexAI {
     if (!res.ok) throw new Error('Ollama ' + res.status + ': ' + await res.text());
     return ((await this._safeJson(res))?.message?.content) || '…';
   }
+  // ── llama.cpp compatible server (local GGUF) ─────────────────
+  async _llamaCpp(system, visionData = null) {
+    if (visionData) throw new Error('llama.cpp GGUF route does not support vision payloads yet.');
+    const baseUrl = (this.config.llm.baseUrl || 'http://127.0.0.1:8080').replace(/\/$/, '');
+    const model = this.config.llm.model || 'Qwen3-8B-Q4_K_M';
+    const messages = [{ role: 'system', content: system }, ...this._msgs()];
 
+    const res = await this._fetchWithTimeout(baseUrl + '/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: 0.72,
+        max_tokens: this._maxTokens || 800,
+        stream: false
+      })
+    }, Math.max(this.REQUEST_TIMEOUT_MS, 60000));
 
+    if (!res.ok) throw new Error('llama.cpp ' + res.status + ': ' + await res.text());
+    const json = await this._safeJson(res);
+    const choice = json?.choices?.[0] || {};
+    const message = choice.message || {};
+    return message.content || message.reasoning_content || choice.text || json?.content || '...';
+  }
   async _executeRemoteProvider(provider, system, visionData = null) {
     const result = await window.hexAPI.executeProvider({
       provider,
@@ -517,6 +576,7 @@ class HexAI {
     const provider = this.config?.llm?.provider || 'none';
     const model = String(this.config?.llm?.model || '').toLowerCase();
     return provider === 'ollama' ||
+      provider === 'llamacpp' ||
       provider === 'hf' ||
       /(7b|8b|mini|small|instant|haiku|flash-lite|command-r)/i.test(model);
   }
@@ -565,6 +625,20 @@ class HexAI {
   // ── List available models from provider API ───────────────
   // Returns array of { id, free } objects
   async fetchModels(provider, _apiKey, baseUrl) {
+    if (provider === 'llamacpp') {
+      const base = (baseUrl || 'http://127.0.0.1:8080').replace(/\/$/, '');
+      try {
+        const response = await fetch(base + '/v1/models');
+        if (response.ok) {
+          const json = await response.json();
+          const data = Array.isArray(json?.data) ? json.data : [];
+          const models = data.map((item) => ({ id: item.id || item.name || 'Qwen3-8B-Q4_K_M', free: true })).filter((item) => item.id);
+          models.forEach((model) => { model.label = model.id.includes('Qwen3-8B-Q4_K_M') ? 'Qwen3-8B-Q4_K_M' : model.id; });
+          if (models.length) return models;
+        }
+      } catch (_) { }
+      return [{ id: 'Qwen3-8B-Q4_K_M', free: true }];
+    }
     if (provider !== 'ollama') {
       throw new Error('Remote model inventory is supplied by Hunter capabilities.');
     }
@@ -611,21 +685,31 @@ class HexAI {
 
   _buildProviderQueue({ routeProvider, liveKeys, orchestration }) {
     const queue = [];
-    const ranked = Array.isArray(orchestration?.providers)
-      ? orchestration.providers.filter((item) => item?.status === 'ready')
-      : [];
+    const providers = Array.isArray(orchestration?.providers) ? orchestration.providers : [];
+    const byProvider = Object.fromEntries(providers.map((item) => [String(item.provider || '').trim().toLowerCase(), item]));
+    const ranked = providers.filter((item) => item?.status === 'ready');
+
+    const isLocal = (provider) => provider === 'ollama' || provider === 'llamacpp';
+    const isAllowed = (provider) => {
+      if (isLocal(provider)) return true;
+      const capability = byProvider[provider];
+      if (capability && capability.status !== 'ready') return false;
+      if (providers.length > 0 && !capability) return false;
+      return liveKeys[provider]?.length > 0;
+    };
 
     const addProvider = (provider) => {
       const normalized = String(provider || '').trim().toLowerCase();
       if (!normalized || normalized === 'none' || queue.includes(normalized)) return;
-      if (normalized === 'ollama' || liveKeys[normalized]?.length > 0) queue.push(normalized);
+      if (isAllowed(normalized)) queue.push(normalized);
     };
 
-    const selected = ranked.find((item) => item.provider === routeProvider);
-    if (routeProvider === 'ollama' || selected?.status === 'ready') {
+    const selected = byProvider[String(routeProvider || '').trim().toLowerCase()];
+    if (isLocal(routeProvider) || selected?.status === 'ready' || (!providers.length && liveKeys[routeProvider]?.length > 0)) {
       addProvider(routeProvider);
     } else if (routeProvider !== 'none') {
-      window.hexTaskBus?.push('Provider ' + routeProvider + ' is not ready. Server-ranked fallback activating...');
+      const status = selected?.status || 'not advertised';
+      window.hexTaskBus?.push('Provider ' + routeProvider + ' skipped by server orchestration (' + status + '). Using ranked fallback...');
     }
 
     ranked.forEach((item) => addProvider(item.provider));
@@ -641,7 +725,9 @@ class HexAI {
         preferredProvider: payload.preferredProvider || '',
         reason: summary?.reason || '',
         error: summary?.raw || summary?.reason || '',
-        cooldownMs: summary?.kind === 'rate_limit' ? 2 * 60 * 1000 : undefined
+        cooldownMs: summary?.kind === 'rate_limit'
+          ? 2 * 60 * 1000
+          : (summary?.skipRemainingKeys ? 30 * 60 * 1000 : undefined)
       });
     } catch (_) {
       // Cloud orchestration reporting should never break chat fallback.
@@ -709,3 +795,6 @@ class HexAI {
 }
 
 window.hexAI = new HexAI();
+
+
+

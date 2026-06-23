@@ -27,9 +27,8 @@
                https://github.com
                https://objects.githubusercontent.com;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Softcurse H.E.X.</title>
+  <title>Softcurse HEX - The Quiet Cardinal</title>
   <link rel="stylesheet" href="css/style.css">
-  <link rel="stylesheet" href="css/cardinal-theme.css">
 </head>
 
 <body>
@@ -264,6 +263,7 @@
             <select id="cfg-provider" class="form-control" style="flex:1;">
               <option value="none">— None (offline) —</option>
               <option value="ollama">🖥 Ollama (Local / Free)</option>
+              <option value="llamacpp">🧠 llama.cpp / GGUF (Local)</option>
             </select>
           </div>
           <div id="provider-auto-hint" class="form-hint" style="color:var(--cyan);margin-top:4px;">
@@ -625,7 +625,18 @@
           Shows why HEX chose memory, browser, desktop, local reflex, or provider routing. This is a debug view for dialogue intelligence.
         </div>
         <div id="brain-telemetry-summary" class="form-hint" style="margin-bottom:8px;color:var(--cyan);">No route events yet.</div>
-        <div id="brain-telemetry-list" style="display:grid;gap:8px;max-height:440px;overflow-y:auto;border:1px solid var(--accent);background:var(--surface2);padding:8px;"></div>
+        <div id="brain-telemetry-list" style="display:grid;gap:8px;max-height:320px;overflow-y:auto;border:1px solid var(--accent);background:var(--surface2);padding:8px;"></div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:20px 0 12px;gap:10px;">
+          <div class="settings-section-label" style="margin:0;">◆ LOCAL EVOLUTION DATASET</div>
+          <button type="button" id="brain-dataset-refresh" class="btn btn-secondary" style="font-size:13px;padding:4px 10px;">↻ SCAN</button>
+        </div>
+        <div class="form-hint" style="margin-bottom:10px;line-height:1.5;">
+          Shows the local JSONL records created by GOOD / WRONG / FIX. This does not train a model yet; it tells us whether HEX has enough clean feedback to evolve later.
+        </div>
+        <div id="brain-dataset-summary" class="form-hint" style="margin-bottom:8px;color:var(--cyan);">Dataset not scanned yet.</div>
+        <div id="brain-dataset-grid" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:8px;"></div>
+        <div id="brain-dataset-path" class="form-hint" style="font-family:var(--font-m);word-break:break-all;color:var(--muted);"></div>
       </div>
 
       <!-- ══ TAB: SECURITY ══════════════════════════════════ -->
@@ -796,11 +807,6 @@
           <div class="mic-dot"></div>
           <span id="mic-label" data-i18n="microphone_off">MIC OFF</span>
         </div>
-
-
-        <button id="mode-switch-btn" class="mode-switch-btn" title="Switch Mode">
-          <span class="mode-icon">◆</span> <span id="mode-label">HEX</span>
-        </button>
 
         <button id="settings-btn" title="Settings">⚙</button>
 

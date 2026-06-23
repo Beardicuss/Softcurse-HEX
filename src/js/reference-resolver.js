@@ -230,6 +230,23 @@ window.hexReferenceResolver = (() => {
     return browserCandidate || desktopCandidate || null;
   }
 
+
+  function isBrowserReferenceCommand(text, browserOpen = false) {
+    if (!browserOpen) return false;
+    const lower = String(text || '').trim().toLowerCase();
+    if (/^(open|click|play|select|press|read|show|scroll|go|back|forward|refresh|reload)\s+/.test(lower) &&
+      /\b(first|second|third|fourth|fifth|last|it|that|this|them|those|these|one|ones|same|next|previous|video|result|link|button|page|tab)\b/.test(lower)) {
+      return true;
+    }
+    if (/^(open it|click it|play it|select it|press it|read it|show it|open that|click that|play that|select that)$/.test(lower)) {
+      return true;
+    }
+    return false;
+  }
+
+  function isReferenceCommand(text, browserOpen = false) {
+    return isDesktopReferenceCommand(text) || isBrowserReferenceCommand(text, browserOpen);
+  }
   function isDesktopReferenceCommand(text) {
     const lower = String(text || '').trim().toLowerCase();
     if (/^(open|launch|play|start|show|reveal|locate|close|focus|switch|select|kill|terminate|end|run|use)\s+/.test(lower) &&
@@ -246,6 +263,9 @@ window.hexReferenceResolver = (() => {
     resolveDesktopReference,
     resolveMixedReference,
     isDesktopReferenceCommand,
+    isReferenceCommand,
     detectSurfaceBias
   };
 })();
+
+

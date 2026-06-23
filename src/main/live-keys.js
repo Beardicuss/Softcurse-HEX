@@ -192,27 +192,30 @@ module.exports = function registerLiveKeys({ ipcMain, sendLog, getConfig, setCon
 
     _cloudRefreshInFlight = true;
     try {
-      const [keyResult, capabilityResult] = await Promise.allSettled([
-        fetchCloudJson('/api/hunter/valid-keys'),
-        fetchCloudJson('/api/hunter/capabilities')
-      ]);
-      if (keyResult.status === 'fulfilled') {
-        _cloudApiKeys = filterSupportedPool(keyResult.value.keys || {});
-        if (capabilityResult.status === 'fulfilled') {
-          _cloudCapabilities = capabilityResult.value.capabilities || _cloudCapabilities;
-        } else {
-          _cloudCapabilities = buildFallbackCapabilitiesFromKeys(_cloudApiKeys);
-          sendLog?.('CLOUD', 'Hunter capability endpoint unavailable; using valid-key fallback.', 'warn');
-        }
-        applyMergedPool('cloud-sync');
-      } else {
-        if (capabilityResult.status === 'rejected') {
-          sendLog?.('CLOUD', 'Hunter capability refresh failed: ' + capabilityResult.reason.message, 'warn');
-        }
-        throw keyResult.reason;
+      const capabilityResult = await fetchCloudJson('/api/hunter/capabilities' + (force ? '?force=1' : ''));
+      _cloudCapabilities = capabilityResult.capabilities || _cloudCapabilities;
+
+      try {
+        const keyResult = await fetchCloudJson('/api/hunter/valid-keys');
+        _cloudApiKeys = filterSupportedPool(keyResult.keys || {});
+      } catch (keyError) {
+        sendLog?.('CLOUD', 'Hunter valid-key refresh failed; keeping last private execution pool: ' + keyError.message, 'warn');
       }
-    } catch (error) {
-      sendLog?.('CLOUD', 'Hunter key sync failed: ' + error.message, 'warn');
+
+      applyMergedPool(_cloudCapabilities?.stale ? 'cloud-stale-capability-sync' : 'cloud-capability-sync');
+      if (_cloudCapabilities?.degraded) {
+        sendLog?.('CLOUD', 'Hunter capabilities degraded: ' + (_cloudCapabilities.degradationReason || _cloudCapabilities.source || 'unknown'), 'warn');
+      }
+    } catch (capabilityError) {
+      sendLog?.('CLOUD', 'Hunter capability refresh failed: ' + capabilityError.message, 'warn');
+      try {
+        const keyResult = await fetchCloudJson('/api/hunter/valid-keys');
+        _cloudApiKeys = filterSupportedPool(keyResult.keys || {});
+        if (!_cloudCapabilities) _cloudCapabilities = buildFallbackCapabilitiesFromKeys(_cloudApiKeys);
+        applyMergedPool('cloud-key-fallback');
+      } catch (keyError) {
+        sendLog?.('CLOUD', 'Hunter key sync failed: ' + keyError.message, 'warn');
+      }
     } finally {
       _cloudRefreshInFlight = false;
     }
@@ -254,11 +257,16 @@ module.exports = function registerLiveKeys({ ipcMain, sendLog, getConfig, setCon
     const byProvider = Object.fromEntries(serverProviders.map((item) => [normalizeProviderId(item.provider), { ...item }]));
     for (const [provider, keys] of Object.entries(pool)) {
       const current = byProvider[provider] || { provider, label: provider.toUpperCase(), score: 0, models: [] };
+      const hasExecutionKeys = keys.length > 0;
+      const currentStatus = current.status || 'unavailable';
       byProvider[provider] = {
         ...current,
         validKeys: Math.max(Number(current.validKeys || 0), keys.length),
-        status: current.onCooldown ? 'cooldown' : 'ready',
-        source: current.provider ? (current.source || 'merged') : 'local'
+        executionKeysAvailable: hasExecutionKeys,
+        status: current.onCooldown
+          ? 'cooldown'
+          : (hasExecutionKeys && ['unavailable', 'invalid', 'degraded'].includes(currentStatus) ? 'ready' : currentStatus),
+        source: current.provider ? (current.source || 'canonical-capability') : 'local-manual'
       };
     }
     const providers = Object.values(byProvider).sort((a, b) => {
@@ -353,3 +361,5 @@ module.exports = function registerLiveKeys({ ipcMain, sendLog, getConfig, setCon
   });
 
 };
+
+

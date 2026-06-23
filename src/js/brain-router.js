@@ -19,7 +19,7 @@
 
 
   function isGreeting(text) {
-    return /^(hi|hello|hey|yo|sup|hex|cardinal|привет|здравствуй|хекс|кардинал|გამარჯობა|ჰექს|კარდინალ)\b/i.test(clean(text));
+    return /^(hi|hello|hey|yo|sup|wazzup|wazzap|wassup|whats up|what'?s up|hex|cardinal|привет|здравствуй|хекс|кардинал|გამარჯობა|ჰექს|კარდინალ)\b/i.test(clean(text));
   }
 
   function isThanks(text) {
@@ -53,6 +53,17 @@
     return /(what.*(pc|computer).*(know|see|have)|what apps|what games|what files|what folders|pc inventory|computer inventory|что.*(пк|компьютер).*(видишь|знаешь)|какие приложения|какие игры|какие файлы|инвентар|კომპიუტერზე რას ხედავ|რა აპები|რა თამაშები|რა ფაილები|ინვენტარ)/i.test(clean(text));
   }
 
+
+  function isSimpleCompanionTurn(text, actionPlan) {
+    const raw = clean(text);
+    if (!raw || raw.length > 240) return false;
+    if (/[{}<>]|```|\b(function|class|SELECT|INSERT|UPDATE|DELETE|import|export)\b/i.test(raw)) return false;
+    if (/\b(open|launch|run|search|find|scan|delete|remove|install|download|click|play|close|kill|write|create|edit)\b/i.test(raw)) return false;
+    const companionPattern = /\b(how are you|are you okay|what'?s up|what up|wazzup|wazzap|wassup|talk|chat|listen|i feel|i think|i want|i like|i hate|i am|i'm|can you help|what can you do|ok|okay|good|nice|cool|yes|no|maybe|как ты|ты как|поговор|слушай|я хочу|я думаю|мне нравится|помоги|что ты можешь|хорошо|ладно|да|нет|როგორ ხარ|კარგად ხარ|ვისაუბროთ|მისმინე|მინდა|ვფიქრობ|მომწონს|დამეხმარ|რა შეგიძლია|კარგი|დიახ|არა)\b/i;
+    if (!companionPattern.test(raw)) return false;
+    if (actionPlan && actionPlan.domain && !['dialogue', 'reasoning'].includes(actionPlan.domain)) return false;
+    return true;
+  }
   function isCorrection(text) {
     return /\b(no|wrong|actually|i mean|not that|correction|don't call|do not call|нет|не так|на самом деле|исправ|не называй|არა|არასწორ|სინამდვილეში)\b/i.test(clean(text));
   }
@@ -226,6 +237,16 @@
       };
     }
 
+    if (isProfileQuestion(userMsg)) {
+      return {
+        mode: 'profile-answer',
+        reason: 'local-profile-default',
+        text: window.hexBrainResponseComposer?.profileReply?.(lang, cloudPacket, extractLocalMemory(userMsg), extractCloudMemories(cloudPacket)) || window.hexBrainCore?.survivalReply?.({ userMsg, lang }) || '',
+        actions: [],
+        hints: buildRouteHints('profile-answer', systemState, 'local-profile-default', { actionPlan, userMsg })
+      };
+    }
+
     if (isContinuityQuestion(userMsg) && cloudPacket) {
       return {
         mode: 'continuity-answer',
@@ -233,6 +254,16 @@
         text: window.hexBrainResponseComposer?.continuityReply?.(lang, cloudPacket) || window.hexBrainCore?.survivalReply?.({ userMsg, lang }) || '',
         actions: [],
         hints: buildRouteHints('continuity-answer', systemState, 'server-continuity', { actionPlan, userMsg })
+      };
+    }
+
+    if (isContinuityQuestion(userMsg)) {
+      return {
+        mode: 'continuity-answer',
+        reason: 'local-continuity-memory',
+        text: window.hexBrainResponseComposer?.companionReply?.(lang, userMsg, systemState) || window.hexBrainCore?.survivalReply?.({ userMsg, lang }) || '',
+        actions: [],
+        hints: buildRouteHints('continuity-answer', systemState, 'local-continuity-memory', { actionPlan, userMsg })
       };
     }
 
@@ -289,15 +320,27 @@
     }
 
     if ((isGreeting(userMsg) || isThanks(userMsg)) && userMsg.split(/\s+/).length <= 5) {
+      const useCompanion = isGreeting(userMsg) && (userMsg.split(/\s+/).length > 2 || /\b(wazzup|wazzap|wassup|what'?s up|what up|cardinal)\b/i.test(userMsg));
       return {
-        mode: 'local-reflex',
+        mode: useCompanion ? 'companion-local' : 'local-reflex',
         reason: isGreeting(userMsg) ? 'greeting' : 'thanks',
-        text: window.hexBrainCore?.survivalReply?.({ userMsg, lang }) || '',
+        text: useCompanion
+          ? (window.hexBrainResponseComposer?.companionReply?.(lang, userMsg, systemState) || window.hexBrainCore?.survivalReply?.({ userMsg, lang }) || '')
+          : (window.hexBrainCore?.survivalReply?.({ userMsg, lang }) || ''),
         actions: [],
         hints: buildRouteHints('local-reflex', systemState, isGreeting(userMsg) ? 'greeting' : 'thanks', { actionPlan, userMsg })
       };
     }
 
+    if (isSimpleCompanionTurn(userMsg, actionPlan)) {
+      return {
+        mode: 'companion-local',
+        reason: 'simple-dialogue-local-first',
+        text: window.hexBrainResponseComposer?.companionReply?.(lang, userMsg, systemState) || window.hexBrainCore?.survivalReply?.({ userMsg, lang }) || '',
+        actions: [],
+        hints: buildRouteHints('local-reflex', systemState, 'simple-dialogue-local-first', { actionPlan, userMsg, confidence: 0.78 })
+      };
+    }
     const routeMode = cloudPacket ? 'server-context-provider' : 'provider';
     return {
       mode: routeMode,
@@ -315,4 +358,8 @@
     localProviderHealth
   };
 })();
+
+
+
+
 

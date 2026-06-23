@@ -206,7 +206,6 @@
 
     /* ── Top Bar ─────────────────────────────────────────────── */
     bind('mic-status', 'click', () => toggleMic());
-    bind('mode-switch-btn', 'click', () => switchMode('toggle'));
     bind('settings-btn', 'click', () => openSettings());
 
     /* ── Window Controls (delegation on .win-controls) ───────── */

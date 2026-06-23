@@ -90,7 +90,7 @@ function defaultConfig() {
       interests: '',
       occupation: ''
     },
-    llm: { provider: 'ollama', model: 'qwen2.5:7b', apiKey: '', baseUrl: 'http://localhost:11434', manualApiKeys: {} },
+    llm: { provider: 'llamacpp', model: 'Qwen3-8B-Q4_K_M', apiKey: '', baseUrl: 'http://127.0.0.1:8080', ggufPath: path.join(__dirname, '..', '..', 'models', 'qwen3', 'Qwen3-8B-Q4_K_M.gguf'), manualApiKeys: {} },
     voice: { enabled: true, wakeWord: 'hey hex', volume: 0.9, rate: 0.95, pitch: 0.85, voiceName: '' },
     monitoring: { breaks: true, breakIntervalMin: 90, idleThresholdMin: 5, proactiveAdvice: true },
     ui: { theme: 'cyber', notifications: true },
@@ -110,6 +110,16 @@ function loadConfig(safeStorage, app, configPath) {
       // Auto-migrate old AppData voice models path to the local-voice default
       if (raw.voice && raw.voice.modelsDir && raw.voice.modelsDir.includes('AppData')) {
         raw.voice.modelsDir = path.join(app.getAppPath(), 'local-voice', 'models');
+        hasConfigChange = true;
+      }
+
+      raw.llm = raw.llm || {};
+      if (!raw.llm.ggufPath) {
+        raw.llm.ggufPath = path.join(__dirname, '..', '..', 'models', 'qwen3', 'Qwen3-8B-Q4_K_M.gguf');
+        hasConfigChange = true;
+      }
+      if (raw.llm.provider === 'llamacpp' && !raw.llm.baseUrl) {
+        raw.llm.baseUrl = 'http://127.0.0.1:8080';
         hasConfigChange = true;
       }
 

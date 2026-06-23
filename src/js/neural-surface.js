@@ -188,11 +188,11 @@ function nsUpdateDaemons() {
 
     const dLLM = document.getElementById('daemon-llm');
     if (dLLM) {
-        const isCloud = config.llm?.provider !== 'ollama' && config.llm?.provider !== 'none';
+        const isCloud = config.llm?.provider !== 'ollama' && config.llm?.provider !== 'llamacpp' && config.llm?.provider !== 'none';
         if (isCloud) {
             dLLM.textContent = nsT('status_cloud');
             dLLM.className = 'daemon-val cloud';
-        } else if (config.llm?.provider === 'ollama') {
+        } else if (config.llm?.provider === 'ollama' || config.llm?.provider === 'llamacpp') {
             dLLM.textContent = nsT('status_local');
             dLLM.className = 'daemon-val local';
         } else {

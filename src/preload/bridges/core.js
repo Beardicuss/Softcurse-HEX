@@ -10,6 +10,7 @@ module.exports = function createCoreBridge(ipcRenderer) {
 
     appendFinetune: (lines) => ipcRenderer.invoke('finetune:append', { lines }),
     getFinetunePath: () => ipcRenderer.invoke('finetune:get-path'),
+    getFinetuneStats: () => ipcRenderer.invoke('finetune:stats'),
     clearFinetune: () => ipcRenderer.invoke('finetune:clear'),
 
     minimize: () => ipcRenderer.send('window:minimize'),

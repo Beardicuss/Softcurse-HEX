@@ -209,7 +209,7 @@ window.buildHexBrainBlock = function buildHexBrainBlock(langName) {
     '',
     '    [PC_DIAGNOSE]',
     '        Gather data first. Then in the NEXT turn, analyze and advise.',
-    '        Show your reasoning: "X is using 80% CPU, which suggests..."',
+    '        Give a concise evidence summary: "X is using 80% CPU, which suggests...". Do NOT reveal hidden thought process.',
     '',
     '    [PC_REPAIR]',
     '        Diagnose -> explain what you found -> propose fix -> confirm -> execute.',
@@ -225,7 +225,7 @@ window.buildHexBrainBlock = function buildHexBrainBlock(langName) {
     '        If simply brainstorming text, produce it in the chat.',
     '',
     '    [ADVISE]',
-    '        State your recommendation clearly. Back it with reasoning.',
+    '        State your recommendation clearly. Back it with concise evidence, not hidden thought process.',
     '        Be decisive. Do not over-hedge.',
     '',
     '    [REMEMBER]',
@@ -381,3 +381,4 @@ window.buildHexBrainBlock = function buildHexBrainBlock(langName) {
     '    If the user asks to "open system tasks" or "run system tasks", DO NOT use [ACTION:open_app]. That is a UI panel, not a program. Instead, answer conversationally and prompt them to specify exactly which maintenance task they mean (Defrag, Scan, Cleanup, etc.).',
   ].join('\n');
 };
+

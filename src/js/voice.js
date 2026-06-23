@@ -150,6 +150,26 @@ class HexVoice {
       this._ttsAudioCtx = new AudioContext();
     return this._ttsAudioCtx;
   }
+  _finalizeSpeechText(text) {
+    let out = String(text || '').replace(/\r\n/g, '\n').trim();
+    out = out
+      .replace(/<think>[\s\S]*?<\/think>/gi, '')
+      .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+      .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '')
+      .replace(/```(?:thinking|reasoning|thoughts?|analysis)[\s\S]*?```/gi, '')
+      .replace(/\[ACTION:[^\]]+\]/g, '')
+      .trim();
+    const markers = [
+      /(?:^|\n)\s*(?:final answer|final response|answer|result)\s*:\s*/i,
+      /(?:^|\n)\s*(?:итог|ответ)\s*:\s*/i,
+      /(?:^|\n)\s*(?:საბოლოო პასუხი|პასუხი)\s*:\s*/i
+    ];
+    for (const marker of markers) {
+      const parts = out.split(marker);
+      if (parts.length > 1) out = parts[parts.length - 1].trim();
+    }
+    return out.replace(/[*_`#]/g, '').replace(/\n+/g, ' ').trim();
+  }
 
   // ── Speak ─────────────────────────────────────────────────────
   async speak(text, opts = {}) {
@@ -556,3 +576,4 @@ class HexVoice {
 }
 
 window.hexVoice = new HexVoice();
+

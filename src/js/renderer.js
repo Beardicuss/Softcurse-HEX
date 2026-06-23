@@ -8,96 +8,59 @@ let sysStats = { cpu: 0, ram: 0, disk: 0 };
 window.sysStats = sysStats;
 let taskState = {}; // taskId → { status, startTime }
 let prevAlerts = {}; // prevent duplicate proactive alerts
-let currentMode = 'hex'; // 'hex' or 'cardinal'
+let currentMode = 'hex'; // unified identity; Cardinal remains a wake-word alias
 window.currentMode = currentMode;
 
 function refreshIdentityUI() {
   const label = document.getElementById('mode-label');
-  if (label) label.textContent = window.getLocalizedUnitName(currentMode, 'short');
-  document.title = 'Softcurse ' + window.getLocalizedUnitName(currentMode, 'display');
-  buildModeLogo(currentMode);
+  if (label) label.textContent = 'HEX · QUIET CARDINAL';
+  document.title = 'Softcurse HEX - The Quiet Cardinal';
+  buildModeLogo('hex');
 }
 
 // ── Mode Switcher ─────────────────────────────────────────────
-function switchMode(mode) {
-  if (mode === 'toggle') mode = currentMode === 'hex' ? 'cardinal' : 'hex';
-  if (mode !== 'hex' && mode !== 'cardinal') return;
-  if (mode === currentMode) return;
-  currentMode = mode;
+function switchMode(_mode) {
+  currentMode = 'hex';
   window.currentMode = currentMode;
-
-  const body = document.body;
+  if (window.hexVoice) window.hexVoice.wakeWord = 'hex';
   const wakeInput = document.getElementById('cfg-wakeword');
-
-  if (mode === 'cardinal') {
-    body.classList.add('mode-cardinal');
-    if (window.hexVoice) window.hexVoice.wakeWord = 'hey cardinal';
-    if (wakeInput) wakeInput.value = 'hey cardinal';
-  } else {
-    body.classList.remove('mode-cardinal');
-    if (window.hexVoice) window.hexVoice.wakeWord = 'hey hex';
-    if (wakeInput) wakeInput.value = 'hey hex';
-  }
+  if (wakeInput) wakeInput.value = 'hex';
   refreshIdentityUI();
-
-  // Auto-swap personality to match mode
-  if (window.hexPersonalities) {
-    window.hexPersonalities.activeId = mode === 'cardinal' ? 'cardinal_default' : 'hex_default';
-    if (window.hexPersonalities.onUpdate) window.hexPersonalities.onUpdate();
-  }
-
-  // Persist mode to config
-  if (config) {
-    config.mode = mode;
-    try { window.hexAPI.setConfig(config); } catch (_) { }
-  }
-
-  addLog('SYSTEM', `Mode switched to ${mode.toUpperCase()}`);
-  showToast(`◆ ${mode.toUpperCase()} MODE`, `Interface switched to ${mode === 'cardinal' ? 'Cardinal Commander' : 'H.E.X. Cyberpunk'} mode.`, '', 3000);
+  showToast('◆ HEX · QUIET CARDINAL', 'Unified identity active. Wake words: HEX or Cardinal.', '', 2600);
 }
 
 function restoreMode() {
-  const saved = config?.mode || 'hex';
-  currentMode = saved === 'cardinal' ? 'cardinal' : 'hex';
-  if (currentMode === 'cardinal') {
-    document.body.classList.add('mode-cardinal');
-  } else {
-    document.body.classList.remove('mode-cardinal');
-  }
+  currentMode = 'hex';
+  window.currentMode = currentMode;
+  if (config) config.mode = 'hex';
   refreshIdentityUI();
 }
 
 // ── Shared Logo Builder ───────────────────────────────────────
-function buildModeLogo(mode) {
+function buildModeLogo(_mode) {
   const title = document.getElementById('app-title');
   if (!title) return;
   title.textContent = '';
   title.style.display = 'flex';
   title.style.alignItems = 'center';
-  title.style.gap = '10px';
+  title.style.gap = '12px';
 
-  // Icon image with glow background
   const icon = document.createElement('img');
-  icon.style.cssText = 'width:28px;height:28px;object-fit:contain;border-radius:4px;';
-
-  if (mode === 'cardinal') {
-    icon.src = 'assets/cardinal/cardinal_icon.webp';
-    icon.style.boxShadow = '0 0 12px rgba(200,57,43,0.6), 0 0 30px rgba(200,57,43,0.2)';
-    icon.style.background = 'rgba(200,57,43,0.1)';
-  } else {
-    icon.src = 'assets/hex.webp';
-    icon.style.boxShadow = '0 0 12px rgba(0,255,255,0.6), 0 0 30px rgba(0,255,255,0.2)';
-    icon.style.background = 'rgba(0,255,255,0.1)';
-  }
+  icon.src = 'assets/hex.webp';
+  icon.alt = 'HEX';
+  icon.style.cssText = 'width:30px;height:30px;object-fit:contain;border-radius:10px;box-shadow:0 0 18px rgba(79,255,240,0.34),0 0 34px rgba(255,95,95,0.14);background:linear-gradient(135deg,rgba(79,255,240,0.12),rgba(255,95,95,0.08));border:1px solid rgba(79,255,240,0.24);';
   title.appendChild(icon);
 
-  // Name text
   const name = document.createElement('span');
-  name.textContent = window.getLocalizedUnitName(mode, 'display');
+  name.textContent = 'H.E.X.';
   name.style.cssText = 'letter-spacing:4px;';
   title.appendChild(name);
 
-  // Hide version badge
+  const sub = document.createElement('span');
+  sub.textContent = 'THE QUIET CARDINAL';
+  sub.style.cssText = 'font-family:var(--font-m);font-size:11px;letter-spacing:2.4px;color:var(--c-text-muted);margin-left:2px;';
+  title.appendChild(sub);
+
   const badge = document.querySelector('.topbar-badge');
   if (badge) badge.style.display = 'none';
 }
@@ -105,6 +68,8 @@ function buildModeLogo(mode) {
 // ── AUDIO SYSTEM ──────────────────────────────────────────────
 window.hexAudio = {
   _sounds: {},
+  _unlocked: false,
+  _warned: false,
   init() {
     const sfx = {
       processing: 'assets/sounds/processing.ogg',
@@ -115,31 +80,65 @@ window.hexAudio = {
       reroute: 'assets/sounds/network_reroute.ogg',
       hover: 'assets/sounds/ui_hover.ogg'
     };
-    for (const [key, path] of Object.entries(sfx)) {
-      const a = new Audio(path);
+    for (const [key, soundPath] of Object.entries(sfx)) {
+      const a = new Audio(soundPath);
+      a.preload = 'auto';
       if (key === 'processing') a.loop = true;
+      a.addEventListener('error', () => addLog?.('AUDIO', 'Sound failed to load: ' + key, 'warn'), { once: true });
+      try { a.load(); } catch (_) { }
       this._sounds[key] = a;
     }
 
+    const unlock = () => this.unlock();
+    window.addEventListener('pointerdown', unlock, { once: true, capture: true });
+    window.addEventListener('keydown', unlock, { once: true, capture: true });
+
     document.addEventListener('mouseover', (e) => {
       if (e.target.tagName === 'BUTTON' || e.target.classList.contains('stab') || e.target.closest('.stab') || e.target.closest('button')) {
-        this.play('hover', 0.05);
+        this.play('hover', 0.18);
       }
     });
   },
+  unlock() {
+    if (this._unlocked) return;
+    this._unlocked = true;
+    const a = this._sounds.hover || Object.values(this._sounds)[0];
+    if (!a) return;
+    const previousVolume = a.volume;
+    a.volume = 0.01;
+    a.play().then(() => {
+      a.pause();
+      a.currentTime = 0;
+      a.volume = previousVolume || 0.4;
+      addLog?.('AUDIO', 'Sound system unlocked.');
+    }).catch(() => { this._unlocked = false; });
+  },
   play(key, vol = 1.0) {
-    if (!this._sounds[key]) return;
+    const sound = this._sounds[key];
+    if (!sound) return;
     try {
-      this._sounds[key].volume = vol;
-      this._sounds[key].currentTime = 0;
-      this._sounds[key].play().catch(() => { });
-    } catch (e) { }
+      const minVol = key === 'hover' ? 0.14 : key === 'processing' ? 0.25 : 0.42;
+      sound.volume = Math.max(minVol, Math.min(1, Number(vol) || minVol));
+      sound.currentTime = 0;
+      sound.play().catch((error) => {
+        if (!this._warned) {
+          this._warned = true;
+          addLog?.('AUDIO', 'Click once in the app to unlock UI sounds: ' + (error?.message || 'play blocked'), 'warn');
+        }
+      });
+    } catch (e) {
+      if (!this._warned) {
+        this._warned = true;
+        addLog?.('AUDIO', 'Sound playback failed: ' + (e?.message || e), 'warn');
+      }
+    }
   },
   stop(key) {
-    if (!this._sounds[key]) return;
+    const sound = this._sounds[key];
+    if (!sound) return;
     try {
-      this._sounds[key].pause();
-      this._sounds[key].currentTime = 0;
+      sound.pause();
+      sound.currentTime = 0;
     } catch (e) { }
   }
 };
@@ -190,8 +189,8 @@ async function init() {
     const liveRes = await window.hexAPI.getProviderCapabilities();
     if (liveRes && liveRes.success) {
       const currentP = config.llm?.provider || 'none';
-      const hasKey = currentP === 'ollama' || (liveRes.providers?.[currentP]?.validKeys > 0);
-      if (!hasKey && currentP !== 'ollama') {
+      const hasKey = currentP === 'ollama' || currentP === 'llamacpp' || (liveRes.providers?.[currentP]?.validKeys > 0);
+      if (!hasKey && currentP !== 'ollama' && currentP !== 'llamacpp') {
         // Find the first provider with valid keys
         const bestProvider = liveRes.capabilities?.activeProvider || Object.values(liveRes.providers || {}).find((item) => item.status === 'ready')?.provider;
         if (bestProvider) {
@@ -258,6 +257,16 @@ async function init() {
   };
   window.hexVoice.onStateChange = (listening) => updateMicUI(listening);
   window.hexVoice.setLanguage(lang);
+
+  if (!config.voice || config.voice.enabled !== false) {
+    setTimeout(() => {
+      if (!window.hexVoice?.isListening) {
+        window.hexVoice.startListening(true).catch((err) => {
+          addLog('VOICE', 'Microphone autostart failed: ' + (err?.message || String(err)));
+        });
+      }
+    }, 900);
+  }
 
   // Configure browser module
   window.hexBrowser.onLog = (src, msg) => addLog(src, msg);
@@ -612,7 +621,10 @@ function switchSettingsTab(tabId) {
   // Refresh dynamic content when switching
   if (tabId === 'tab-persona') refreshPersonaList();
   if (tabId === 'tab-memory') refreshMemoryTab();
-  if (tabId === 'tab-brain' && typeof refreshBrainTelemetryTab === 'function') refreshBrainTelemetryTab();
+  if (tabId === 'tab-brain') {
+    if (typeof refreshBrainTelemetryTab === 'function') refreshBrainTelemetryTab();
+    if (typeof refreshBrainDatasetInspector === 'function') refreshBrainDatasetInspector();
+  }
   if (tabId === 'tab-plugins') {
     if (typeof loadPluginsList === 'function') loadPluginsList();
   }
@@ -699,3 +711,4 @@ async function checkVoiceStatus() {
 // ════════════════════════════════════════════════════════════════════════════════
 // == COMMANDS ==
 // Extracted to commands.js
+

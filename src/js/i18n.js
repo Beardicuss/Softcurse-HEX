@@ -43,19 +43,12 @@ class I18n {
     return this.strings[key] || (this.loaded['en'] && this.loaded['en'][key]) || null;
   }
 
-  getAssistantName(mode = 'hex', style = 'short') {
-    if (mode === 'cardinal') {
-      const cardinalKey = style === 'display' ? 'cardinal_name_display' : 'cardinal_name';
-      const localizedCardinal = this.t(cardinalKey);
-      return localizedCardinal !== cardinalKey
-        ? localizedCardinal
-        : (style === 'display' ? 'Cardinal' : 'CARDINAL');
-    }
+  getAssistantName(_mode = 'hex', style = 'short') {
     const key = style === 'display' ? 'assistant_name_display' : 'assistant_name';
     const localizedHex = this.t(key);
     return localizedHex !== key
       ? localizedHex
-      : (style === 'display' ? 'H.E.X.' : 'HEX');
+      : (style === 'display' ? 'H.E.X. - The Quiet Cardinal' : 'HEX');
   }
 
   getLocalizedUserName(name) {

@@ -6,6 +6,8 @@ const PACKET_KEY = 'hunter:capabilities:v1:last-good';
 const STATE_PREFIX = 'hunter:provider-state:';
 const HARD_COOLDOWN_MS = 15 * 60 * 1000;
 const SOFT_COOLDOWN_MS = 5 * 60 * 1000;
+const CACHE_TTL_SECONDS = 24 * 60 * 60;
+const STALE_AFTER_MS = 10 * 60 * 1000;
 
 export async function buildHunterCapabilityPacket(env, options = {}) {
   const preferredProvider = normalizeProvider(options.preferredProvider);
@@ -29,6 +31,8 @@ export async function buildHunterCapabilityPacket(env, options = {}) {
         generatedAt: new Date().toISOString(),
         fetchedAt: cached.fetchedAt || cached.generatedAt || null,
         stale: true,
+        staleAgeMs: ageOf(cached.fetchedAt || cached.generatedAt),
+        staleAfterMs: STALE_AFTER_MS,
         degraded: true,
         source: 'hunter-cache',
         degradationReason: String(error?.message || 'Hunter unavailable').slice(0, 300)
@@ -101,6 +105,8 @@ function createPacket(stats, summary, validKeys, states, preferredProvider) {
     generatedAt,
     fetchedAt: generatedAt,
     stale: false,
+    staleAgeMs: 0,
+    staleAfterMs: STALE_AFTER_MS,
     degraded: false,
     source: 'hunter-live'
   });
@@ -127,11 +133,27 @@ function rankProviders(providers, preferredProvider) {
       preferred: !!(preferredProvider && item.provider === preferredProvider),
       onCooldown,
       cooldownUntil,
-      status: item.validKeys > 0 && !onCooldown ? 'ready' : (onCooldown ? 'cooldown' : 'unavailable')
+      status: classifyProviderStatus(item, onCooldown)
     };
   }).sort((a, b) => b.score - a.score || b.validKeys - a.validKeys || a.provider.localeCompare(b.provider));
 }
 
+
+function ageOf(value) {
+  const time = Date.parse(value || '');
+  return Number.isFinite(time) ? Math.max(0, Date.now() - time) : null;
+}
+
+function classifyProviderStatus(item, onCooldown) {
+  if (onCooldown) return 'cooldown';
+  if (Number(item.validKeys || 0) > 0) return 'ready';
+  const raw = JSON.stringify([item.state?.lastError, item.state?.reason, item.validationFreshness, item.models]).toLowerCase();
+  if (/rate.?limit|429|quota/.test(raw)) return 'rate_limited';
+  if (/invalid|unauthori[sz]ed|401|403|authentication|api key/.test(raw)) return 'invalid';
+  if (/exhausted|credit|billing|license/.test(raw)) return 'exhausted';
+  if (Number(item.totalKeys || 0) > 0) return 'degraded';
+  return 'unavailable';
+}
 function finalize(providers, preferredProvider, metadata) {
   return {
     schema: HUNTER_CAPABILITY_SCHEMA,
@@ -143,6 +165,7 @@ function finalize(providers, preferredProvider, metadata) {
       totalProviders: providers.length,
       readyProviders: providers.filter((item) => item.status === 'ready').length,
       cooldownProviders: providers.filter((item) => item.status === 'cooldown').length,
+      degradedProviders: providers.filter((item) => ['invalid', 'rate_limited', 'exhausted', 'degraded', 'unavailable'].includes(item.status)).length,
       liveKeys: providers.reduce((sum, item) => sum + Number(item.validKeys || 0), 0)
     }
   };
@@ -173,7 +196,7 @@ async function readCachedPacket(env) {
 
 async function cachePacket(env, packet) {
   if (env.CACHE?.put) {
-    await env.CACHE.put(PACKET_KEY, JSON.stringify(packet), { expirationTtl: 3600 });
+    await env.CACHE.put(PACKET_KEY, JSON.stringify(packet), { expirationTtl: CACHE_TTL_SECONDS });
   }
 }
 
@@ -239,3 +262,5 @@ function findFreshness(...entries) {
   }
   return null;
 }
+
+

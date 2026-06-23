@@ -8,6 +8,9 @@
   function clean(text) { return String(text || '').trim(); }
   function lower(text) { return clean(text).toLowerCase(); }
   function has(pattern, text) { return pattern.test(text); }
+  function isCasualDialogue(raw) {
+    return /^(hi|hello|hey|yo|sup|wazzup|wazzap|wassup|whats up|what's up|hex|cardinal|what'?s up|what up|how are you|are you okay|ok|okay|thanks|thank you|привет|здравствуй|как ты|что нового|спасибо|გამარჯობა|როგორ ხარ|რა ხდება|მადლობა)\b/i.test(clean(raw));
+  }
 
   function classify(userMsg, systemState = {}) {
     const raw = clean(userMsg);
@@ -21,7 +24,11 @@
     let providerNeeded = false;
     let suggestedSurface = systemState?.sessionContext?.activeSurface || 'chat';
 
-    if (has(/\b(remember that|remember|save that|запомни|сохрани|დაიმახსოვრე|შეინახე)\b/i, raw)) {
+    if (isCasualDialogue(raw)) {
+      domain = 'dialogue';
+      suggestedSurface = 'chat';
+      reasons.push('casual-dialogue');
+    } else if (has(/\b(remember that|remember|save that|запомни|сохрани|დაიმახსოვრე|შეინახე)\b/i, raw)) {
       domain = 'memory-write';
       suggestedSurface = 'memory';
       reasons.push('explicit-memory-command');
@@ -51,7 +58,7 @@
       domain = 'reasoning';
       providerNeeded = true;
       reasons.push('general-reasoning');
-    } else if (hasResolvedRef || has(/\b(it|that|this|same|first|second|third|last|next|previous|это|то|перв|втор|трет|იგი|ეს|ის|პირველ|მეორე|მესამე)\b/i, raw)) {
+    } else if (hasResolvedRef && has(/\b(it|that|this|same|first|second|third|last|next|previous|open it|launch it|show it|close it|это|то|перв|втор|трет|იგი|ეს|ის|პირველ|მეორე|მესამე)\b/i, raw)) {
       domain = browserOpen ? 'browser-follow-up' : 'desktop-follow-up';
       suggestedSurface = browserOpen ? 'browser' : 'desktop';
       urgency = 'high';
@@ -76,3 +83,4 @@
 
   window.hexBrainActionPlanner = { version: VERSION, classify };
 })();
+

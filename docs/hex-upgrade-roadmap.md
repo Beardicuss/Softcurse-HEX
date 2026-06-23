@@ -26,6 +26,10 @@ Raw provider secrets and broad PC data should not be pushed into prompts or expo
 - Intent-aware window and process refresh loop.
 - Warm-session state, local memory retrieval, and continuity prompt blocks.
 - Cloud profile, session, message, inventory, and context-packet client integration.
+- Brain Router v1 with local reflex, memory/status/profile answers, provider routing, and survival fallback.
+- Local llama.cpp/Qwen lane with autostart support, final-answer sanitization, and hidden reasoning suppression.
+- Wake-word voice flow with microphone autostart and HEX/Cardinal aliases.
+- Feedback capture for GOOD, WRONG, and FIX into a local evolution JSONL dataset.
 
 ### HEX Server
 
@@ -54,7 +58,7 @@ This is the new top priority for making HEX a real companion instead of an API-k
 - Make memory retrieval mandatory before provider calls and available during provider failure.
 - Save explicit corrections and remember-commands locally even when LLM extraction is unavailable.
 - Add user feedback capture for good, wrong, and fixed answers as the dataset seed for later evolution.
-- Prepare a future local inference lane for llama.cpp/vLLM without replacing the current Ollama option yet.
+- Stabilize the local inference lane for llama.cpp/Qwen and keep Ollama as an optional local engine.
 
 Acceptance:
 
@@ -163,18 +167,26 @@ Acceptance:
 
 ## Immediate Execution Order
 
-1. Build Brain Core v1 and offline survival mode.
-2. Add a central brain router for local reflex, memory answer, action execution, provider call, and fallback.
-3. Make memory retrieval mandatory and reliable before every provider call.
-4. Add feedback capture for good, wrong, and corrected answers.
-5. Audit and version the Hunter-to-HEX Server capability contract.
-6. Make server provider orchestration authoritative and secret-safe.
-7. Make desktop AI and settings consume only the canonical capability packet.
-8. Upgrade dialogue continuity and executive planning.
-9. Expand local perception and safe agency.
-10. Build the operational HEX Server frontend.
-11. Finish refactor cleanup and run final validation.
+1. Finish Phase 1: audit and harden the Hunter-to-HEX Server capability contract, including stale-while-revalidate and degraded-state handling.
+2. Finish Phase 1: make server provider orchestration authoritative and secret-safe across desktop AI, settings, and runtime fallback.
+3. Continue Phase 2: strengthen Context Packet V2 retrieval ranking, action outcomes, unresolved tasks, and correction chains.
+4. Start Phase 3: improve dialogue/executive brain so long conversations, emotions, commitments, and follow-ups remain coherent.
+5. Continue Phase 4: deepen local PC perception with safer indexes, action verification, and permission tiers.
+6. Build Phase 5: HEX Server operations frontend for profile, continuity, memory, provider health, device trust, and audits.
+7. Continue Phase 6: split ai.js, settings-ui.js, renderer.js, and remaining large IPC modules.
+8. Run Phase 7 as the final real-world validation gate.
 
 ## Definition Of Complete
 
 HEX is ready when it can sustain coherent multilingual dialogue, remember and resume meaningful work, reason from current browser and PC state, safely execute and verify local actions, keep functioning when every provider fails, learn from corrections and feedback, recover from server or Hunter downtime, and explain what it knows, inferred, and could not verify.
+## Current Stop Point - June 23, 2026
+
+Phase 0 is functionally implemented but still needs broader real-world testing. The active stop point is between Phase 1 and Phase 2:
+
+- Desktop HEX now has Brain Router v1, local survival responses, local feedback capture, llama.cpp/Qwen support, hidden-reasoning cleanup, and microphone wake-word startup.
+- The next highest-risk work is not another UI polish pass; it is contract reliability between Hunter, HEX Server, and Desktop HEX.
+- The next implementation phase should focus on canonical capability packets, degraded-state handling, and stale-while-revalidate provider orchestration before deeper dialogue planning.
+
+Roadmap update required: yes. The previous Phase 0 wording treated llama.cpp as future work. It is now part of the completed foundation, so the roadmap priority shifts to Phase 1 contract hardening and Phase 2 context-packet reliability.
+
+

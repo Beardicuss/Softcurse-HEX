@@ -11,3 +11,4 @@ local-voice/tts-ru/
 
 ai/credential-hunter.js
 ai/leaked-api-keys.json
+models/
