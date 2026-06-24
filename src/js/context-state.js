@@ -14,6 +14,7 @@ window.hexContextState = (() => {
     lastUserWasFollowUp: false,
     lastActionTypes: [],
     lastActionSummary: '',
+    lastRecoveredAction: null,
     lastSystemDataSummary: '',
     activeSurface: 'chat',
     lastTouchedAt: null,
@@ -44,6 +45,9 @@ window.hexContextState = (() => {
       state.lastUserWasFollowUp = !!parsed.lastUserWasFollowUp;
       state.lastActionTypes = Array.isArray(parsed.lastActionTypes) ? parsed.lastActionTypes.slice(0, 16) : [];
       state.lastActionSummary = String(parsed.lastActionSummary || '');
+      state.lastRecoveredAction = parsed.lastRecoveredAction && typeof parsed.lastRecoveredAction === 'object'
+        ? { ...parsed.lastRecoveredAction }
+        : null;
       state.lastSystemDataSummary = String(parsed.lastSystemDataSummary || '');
       state.activeSurface = String(parsed.activeSurface || 'chat');
       state.lastTouchedAt = Number(parsed.lastTouchedAt || 0) || null;
@@ -350,6 +354,7 @@ window.hexContextState = (() => {
       lastUserWasFollowUp: state.lastUserWasFollowUp,
       lastActionTypes: [...state.lastActionTypes],
       lastActionSummary: state.lastActionSummary,
+      lastRecoveredAction: state.lastRecoveredAction ? { ...state.lastRecoveredAction } : null,
       lastSystemDataSummary: state.lastSystemDataSummary,
       activeSurface: state.activeSurface,
       lastTouchedAt: state.lastTouchedAt,

@@ -7,6 +7,10 @@ window.hexCloudSync = {
   _hydrated: false,
   _timeoutMs: 2500,
   _contextPacketCache: null,
+  _lastGoodContextPacket: null,
+  _contextPacketRefresh: null,
+  _degraded: false,
+  _lastCloudNoticeAt: {},
 
   _withTimeout(promise, label = 'cloud request', timeoutMs = this._timeoutMs) {
     return Promise.race([
@@ -21,10 +25,43 @@ window.hexCloudSync = {
     Promise.resolve()
       .then(() => (typeof task === 'function' ? task() : task))
       .catch((error) => {
-        addLog('CLOUD', `${label} failed: ${error?.message || error || 'unknown error'}`, 'warn');
+        this._markDegraded(error?.message || error || 'unknown error', { label: label + ' failed' });
       });
   },
 
+  _isAuthError(error) {
+    return /unauthorized|access token|HEX_API_TOKEN|401/i.test(String(error || ''));
+  },
+
+  _isSoftFailure(error) {
+    return /timed out|timeout|failed to fetch|network|load failed|temporarily/i.test(String(error || ''));
+  },
+
+  _noticeCloud(label, error, level = 'warn', cooldownMs = 60000) {
+    const message = String(error || 'unknown error');
+    const key = label + '::' + (this._isAuthError(message) ? 'auth' : (this._isSoftFailure(message) ? 'soft' : 'hard'));
+    if (!this._isAuthError(message)) {
+      const last = this._lastCloudNoticeAt[key] || 0;
+      if (Date.now() - last < cooldownMs) return false;
+      this._lastCloudNoticeAt[key] = Date.now();
+    }
+    addLog('CLOUD', `${label}: ${message}`, level);
+    return true;
+  },
+
+  _markDegraded(reason, options = {}) {
+    this._degraded = true;
+    const soft = this._isSoftFailure(reason);
+    const suffix = options.usingLastGood ? ' Using last-good context.' : '';
+    this._noticeCloud(options.label || 'Cloud degraded', String(reason || 'temporary cloud issue') + suffix, 'warn', soft ? 90000 : 30000);
+  },
+
+  _markHealthy(label = 'Cloud continuity channel online.') {
+    const wasDegraded = this._degraded;
+    this._degraded = false;
+    if (wasDegraded) addLog('CLOUD', 'Cloud continuity restored.');
+    else if (label) addLog('CLOUD', label);
+  },
   async init() {
     if (!this.isEnabled() || config?.onboarding?.completed === false) return;
 
@@ -33,13 +70,13 @@ window.hexCloudSync = {
       'health check'
     );
     if (!health?.success) {
-      addLog('CLOUD', `Cloud continuity offline: ${health?.error || 'health check failed'}`, 'warn');
+      this._markDegraded(health?.error || 'health check failed', { label: 'Cloud continuity offline' });
       return;
     }
 
     await this.resolveProfile();
     await this.hydrateSessionContext();
-    addLog('CLOUD', 'Cloud continuity channel online.');
+    this._markHealthy('Cloud continuity channel online.');
   },
 
   isEnabled() {
@@ -48,6 +85,15 @@ window.hexCloudSync = {
 
   _invalidateContextCache() {
     this._contextPacketCache = null;
+  },
+
+  _makeContextScopeKey(localState = {}) {
+    const profileId = config?.cloud?.profileId || '';
+    const sessionId = config?.cloud?.sessionId || '';
+    const deviceId = config?.cloud?.deviceId || '';
+    const surface = localState?.sessionContext?.activeSurface || 'chat';
+    const goal = localState?.sessionContext?.primaryGoal || '';
+    return [profileId, sessionId, deviceId, surface, goal].join('::');
   },
 
   _makeContextCacheKey(query, localState = {}) {
@@ -59,6 +105,50 @@ window.hexCloudSync = {
     return [profileId, sessionId, deviceId, surface, goal, String(query || '').trim().toLowerCase()].join('::');
   },
 
+  _canReuseContextPacket(query, localState = {}) {
+    if (!window.hexPerformancePolicy?.isLite?.()) return false;
+    if (window.hexPerformancePolicy?.needsDesktopContext?.(query)) return false;
+    const actionPlan = localState?.brainPreflightPlan;
+    if (actionPlan?.providerNeeded) return false;
+    const domain = String(actionPlan?.domain || '').toLowerCase();
+    return !(domain.includes('desktop') || domain.includes('browser'));
+  },
+
+  _cacheContextPacket(cacheKey, localState, packet) {
+    this._contextPacketCache = {
+      key: cacheKey,
+      scopeKey: this._makeContextScopeKey(localState || {}),
+      packet,
+      at: Date.now()
+    };
+    this._lastGoodContextPacket = {
+      scopeKey: this._makeContextScopeKey(localState || {}),
+      packet,
+      at: Date.now()
+    };
+  },
+
+  _getReusableContextPacket(query, localState = {}) {
+    if (!this._canReuseContextPacket(query, localState)) return null;
+    const cache = this._contextPacketCache;
+    if (!cache?.packet) return null;
+    if (cache.scopeKey !== this._makeContextScopeKey(localState || {})) return null;
+    return (Date.now() - cache.at) < 120000 ? cache.packet : null;
+  },
+
+  _refreshContextPacketDetached(payload, cacheKey, localState) {
+    if (this._contextPacketRefresh) return;
+    this._contextPacketRefresh = this._withTimeout(
+      window.hexAPI.cloud.getContextPacket(payload).catch((error) => ({ success: false, error: error.message })),
+      'background context packet',
+      3000
+    ).then((result) => {
+      if (result?.success && result.packet) {
+        window.hexCloudContextRehydrator?.applyPacket?.(result.packet);
+        this._cacheContextPacket(cacheKey, localState || {}, result.packet);
+      }
+    }).finally(() => { this._contextPacketRefresh = null; });
+  },
   async resolveProfile(overrides = {}) {
     if (!this.isEnabled()) return null;
     const result = await this._withTimeout(
@@ -74,7 +164,7 @@ window.hexCloudSync = {
     );
 
     if (!result?.success || !result.profile) {
-      addLog('CLOUD', `Profile resolve failed: ${result?.error || 'unknown error'}`, 'warn');
+      this._markDegraded(result?.error || 'unknown error', { label: 'Profile resolve failed' });
       return null;
     }
 
@@ -133,24 +223,41 @@ window.hexCloudSync = {
       return this._contextPacketCache.packet;
     }
 
+    const payload = {
+      profileId: config?.cloud?.profileId,
+      sessionId: config?.cloud?.sessionId || null,
+      deviceId: config?.cloud?.deviceId || null,
+      query: query || '',
+      surface: localState?.sessionContext?.activeSurface || 'chat'
+    };
+
+    const reusable = this._getReusableContextPacket(query, localState || {});
+    if (reusable) {
+      this._refreshContextPacketDetached(payload, cacheKey, localState || {});
+      return reusable;
+    }
+
+    const timeoutMs = window.hexPerformancePolicy?.isLite?.() ? 1400 : this._timeoutMs;
     const result = await this._withTimeout(
-      window.hexAPI.cloud.getContextPacket({
-        profileId: config?.cloud?.profileId,
-        sessionId: config?.cloud?.sessionId || null,
-        deviceId: config?.cloud?.deviceId || null,
-        query: query || '',
-        surface: localState?.sessionContext?.activeSurface || 'chat'
-      }).catch((error) => ({ success: false, error: error.message })),
-      'context packet'
+      window.hexAPI.cloud.getContextPacket(payload).catch((error) => ({ success: false, error: error.message })),
+      'context packet',
+      timeoutMs
     );
 
     if (!result?.success || !result.packet) {
-      if (result?.error) addLog('CLOUD', `Context packet failed: ${result.error}`, 'warn');
+      const error = result?.error || 'unknown error';
+      const lastGood = this._lastGoodContextPacket;
+      if (lastGood?.packet && lastGood.scopeKey === this._makeContextScopeKey(localState || {}) && this._isSoftFailure(error)) {
+        this._markDegraded(error, { label: 'Context packet degraded', usingLastGood: true });
+        return lastGood.packet;
+      }
+      this._markDegraded(error, { label: 'Context packet failed' });
       return null;
     }
 
     window.hexCloudContextRehydrator?.applyPacket?.(result.packet);
-    this._contextPacketCache = { key: cacheKey, packet: result.packet, at: now };
+    this._cacheContextPacket(cacheKey, localState || {}, result.packet);
+    this._markHealthy('');
     return result.packet;
   },
 
@@ -177,7 +284,7 @@ window.hexCloudSync = {
     );
 
     if (!result?.success) {
-      addLog('CLOUD', 'Memory write failed: ' + (result?.error || 'unknown error'), 'warn');
+      this._markDegraded(result?.error || 'unknown error', { label: 'Memory write failed' });
       return false;
     }
 
@@ -206,7 +313,7 @@ window.hexCloudSync = {
     );
 
     if (!result?.success) {
-      addLog('CLOUD', 'Device inventory sync failed: ' + (result?.error || 'unknown error'), 'warn');
+      this._markDegraded(result?.error || 'unknown error', { label: 'Device inventory sync failed' });
       return false;
     }
 
@@ -239,7 +346,7 @@ window.hexCloudSync = {
     );
 
     if (!result?.success) {
-      addLog('CLOUD', `Session ensure failed: ${result?.error || 'unknown error'}`, 'warn');
+      this._markDegraded(result?.error || 'unknown error', { label: 'Session ensure failed' });
       return null;
     }
 
@@ -286,7 +393,7 @@ window.hexCloudSync = {
     );
 
     if (!result?.success) {
-      addLog('CLOUD', `Live session sync failed: ${result?.error || 'unknown error'}`, 'warn');
+      this._markDegraded(result?.error || 'unknown error', { label: 'Live session sync failed' });
       return false;
     }
 
@@ -341,7 +448,7 @@ window.hexCloudSync = {
     );
 
     if (!result?.success) {
-      addLog('CLOUD', `Message sync failed: ${result?.error || 'unknown error'}`, 'warn');
+      this._markDegraded(result?.error || 'unknown error', { label: 'Message sync failed' });
       return false;
     }
 

@@ -1,67 +1,41 @@
-﻿'use strict';
+'use strict';
 /**
- * rebuild.js — rebuilds sherpa-onnx native module against the installed Electron.
+ * rebuild.js - refreshes native dependencies for the installed Electron runtime.
  *
- * Why this exists:
- *   @electron/rebuild requires an explicit electronVersion string.
- *   We read it from the electron package itself so it always matches,
- *   and target only sherpa-onnx to keep rebuilds fast.
- *
- * Usage:
- *   npm run rebuild
- *   node scripts/rebuild.js
+ * electron-builder already owns @electron/rebuild internally. Calling its
+ * install-app-deps command keeps native modules aligned without carrying a
+ * duplicate top-level @electron/rebuild dependency.
  */
 
+const { spawnSync } = require('child_process');
 const path = require('path');
-const { rebuild } = require('@electron/rebuild');
 
-// ─── Resolve Electron version ────────────────────────────────────────────────
+const projectRoot = path.resolve(__dirname, '..');
+const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
-let electronVersion;
+console.log('');
+console.log('  Softcurse H.E.X. - Native Module Refresh');
+console.log('  -----------------------------------------');
+console.log(`  Root     : ${projectRoot}`);
+console.log('  Command  : electron-builder install-app-deps');
+console.log('');
 
-try {
-  const electronPkg = require(path.join(
-    path.dirname(require.resolve('electron')),
-    'package.json'
-  ));
-  electronVersion = electronPkg.version;
-} catch (err) {
-  console.error('✗ Could not resolve Electron version.');
-  console.error('  Make sure electron is installed: npm install electron');
+const result = spawnSync(npmCmd, ['exec', 'electron-builder', 'install-app-deps'], {
+  cwd: projectRoot,
+  stdio: 'inherit',
+  shell: false
+});
+
+if (result.error) {
+  console.error('  Rebuild failed:', result.error.message || result.error);
   process.exit(1);
 }
 
-// ─── Run rebuild ─────────────────────────────────────────────────────────────
-
-const projectRoot = path.resolve(__dirname, '..');
+if (result.status !== 0) {
+  console.error(`  Rebuild failed with exit code ${result.status}.`);
+  process.exit(result.status || 1);
+}
 
 console.log('');
-console.log('  Softcurse H.E.X. — Native Module Rebuild');
-console.log('  ─────────────────────────────────────────');
-console.log(`  Electron : ${electronVersion}`);
-console.log(`  Module   : sherpa-onnx`);
-console.log(`  Root     : ${projectRoot}`);
+console.log('  Native modules refreshed successfully.');
 console.log('');
-
-rebuild({
-  buildPath: projectRoot,
-  electronVersion: electronVersion,
-  modulesToRebuild: ['sherpa-onnx'],
-  force: true,
-})
-  .then(() => {
-    console.log('  ✓ sherpa-onnx rebuilt successfully.');
-    console.log('');
-    console.log('  Run: npm start');
-    console.log('');
-  })
-  .catch((err) => {
-    console.error('  ✗ Rebuild failed.');
-    console.error('');
-    console.error('  Error:', err.message || err);
-    console.error('');
-    console.error('  Try manually:');
-    console.error(`    npx @electron/rebuild -v ${electronVersion} -m sherpa-onnx`);
-    console.error('');
-    process.exit(1);
-  });

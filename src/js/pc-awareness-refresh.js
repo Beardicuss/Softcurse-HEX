@@ -105,8 +105,11 @@ window.hexPcAwarenessRefresh = (() => {
       minInterval += 3000;
     }
 
+    const multiplier = window.hexPerformancePolicy?.awarenessMultiplier?.() || 1;
+    const pressureBackoff = window.hexPerformancePolicy?.isSystemUnderPressure?.() ? 20000 : 0;
     const failureBackoffMs = Math.min((info.failures || 0) * 5000, 30000);
-    minInterval = Math.max(kind === 'window' ? 2500 : 3500, minInterval) + failureBackoffMs;
+    const floor = kind === 'window' ? 2500 : 3500;
+    minInterval = Math.max(floor * multiplier, minInterval * multiplier) + failureBackoffMs + pressureBackoff;
 
     return {
       active,

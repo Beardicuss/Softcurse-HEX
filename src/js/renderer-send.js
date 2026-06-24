@@ -102,8 +102,10 @@ window.sendHexMessage = async function sendHexMessage() {
 
     stage = 'vision capture';
     let visionData = null;
+    const visualIntent = window.hexPerformancePolicy?.needsVisionContext?.(text) === true;
     const browserFollowUp = systemState.browserSession?.open && systemState.sessionContext?.lastUserWasFollowUp;
-    if (browserFollowUp && window.hexAPI?.browser?.screenshot) {
+    const shouldCaptureBrowserVision = browserFollowUp && (!window.hexPerformancePolicy?.isLite?.() || visualIntent || preflightPlan?.domain === 'browser-action' || preflightPlan?.domain === 'browser-follow-up');
+    if (shouldCaptureBrowserVision && window.hexAPI?.browser?.screenshot) {
       addLog('VISION', 'Capturing active browser session for follow-up reasoning...');
       window.hexTaskBus?.push('Capturing browser session...');
       const snap = await window.hexAPI.browser.screenshot().catch(() => null);
@@ -118,10 +120,11 @@ window.sendHexMessage = async function sendHexMessage() {
         };
       }
     }
-    if (!visionData && browserFollowUp && window._webVisionData) {
+    if (!visionData && shouldCaptureBrowserVision && window._webVisionData) {
       visionData = window._webVisionData;
     }
-    if (!visionData && window.visionEnabled && window.hexAPI && window.hexAPI.captureScreenBase64) {
+    const shouldCaptureDesktopVision = window.visionEnabled && window.hexPerformancePolicy?.allowVisionCapture?.(text, { explicit: visualIntent }) !== false;
+    if (!visionData && shouldCaptureDesktopVision && window.hexAPI && window.hexAPI.captureScreenBase64) {
       addLog('SYS', 'Capturing visual sensor data...');
       window.hexTaskBus?.push('Capturing screen...');
       visionData = await window.hexAPI.captureScreenBase64();
@@ -170,20 +173,6 @@ window.sendHexMessage = async function sendHexMessage() {
         this.durationMs = durationMs;
       }
     };
-    const recordActionOutcome = (action, result) => {
-      const success = result?.success !== false;
-      const summary = (success ? 'Completed ' : 'Failed ') + action.type;
-      window.hexCloudSync?.runDetached?.('record action outcome', () => window.hexCloudSync.recordActivity({
-        kind: 'action-result',
-        status: success ? 'success' : 'failure',
-        actionType: action.type,
-        surface: window.hexSessionContext?.activeSurface || 'chat',
-        summary,
-        details: {
-          durationMs: result?.durationMs || null
-        }
-      }));
-    };
 
     const executeTrackedAction = async (action) => {
       const start = Date.now();
@@ -204,7 +193,7 @@ window.sendHexMessage = async function sendHexMessage() {
           durationMs: Date.now() - start
         });
       }
-      recordActionOutcome(action, result);
+      window.hexActionOutcomeRecorder?.record?.(action, result, { source: 'renderer-send' });
       return result;
     };
     stage = 'action execution';
@@ -225,7 +214,7 @@ window.sendHexMessage = async function sendHexMessage() {
 
     for (const action of sequentialQueue) {
       window.hexTaskBus?.push(`Executing: ${action.type} ${(action.args || []).join(' ')}`);
-      const actionResult = await handleAIAction(action);
+      const actionResult = await executeTrackedAction(action);
       if (actionResult && actionResult.data) {
         infoResults.push('[' + action.type.toUpperCase() + ' RESULT]: ' + actionResult.data);
       }

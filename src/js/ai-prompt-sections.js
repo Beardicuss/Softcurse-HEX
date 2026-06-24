@@ -1,6 +1,15 @@
 'use strict';
 
 window.buildHexSystemStateBlock = function buildHexSystemStateBlock(state, ctx) {
+  const cloudSelectedCounts = state.cloudContext?.retrieval?.selectedCounts || {};
+  const cloudState = state.cloudContext?.continuityState || {};
+  const cloudFreshness = cloudState.freshness || {};
+  const fmtAge = (value) => Number.isFinite(Number(value)) ? (Math.round(Number(value) / 60) + 'm') : 'n/a';
+  const cloudActionStatusCounts = state.cloudContext?.retrieval?.actionStatusCounts || {};
+  const cloudRetrievalReasons = [
+    ...((state.cloudContext?.retrieval?.reasons?.memories || []).slice(0, 3).map((item) => 'memory ' + (item.kind || 'item') + ': ' + item.reason)),
+    ...((state.cloudContext?.retrieval?.reasons?.turns || []).slice(0, 2).map((item) => 'turn ' + (item.role || 'user') + ': ' + item.reason))
+  ].filter(Boolean).slice(0, 5);
   return [
     '=== LIVE SYSTEM SNAPSHOT ===',
     '  Time     : ' + ctx.now.toLocaleTimeString() + '  |  Date    : ' + ctx.now.toLocaleDateString(),
@@ -35,8 +44,12 @@ window.buildHexSystemStateBlock = function buildHexSystemStateBlock(state, ctx) 
     '  Brain action why  : ' + ((state.brainRoute?.actionPlan?.reasons || []).join(', ') || 'none'),
     '  Cloud goal: ' + (state.cloudContext?.activeGoal?.text || state.cloudContext?.summary?.goal || 'none'),
     '  Cloud topic: ' + (state.cloudContext?.topics?.active?.label || 'none'),
+    '  Cloud continuity: surface ' + (cloudState.activeSurface || 'chat') + ' | browser ' + (cloudState.browser?.open ? 'OPEN' : 'CLOSED') + ' | inventory ' + (cloudState.hasDesktopInventory ? 'YES' : 'NO') + ' | session age ' + fmtAge(cloudFreshness.sessionSeconds) + ' | inventory age ' + fmtAge(cloudFreshness.inventorySeconds) + ' | last action ' + (cloudState.lastActionStatus || 'none'),
     '  Paused topics: ' + ((state.cloudContext?.topics?.paused || []).map((item) => item.label).join(' | ') || 'none'),
     '  Cloud mems: ' + ((state.cloudContext?.summary?.memoryHighlights || []).join(' | ') || 'none'),
+    '  Cloud retrieval: memories ' + (cloudSelectedCounts.memories || 0) + ', turns ' + (cloudSelectedCounts.turns || 0) + ', desktop refs ' + (cloudSelectedCounts.desktopReferences || 0) + ', browser refs ' + (cloudSelectedCounts.browserReferences || 0) + ', actions ' + (cloudSelectedCounts.actionTimeline || 0),
+    '  Cloud action outcomes: success ' + (cloudActionStatusCounts.success || 0) + ', failure ' + (cloudActionStatusCounts.failure || 0) + ', pending ' + (cloudActionStatusCounts.pending || 0),
+    '  Cloud why: ' + (cloudRetrievalReasons.join(' | ') || 'none'),
     '  Cloud refs: ' + ((state.cloudContext?.references?.desktop || []).map((item) => item?.label || item?.value || item).join(' | ') || 'none'),
     '  Pending tasks: ' + ((state.cloudContext?.unresolvedTasks || []).map((item) => item.text).join(' | ') || 'none'),
     '  Action timeline: ' + ((state.cloudContext?.actionTimeline || []).map((item) => item.kind + ': ' + item.text).join(' | ') || 'none'),
@@ -50,11 +63,28 @@ window.buildHexSystemStateBlock = function buildHexSystemStateBlock(state, ctx) 
 };
 
 window.buildHexContinuityBlock = function buildHexContinuityBlock(state, userMsg) {
+  const formatRecoveredAction = (item) => {
+    if (!item || typeof item !== 'object') return 'none';
+    const status = item.success === false ? 'failed' : 'succeeded';
+    const type = String(item.type || 'action');
+    const summary = String(item.summary || item.reason || '').replace(/\s+/g, ' ').trim();
+    return (type + ' ' + status + (summary ? ': ' + summary : '')).substring(0, 220);
+  };
+  const cloudSelectedCounts = state.cloudContext?.retrieval?.selectedCounts || {};
+  const cloudState = state.cloudContext?.continuityState || {};
+  const cloudFreshness = cloudState.freshness || {};
+  const fmtAge = (value) => Number.isFinite(Number(value)) ? (Math.round(Number(value) / 60) + 'm') : 'n/a';
+  const cloudActionStatusCounts = state.cloudContext?.retrieval?.actionStatusCounts || {};
+  const cloudRetrievalReasons = [
+    ...((state.cloudContext?.retrieval?.reasons?.memories || []).slice(0, 3).map((item) => 'memory ' + (item.kind || 'item') + ': ' + item.reason)),
+    ...((state.cloudContext?.retrieval?.reasons?.turns || []).slice(0, 2).map((item) => 'turn ' + (item.role || 'user') + ': ' + item.reason))
+  ].filter(Boolean).slice(0, 5);
   return [
     '=== ACTIVE SESSION CONTINUITY ===',
     '  Latest user message : ' + (state.sessionContext?.lastUserMessage || userMsg || '--'),
     '  Last assistant reply: ' + ((state.sessionContext?.lastAssistantMessage || '--').substring(0, 180)),
     '  Last action plan    : ' + (state.sessionContext?.lastActionSummary || 'none'),
+    '  Last recovered action: ' + formatRecoveredAction(state.sessionContext?.lastRecoveredAction),
     '  Last system data    : ' + ((state.sessionContext?.lastSystemDataSummary || 'none').substring(0, 220)),
     '  Working task        : ' + (state.workingMemory?.currentTask || 'none'),
     '  Working entities    : ' + ((state.workingMemory?.currentEntities || []).join(', ') || 'none'),
@@ -72,6 +102,10 @@ window.buildHexContinuityBlock = function buildHexContinuityBlock(state, userMsg
     '  Resolved target     : ' + (state.sessionContext?.resolvedReference ? ('#' + state.sessionContext.resolvedReference.index + ' ' + (state.sessionContext.resolvedReference.label || state.sessionContext.resolvedReference.text || '') + (state.sessionContext.resolvedReference.url ? ' | ' + state.sessionContext.resolvedReference.url : '')) : 'none'),
     '  Session mood        : ' + (state.workingMemory?.mood || 'neutral'),
     '  Cloud memory hits    : ' + ((state.cloudContext?.relevantMemories || []).map((item) => item.content).join(' | ') || 'none'),
+    '  Cloud continuity    : surface ' + (cloudState.activeSurface || 'chat') + ' | browser ' + (cloudState.browser?.open ? 'OPEN' : 'CLOSED') + ' | inventory ' + (cloudState.hasDesktopInventory ? 'YES' : 'NO') + ' | session age ' + fmtAge(cloudFreshness.sessionSeconds) + ' | inventory age ' + fmtAge(cloudFreshness.inventorySeconds) + ' | last action ' + (cloudState.lastActionStatus || 'none'),
+    '  Cloud retrieval      : memories ' + (cloudSelectedCounts.memories || 0) + ', turns ' + (cloudSelectedCounts.turns || 0) + ', desktop refs ' + (cloudSelectedCounts.desktopReferences || 0) + ', browser refs ' + (cloudSelectedCounts.browserReferences || 0) + ', actions ' + (cloudSelectedCounts.actionTimeline || 0),
+    '  Cloud action outcomes : success ' + (cloudActionStatusCounts.success || 0) + ', failure ' + (cloudActionStatusCounts.failure || 0) + ', pending ' + (cloudActionStatusCounts.pending || 0),
+    '  Cloud retrieval why  : ' + (cloudRetrievalReasons.join(' | ') || 'none'),
     '  Cloud turn hits      : ' + ((state.cloudContext?.relevantTurns || []).map((item) => (String(item.role || 'user').toUpperCase() + ': ' + String(item.content || '').substring(0, 100))).join(' | ') || 'none'),
     '  Cloud desktop refs   : ' + ((state.cloudContext?.references?.desktop || []).map((item) => item?.label || item?.value || item).join(' | ') || 'none'),
     '  HEX commitments     : ' + ((state.cloudContext?.dialogue?.commitments || []).map((item) => item.text).join(' | ') || 'none'),

@@ -1,6 +1,8 @@
 'use strict';
 
 window.hexCloudContextRehydrator = (() => {
+  let lastContinuityState = null;
+
   function normalizeLabel(value) {
     return String(value || '').trim();
   }
@@ -33,7 +35,18 @@ window.hexCloudContextRehydrator = (() => {
       .filter(Boolean);
   }
 
-  function normalizeDesktopCandidates(list, kind, source = 'cloud-desktop') {
+  function metaFromPacketItem(item = {}, source = 'cloud-desktop', extra = {}) {
+    return {
+      ...(item?.meta || {}),
+      ...extra,
+      source,
+      rehydrated: true,
+      retrievalReason: item?.retrievalReason || item?.reason || extra.retrievalReason || null,
+      retrievalSchema: extra.retrievalSchema || null
+    };
+  }
+
+  function normalizeDesktopCandidates(list, kind, source = 'cloud-desktop', extraMeta = {}) {
     return (Array.isArray(list) ? list : [])
       .map((item, index) => {
         const label = normalizeLabel(item?.label || item?.value || item?.path || item);
@@ -44,11 +57,7 @@ window.hexCloudContextRehydrator = (() => {
           label,
           path: item?.path || null,
           value: item?.value || item?.path || label,
-          meta: {
-            ...(item?.meta || {}),
-            source,
-            rehydrated: true
-          }
+          meta: metaFromPacketItem(item, source, extraMeta)
         };
       })
       .filter(Boolean);
@@ -60,16 +69,19 @@ window.hexCloudContextRehydrator = (() => {
     window.hexPcEntityMemory?.ingest?.(items, kind, weight);
   }
 
-  function rehydrateDesktopByCategory(references = {}) {
+  function rehydrateDesktopByCategory(references = {}, packet = {}) {
     const byCategory = references?.desktopByCategory || {};
-    rehydrateBucket('app', normalizeDesktopCandidates(byCategory.apps, 'app', 'cloud-category'), 1.3);
-    rehydrateBucket('file', normalizeDesktopCandidates(byCategory.files, 'file', 'cloud-category'), 1.2);
-    rehydrateBucket('folder', normalizeDesktopCandidates(byCategory.folders, 'folder', 'cloud-category'), 1.2);
-    rehydrateBucket('game', normalizeDesktopCandidates(byCategory.games, 'game', 'cloud-category'), 1.35);
-    rehydrateBucket('window', normalizeDesktopCandidates(byCategory.windows, 'window', 'cloud-category'), 1.05);
-    rehydrateBucket('process', normalizeDesktopCandidates(byCategory.processes, 'process', 'cloud-category'), 1.0);
-    rehydrateBucket('folder', normalizeDesktopCandidates(byCategory.locations, 'folder', 'cloud-category'), 1.2);
-    rehydrateBucket('recent', normalizeDesktopCandidates(byCategory.recent, 'recent', 'cloud-category'), 1.15);
+    const categoryCounts = packet?.retrieval?.categoryCounts || {};
+    const schema = packet?.retrieval?.schema || null;
+    const categoryMeta = (category) => ({ retrievalSchema: schema, categoryCount: categoryCounts[category] || 0 });
+    rehydrateBucket('app', normalizeDesktopCandidates(byCategory.apps, 'app', 'cloud-category', categoryMeta('apps')), 1.3);
+    rehydrateBucket('file', normalizeDesktopCandidates(byCategory.files, 'file', 'cloud-category', categoryMeta('files')), 1.2);
+    rehydrateBucket('folder', normalizeDesktopCandidates(byCategory.folders, 'folder', 'cloud-category', categoryMeta('folders')), 1.2);
+    rehydrateBucket('game', normalizeDesktopCandidates(byCategory.games, 'game', 'cloud-category', categoryMeta('games')), 1.35);
+    rehydrateBucket('window', normalizeDesktopCandidates(byCategory.windows, 'window', 'cloud-category', categoryMeta('windows')), 1.05);
+    rehydrateBucket('process', normalizeDesktopCandidates(byCategory.processes, 'process', 'cloud-category', categoryMeta('processes')), 1.0);
+    rehydrateBucket('folder', normalizeDesktopCandidates(byCategory.locations, 'folder', 'cloud-category', categoryMeta('locations')), 1.2);
+    rehydrateBucket('recent', normalizeDesktopCandidates(byCategory.recent, 'recent', 'cloud-category', categoryMeta('recent')), 1.15);
   }
 
   function rehydrateDesktopContext(desktopContext = {}) {
@@ -84,15 +96,18 @@ window.hexCloudContextRehydrator = (() => {
     rehydrateBucket('recent', normalizeDesktopCandidates(desktopContext.entityMatches, 'recent', 'cloud-entity'), 1.3);
   }
 
-  function rehydrateReferences(references = {}) {
-    const desktopItems = normalizeDesktopCandidates(references.desktop, 'recent', 'cloud-reference');
-    const browserItems = normalizeDesktopCandidates(references.browser, 'browser', 'cloud-browser');
+  function rehydrateReferences(references = {}, packet = {}) {
+    const retrievalSchema = packet?.retrieval?.schema || null;
+    const priorityItems = normalizeDesktopCandidates(references.priority, 'recent', 'cloud-priority', { retrievalSchema, priority: true });
+    const desktopItems = normalizeDesktopCandidates(references.desktop, 'recent', 'cloud-reference', { retrievalSchema });
+    const browserItems = normalizeDesktopCandidates(references.browser, 'browser', 'cloud-browser', { retrievalSchema });
+    rehydrateBucket('recent', priorityItems, 1.45);
+    window.hexPcEntityMemory?.ingest?.(priorityItems, 'priority', 1.45);
     rehydrateBucket('recent', desktopItems, 1.15);
     window.hexPcEntityMemory?.ingest?.(browserItems, 'browser', 1.1);
-    rehydrateDesktopByCategory(references);
+    rehydrateDesktopByCategory(references, packet);
   }
-
-  function rehydrateMemories(memories = []) {
+  function rehydrateMemories(memories = [], packet = {}) {
     const items = (Array.isArray(memories) ? memories : [])
       .map((memory, index) => {
         const content = normalizeLabel(memory?.content);
@@ -106,7 +121,9 @@ window.hexCloudContextRehydrator = (() => {
             memoryKind: memory?.kind || 'memory',
             confidence: Number(memory?.confidence || 0),
             source: 'cloud-memory',
-            rehydrated: true
+            rehydrated: true,
+            retrievalReason: memory?.retrievalReason || null,
+            retrievalSchema: packet?.retrieval?.schema || null
           }
         };
       })
@@ -116,16 +133,22 @@ window.hexCloudContextRehydrator = (() => {
 
   function applyPacket(packet = null) {
     if (!packet || typeof packet !== 'object') return false;
+    lastContinuityState = packet.continuityState && typeof packet.continuityState === 'object' ? { ...packet.continuityState } : null;
     rehydrateDesktopContext(packet.desktopContext || {});
-    rehydrateReferences(packet.references || {});
-    rehydrateMemories(packet.relevantMemories || packet.memories || []);
+    rehydrateReferences(packet.references || {}, packet);
+    rehydrateMemories(packet.relevantMemories || packet.memories || [], packet);
     window.hexPcAwareness?.syncFromCandidates?.();
     window.hexPcEntityPromoter?.promoteInventorySnapshot?.();
     window.hexPcInventory?.persistNow?.();
     return true;
   }
 
+  function getLastContinuityState() {
+    return lastContinuityState ? { ...lastContinuityState } : null;
+  }
+
   return {
-    applyPacket
+    applyPacket,
+    getLastContinuityState
   };
 })();

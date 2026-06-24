@@ -358,7 +358,7 @@ async function cancelRecurring(id) {
 // Refresh schedules only when settings panel is visible
 setInterval(() => {
     const panel = document.getElementById('settings-panel');
-    if (panel && panel.style.display !== 'none') refreshRecurring();
+    if (!window.isVoiceAgiActive?.() && panel && panel.style.display !== 'none') refreshRecurring();
 }, 30000);
 setTimeout(refreshRecurring, 2000);
 
@@ -375,3 +375,4 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     } catch (e) { }
 });
+

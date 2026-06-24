@@ -39,6 +39,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
     window.addEventListener('mousemove', (e) => {
         if (!activeResizer) return;
+        if (window.isVoiceAgiActive?.()) return;
 
         if (activeResizer === 'left') {
             // e.clientX is roughly the width of the left panel
@@ -75,3 +76,4 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+

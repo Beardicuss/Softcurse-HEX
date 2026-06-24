@@ -41,6 +41,25 @@ async function tryDirectCommand(text) {
     return false;
   };
 
+
+  // Voice surface / UI navigation commands. These must stay local and instant.
+  if (/^(?:open|show|bring\s+up)\s+(?:hex\s+)?settings$/.test(t) || t === 'settings') {
+    window.openSettingsSurface?.();
+    return { handled: true };
+  }
+  if (/^(?:open|show|return\s+to|bring\s+back)\s+(?:the\s+)?(?:chat|main\s+chat|normal\s+interface|default\s+interface)$/.test(t)) {
+    window.openChatSurface?.();
+    return { handled: true };
+  }
+  if (/^(?:open|show|return\s+to|bring\s+back|enter|activate)\s+(?:the\s+)?(?:voice\s+mode|agi\s+mode|hologram|ghost\s+deck)$/.test(t) || t === 'ghost deck') {
+    window.openVoiceSurface?.();
+    return { handled: true };
+  }
+  if (/^(?:close|exit|disable|turn\s+off|switch\s+off|shut\s+down|stop|deactivate)\s+(?:the\s+)?(?:voice\s+mode|voice\s+surface|agi\s+mode|hologram|ghost\s+deck|command\s+deck)$/.test(t) || /^(?:voice\s+mode|voice\s+surface|agi\s+mode|hologram|ghost\s+deck|command\s+deck)\s+(?:off|offline|down)$/.test(t) || /^(?:return\s+to\s+cockpit|back\s+to\s+cockpit|normal\s+interface)$/.test(t)) {
+    window.closeVoiceSurface?.();
+    addLog?.('VOICE', 'Voice mode offline. Returning to cockpit.');
+    return { handled: true };
+  }
   const handleResolvedBrowserTarget = async (resolved, sourceText) => {
     if (!resolved) return null;
     const label = resolved.label || resolved.text || resolved.value || 'that item';
@@ -193,6 +212,15 @@ async function tryDirectCommand(text) {
     'gemini': 'https://gemini.google.com',
   };
 
+  const siteSearchM = t.match(/^(?:open|go\s+to|visit|browse\s+to)\s+([a-z0-9 ._-]+?)\s+(?:and\s+)?(?:search|find|look\s+for)\s+(?:for\s+)?(.+)$/i);
+  if (siteSearchM) {
+    const siteName = siteSearchM[1].trim().replace(/^the\s+/, '');
+    const query = siteSearchM[2].trim().replace(/^the\s+/, '');
+    if (SITES[siteName] && query) {
+      return do_('web_search', [SITES[siteName], query], 'Opening ' + siteName + ' and searching for ' + query + '...');
+    }
+  }
+
   const openM = t.match(/^(?:open|go\s+to|show\s+me|visit|browse\s+to)\s+(.+)$/);
   if (openM) {
     const target = openM[1].trim();
@@ -276,3 +304,8 @@ async function tryDirectCommand(text) {
 
   return { handled: false };
 }
+
+
+
+
+

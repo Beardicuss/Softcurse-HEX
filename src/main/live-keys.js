@@ -9,6 +9,9 @@
 const crypto = require('crypto');
 const executeProvider = require('./provider-executor');
 
+const CAPABILITY_SCHEMA = 'hex.hunter-capabilities.v1';
+const CAPABILITY_STATUSES = new Set(['ready', 'cooldown', 'degraded', 'invalid', 'unavailable', 'empty', 'unknown']);
+
 const SUPPORTED_LLM_PROVIDERS = new Set([
   'anthropic', 'openai', 'mistral', 'together', 'grok', 'gemini',
   'cohere', 'hf', 'replicate', 'openrouter', 'groq'
@@ -110,6 +113,65 @@ module.exports = function registerLiveKeys({ ipcMain, sendLog, getConfig, setCon
     console.log(`Softcurse: Live AI keys ${reason} — ${summary}`);
   }
 
+  function normalizeStatus(status, fallback = 'unknown') {
+    const value = String(status || fallback).trim().toLowerCase();
+    return CAPABILITY_STATUSES.has(value) ? value : fallback;
+  }
+
+  function normalizeCapabilityPacket(packet, reason = 'desktop-normalized') {
+    if (!packet || typeof packet !== 'object') return null;
+    if (packet.schema && packet.schema !== CAPABILITY_SCHEMA) return null;
+    if (!Array.isArray(packet.providers)) return null;
+
+    const providers = packet.providers
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null;
+        const provider = normalizeProviderId(item.provider);
+        if (!provider || !isSupportedProvider(provider)) return null;
+        const validKeys = Math.max(0, Number(item.validKeys || 0));
+        const totalKeys = Math.max(validKeys, Number(item.totalKeys || validKeys || 0));
+        const status = normalizeStatus(item.status, validKeys > 0 ? 'ready' : 'empty');
+        const clone = {
+          ...item,
+          provider,
+          label: String(item.label || provider.toUpperCase()),
+          status,
+          validKeys,
+          totalKeys,
+          score: Number.isFinite(Number(item.score)) ? Number(item.score) : validKeys,
+          models: Array.isArray(item.models) ? item.models.map((model) => String(model || '').trim()).filter(Boolean) : [],
+          source: String(item.source || packet.source || reason)
+        };
+        delete clone.liveKeys;
+        return clone;
+      })
+      .filter(Boolean);
+
+    if (!providers.length && packet.providers.length > 0) return null;
+    const readyProviders = providers.filter((item) => item.status === 'ready').length;
+    const cooldownProviders = providers.filter((item) => item.status === 'cooldown').length;
+    const degradedProviders = providers.filter((item) => ['degraded', 'invalid', 'unavailable'].includes(item.status)).length;
+    return {
+      ...packet,
+      schema: CAPABILITY_SCHEMA,
+      source: String(packet.source || reason),
+      stale: packet.stale === true,
+      degraded: packet.degraded === true || packet.stale === true,
+      providers,
+      activeProvider: normalizeProviderId(packet.activeProvider || packet.preferredProvider || providers.find((item) => item.status === 'ready')?.provider || '' ) || null,
+      preferredProvider: normalizeProviderId(packet.preferredProvider || packet.activeProvider || providers.find((item) => item.status === 'ready')?.provider || '' ) || null,
+      summary: {
+        ...(packet.summary && typeof packet.summary === 'object' ? packet.summary : {}),
+        totalProviders: providers.length,
+        readyProviders,
+        cooldownProviders,
+        degradedProviders,
+        stale: packet.stale === true,
+        liveKeys: providers.reduce((sum, item) => sum + Number(item.validKeys || 0), 0)
+      }
+    };
+  }
+
   function buildFallbackCapabilitiesFromKeys(keyPool = {}) {
     const providers = Object.entries(filterSupportedPool(keyPool)).map(([provider, keys]) => ({
       provider,
@@ -123,7 +185,7 @@ module.exports = function registerLiveKeys({ ipcMain, sendLog, getConfig, setCon
     }));
     providers.sort((a, b) => Number(b.validKeys || 0) - Number(a.validKeys || 0));
     return {
-      schema: 'hex.hunter-capabilities.v1',
+      schema: CAPABILITY_SCHEMA,
       source: 'desktop-key-sync-fallback',
       degraded: true,
       degradationReason: 'Server capability endpoint unavailable; built from /api/hunter/valid-keys.',
@@ -193,7 +255,12 @@ module.exports = function registerLiveKeys({ ipcMain, sendLog, getConfig, setCon
     _cloudRefreshInFlight = true;
     try {
       const capabilityResult = await fetchCloudJson('/api/hunter/capabilities' + (force ? '?force=1' : ''));
-      _cloudCapabilities = capabilityResult.capabilities || _cloudCapabilities;
+      const normalizedCapabilities = normalizeCapabilityPacket(capabilityResult.capabilities, 'hunter-capabilities');
+      if (normalizedCapabilities) {
+        _cloudCapabilities = normalizedCapabilities;
+      } else {
+        sendLog?.('CLOUD', 'Hunter capability packet failed desktop contract; keeping last known capability state.', 'warn');
+      }
 
       try {
         const keyResult = await fetchCloudJson('/api/hunter/valid-keys');
@@ -211,7 +278,7 @@ module.exports = function registerLiveKeys({ ipcMain, sendLog, getConfig, setCon
       try {
         const keyResult = await fetchCloudJson('/api/hunter/valid-keys');
         _cloudApiKeys = filterSupportedPool(keyResult.keys || {});
-        if (!_cloudCapabilities) _cloudCapabilities = buildFallbackCapabilitiesFromKeys(_cloudApiKeys);
+        if (!_cloudCapabilities) _cloudCapabilities = normalizeCapabilityPacket(buildFallbackCapabilitiesFromKeys(_cloudApiKeys), 'desktop-key-sync-fallback');
         applyMergedPool('cloud-key-fallback');
       } catch (keyError) {
         sendLog?.('CLOUD', 'Hunter key sync failed: ' + keyError.message, 'warn');
@@ -276,7 +343,7 @@ module.exports = function registerLiveKeys({ ipcMain, sendLog, getConfig, setCon
     });
     const capabilities = {
       ...(_cloudCapabilities || {}),
-      schema: _cloudCapabilities?.schema || 'hex.hunter-capabilities.v1',
+      schema: _cloudCapabilities?.schema || CAPABILITY_SCHEMA,
       source: _cloudCapabilities?.source || 'local-only',
       degraded: !_cloudCapabilities || _cloudCapabilities.degraded === true,
       activeProvider: providers.find((item) => item.status === 'ready')?.provider || null,
@@ -285,6 +352,8 @@ module.exports = function registerLiveKeys({ ipcMain, sendLog, getConfig, setCon
         totalProviders: providers.length,
         readyProviders: providers.filter((item) => item.status === 'ready').length,
         cooldownProviders: providers.filter((item) => item.status === 'cooldown').length,
+        degradedProviders: providers.filter((item) => ['degraded', 'invalid', 'unavailable'].includes(item.status)).length,
+        stale: _cloudCapabilities?.stale === true,
         liveKeys: providers.reduce((sum, item) => sum + Number(item.validKeys || 0), 0)
       }
     };

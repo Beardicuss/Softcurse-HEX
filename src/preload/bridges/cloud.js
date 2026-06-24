@@ -4,6 +4,7 @@ module.exports = function createCloudBridge(ipcRenderer) {
   return {
     cloud: {
       status: () => ipcRenderer.invoke('cloud:status'),
+      saveAccessToken: (payload) => ipcRenderer.invoke('cloud:save-access-token', payload),
       health: () => ipcRenderer.invoke('cloud:health'),
       bootstrap: () => ipcRenderer.invoke('cloud:bootstrap'),
       hunterStatus: () => ipcRenderer.invoke('cloud:hunter-status'),

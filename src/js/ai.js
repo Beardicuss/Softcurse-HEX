@@ -111,6 +111,8 @@ class HexAI {
     }
 
     let text;
+    let recoveryActions = [];
+    let recoveryRoute = null;
     const brainRoute = await window.hexBrainRouter?.route?.({ userMsg, systemState, lang, options });
     if (brainRoute?.hints) {
       systemState = { ...(systemState || {}), brainRoute: brainRoute.hints };
@@ -298,11 +300,31 @@ class HexAI {
           ? mergedSummaries.map((item) => `- ${item.label}: ${item.reason}`).join('\n')
           : allErrors.join('\n');
         const providerError = new Error('All available LLM auto-fallback providers failed.\n\nProvider status:\n' + compact);
-        text = window.hexBrainCore?.survivalReply
-          ? window.hexBrainCore.survivalReply({ userMsg, lang, error: providerError, providerSummaries: mergedSummaries })
-          : this._offline();
+        const recovered = window.hexBrainActionRecovery?.actionsForProviderFailure?.({
+          userMsg,
+          systemState,
+          lang,
+          actionPlan: systemState?.brainPreflightPlan || brainRoute?.hints?.actionPlan || null
+        });
+        if (recovered?.actions?.length) {
+          text = recovered.text || window.hexBrainCore?.survivalReply?.({ userMsg, lang, error: providerError, providerSummaries: mergedSummaries }) || this._offline();
+          recoveryActions = recovered.actions;
+          recoveryRoute = {
+            ...(brainRoute?.hints || {}),
+            route: 'action-recovery-provider-failure',
+            reason: recovered.reason || 'provider-failure-action-recovery',
+            providerRequired: false,
+            recommendedNext: 'execute-safe-local-actions',
+            actionPlan: recovered.plan || brainRoute?.hints?.actionPlan || null
+          };
+          window.hexTaskBus?.push('Provider layer unavailable. Recovering with safe local/browser action.');
+        } else {
+          text = window.hexBrainCore?.survivalReply
+            ? window.hexBrainCore.survivalReply({ userMsg, lang, error: providerError, providerSummaries: mergedSummaries })
+            : this._offline();
+          window.hexTaskBus?.push('Provider layer unavailable. Local Brain Core survival response used.');
+        }
         success = true;
-        window.hexTaskBus?.push('Provider layer unavailable. Local Brain Core survival response used.');
       }
 
       window._hexLastProviderFailures = [];
@@ -342,7 +364,9 @@ class HexAI {
       }
     }
 
-    return { text, actions: this._parseActions(text), brainRoute: brainRoute?.hints || null };
+    const parsedActions = this._parseActions(text);
+    const routedActions = Array.isArray(brainRoute?.actions) ? brainRoute.actions : [];
+    return { text, actions: [...routedActions, ...recoveryActions, ...parsedActions], brainRoute: recoveryRoute || brainRoute?.hints || null };
   }
 
   // ── Ollama (local) ────────────────────────────────────────
@@ -686,33 +710,53 @@ class HexAI {
   _buildProviderQueue({ routeProvider, liveKeys, orchestration }) {
     const queue = [];
     const providers = Array.isArray(orchestration?.providers) ? orchestration.providers : [];
+    const isPacketStale = orchestration?.stale === true;
+    const isPacketDegraded = orchestration?.degraded === true || Number(orchestration?.summary?.degradedProviders || 0) > 0;
     const byProvider = Object.fromEntries(providers.map((item) => [String(item.provider || '').trim().toLowerCase(), item]));
-    const ranked = providers.filter((item) => item?.status === 'ready');
 
     const isLocal = (provider) => provider === 'ollama' || provider === 'llamacpp';
+    const statusRank = (capability) => {
+      const status = String(capability?.status || 'unknown').toLowerCase();
+      if (status === 'ready') return isPacketStale ? 70 : 100;
+      if (status === 'degraded' && Number(capability?.validKeys || 0) > 0 && !isPacketStale) return 35;
+      return 0;
+    };
+    const ranked = providers
+      .filter((item) => statusRank(item) > 0)
+      .sort((a, b) => statusRank(b) - statusRank(a) || Number(b.score || 0) - Number(a.score || 0) || Number(b.validKeys || 0) - Number(a.validKeys || 0));
+
     const isAllowed = (provider) => {
       if (isLocal(provider)) return true;
       const capability = byProvider[provider];
-      if (capability && capability.status !== 'ready') return false;
-      if (providers.length > 0 && !capability) return false;
+      if (providers.length > 0) {
+        if (!capability) return false;
+        if (statusRank(capability) <= 0) return false;
+        if (capability.executionKeysAvailable === false) return false;
+      }
       return liveKeys[provider]?.length > 0;
     };
 
-    const addProvider = (provider) => {
+    const addProvider = (provider, source = 'ranked') => {
       const normalized = String(provider || '').trim().toLowerCase();
       if (!normalized || normalized === 'none' || queue.includes(normalized)) return;
-      if (isAllowed(normalized)) queue.push(normalized);
+      if (isAllowed(normalized)) {
+        queue.push(normalized);
+      } else if (source === 'requested' && normalized !== 'none') {
+        const capability = byProvider[normalized];
+        const status = capability?.status || (providers.length ? 'not advertised' : 'no live keys');
+        window.hexTaskBus?.push('Provider ' + normalized + ' skipped by capability guard (' + status + '). Using ranked fallback...');
+      }
     };
 
-    const selected = byProvider[String(routeProvider || '').trim().toLowerCase()];
-    if (isLocal(routeProvider) || selected?.status === 'ready' || (!providers.length && liveKeys[routeProvider]?.length > 0)) {
-      addProvider(routeProvider);
-    } else if (routeProvider !== 'none') {
-      const status = selected?.status || 'not advertised';
-      window.hexTaskBus?.push('Provider ' + routeProvider + ' skipped by server orchestration (' + status + '). Using ranked fallback...');
+    if (isLocal(routeProvider)) addProvider(routeProvider, 'requested');
+    else addProvider(routeProvider, 'requested');
+
+    ranked.forEach((item) => addProvider(item.provider, 'ranked'));
+
+    if ((isPacketStale || isPacketDegraded) && queue.length > 0) {
+      window.hexTaskBus?.push('Provider capability packet is ' + (isPacketStale ? 'stale' : 'degraded') + '; using guarded provider queue: ' + queue.join(', '));
     }
 
-    ranked.forEach((item) => addProvider(item.provider));
     return queue;
   }
   async _reportProviderOutcome(provider, payload = {}) {
@@ -739,13 +783,16 @@ class HexAI {
     const model = String(currentModel || '').trim();
     const lower = model.toLowerCase();
     if (!model) return this.FAST_MODELS[provider] || '';
+    if (provider !== 'ollama' && provider !== 'llamacpp' && /(qwen3|gguf|q4_k_m|qwen3-8b)/i.test(lower)) {
+      return this.FAST_MODELS[provider] || '';
+    }
 
     if (provider === 'cohere' && /command-light/.test(lower)) return this.FAST_MODELS[provider] || 'command-r';
     if (provider === 'openai' && /claude|gemini|mistral|grok|command-r/.test(lower)) return this.FAST_MODELS[provider] || 'gpt-4o-mini';
     if (provider === 'anthropic' && /gpt-|gemini|mistral|grok|command-r/.test(lower)) return this.FAST_MODELS[provider] || 'claude-haiku-4-5-20251001';
-    if (provider === 'mistral' && /command-light|command-r|gpt-|claude|gemini/.test(lower)) return this.FAST_MODELS[provider] || 'mistral-small-latest';
-    if (provider === 'grok' && /gpt-|claude|gemini|mistral|command-r/.test(lower)) return this.FAST_MODELS[provider] || 'grok-3-mini-fast';
-    if (provider === 'gemini' && /gpt-|claude|mistral|grok|command-r/.test(lower)) return this.FAST_MODELS[provider] || 'gemini-2.0-flash-lite';
+    if (provider === 'mistral' && /command-light|command-r|gpt-|claude|gemini|qwen/.test(lower)) return this.FAST_MODELS[provider] || 'mistral-small-latest';
+    if (provider === 'grok' && /gpt-|claude|gemini|mistral|command-r|qwen/.test(lower)) return this.FAST_MODELS[provider] || 'grok-3-mini-fast';
+    if (provider === 'gemini' && /gpt-|claude|mistral|grok|command-r|qwen/.test(lower)) return this.FAST_MODELS[provider] || 'gemini-2.0-flash-lite';
     return model;
   }
 

@@ -172,6 +172,19 @@
     if (memory) suffix.push(l === 'ru' ? 'Память: ' + memory : l === 'ka' ? 'მეხსიერება: ' + memory : 'Memory: ' + memory);
     return suffix.length ? base + '\n\n' + suffix.slice(0, 3).join('\n') : base;
   }
+  function actionRecoveryReply(lang, failure, actionPlan) {
+    const l = normalizeLang(lang);
+    const actionType = clean(failure?.actionType || actionPlan?.domain || 'action');
+    const detail = clean(failure?.text || failure?.summary || failure?.reason || 'recent action failed');
+    const surface = clean(failure?.surface || actionPlan?.suggestedSurface || 'current session');
+    if (l === 'ru') {
+      return 'Я вижу, что похожее действие только что не сработало: ' + actionType + ' на ' + surface + '. Не буду слепо повторять его. Лучше обновлю контекст или попробую другой путь. Деталь: ' + detail;
+    }
+    if (l === 'ka') {
+      return 'ვხედავ, რომ მსგავსი მოქმედება ახლახან ვერ შესრულდა: ' + actionType + ' ზედაპირზე ' + surface + '. ბრმად აღარ გავიმეორებ. ჯობია კონტექსტი განვაახლო ან სხვა გზა ვცადო. დეტალი: ' + detail;
+    }
+    return 'I can see a similar action just failed: ' + actionType + ' on ' + surface + '. I will not blindly repeat it. I should refresh context or try a different path. Detail: ' + detail;
+  }
   function statusReply(lang, systemState, providerHealth) {
     const l = normalizeLang(lang);
     const serverOnline = systemState?.cloudContext ? 'packet-ready' : (window.hexCloudSync?.isEnabled?.() ? 'enabled' : 'disabled');
@@ -192,6 +205,7 @@
     browserReply,
     inventoryReply,
     statusReply,
+    actionRecoveryReply,
     companionReply
   };
 })();

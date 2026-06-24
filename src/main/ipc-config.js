@@ -48,7 +48,7 @@ function mergeConfigPreservingSecrets(current, incoming) {
   };
   const nextLlm = incoming.llm || {};
   if (!incoming.voice?.gcloudTtsKey) merged.voice.gcloudTtsKey = current.voice?.gcloudTtsKey || '';
-  if (!incoming.cloud?.accessToken) merged.cloud.accessToken = current.cloud?.accessToken || '';
+  if (!incoming.cloud?.accessToken || incoming.cloud?.hasAccessToken === true) merged.cloud.accessToken = current.cloud?.accessToken || '';
   if (!nextLlm.apiKey) merged.llm.apiKey = current.llm?.apiKey || '';
   if (!hasValues(nextLlm.apiKeys)) merged.llm.apiKeys = current.llm?.apiKeys || {};
   if (!hasValues(nextLlm.manualApiKeys)) merged.llm.manualApiKeys = current.llm?.manualApiKeys || {};
@@ -64,3 +64,5 @@ function hasValues(value) {
     Array.isArray(entry) ? entry.length > 0 : !!entry
   ));
 }
+
+module.exports._private = { redactConfig, mergeConfigPreservingSecrets };

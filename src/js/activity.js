@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 // ── Activity Monitor (renderer side) ─────────────────────────────────────────
 
 class ActivityMonitor {
@@ -43,6 +43,7 @@ class ActivityMonitor {
   }
 
   _checkActivity() {
+    if (window.isVoiceAgiActive?.()) return;
     const idleMs = Date.now() - this.lastInteract;
     const activeMs = Date.now() - this.sessionStart;
     const idleMin = Math.round(idleMs / 60000);
@@ -104,3 +105,4 @@ class ActivityMonitor {
 }
 
 window.activityMonitor = new ActivityMonitor();
+

@@ -4,12 +4,13 @@ window.hexPcAwarenessLoop = (() => {
   let timer = null;
   let ticking = false;
 
-  function isEnabled() {
+  function isEnabled(force = false) {
+    if (window.isVoiceAgiActive?.() && !force) return false;
     return !document.hidden && !window.hexSleep?._sleeping;
   }
 
   async function tick(force = false) {
-    if (ticking || !isEnabled()) return;
+    if (ticking || !isEnabled(force)) return;
     const refresh = window.hexPcAwarenessRefresh;
     if (!force && !refresh?.hasActiveDesktopContext?.()) return;
 
@@ -30,7 +31,10 @@ window.hexPcAwarenessLoop = (() => {
     const refresh = window.hexPcAwarenessRefresh;
     const windowPolicy = refresh?.getPolicy?.('window') || { minInterval: 7000 };
     const processPolicy = refresh?.getPolicy?.('process') || { minInterval: 9000 };
-    const nextDelay = Math.max(2500, Math.min(windowPolicy.minInterval, processPolicy.minInterval, 8000));
+    const lite = window.hexPerformancePolicy?.isLite?.();
+    const maxDelay = lite ? 30000 : 8000;
+    const floorDelay = lite ? 12000 : 2500;
+    const nextDelay = Math.max(floorDelay, Math.min(windowPolicy.minInterval, processPolicy.minInterval, maxDelay));
     clearTimeout(timer);
     timer = setTimeout(async () => {
       await tick(false).catch(() => { });
@@ -51,7 +55,7 @@ window.hexPcAwarenessLoop = (() => {
     timer = setTimeout(async () => {
       await tick(false).catch(() => { });
       scheduleNext();
-    }, 4000);
+    }, window.hexPerformancePolicy?.isLite?.() ? 15000 : 4000);
     window._hexIntervals = window._hexIntervals || [];
     window._hexIntervals.push(timer);
   }
@@ -62,3 +66,4 @@ window.hexPcAwarenessLoop = (() => {
     pulse
   };
 })();
+

@@ -86,7 +86,7 @@ module.exports = function registerCloudIPC({
     return payload;
   }
 
-  ipcMain.handle('cloud:status', async () => {
+  function redactedCloudStatus() {
     const cloud = getCloudConfig();
     return {
       enabled: !!cloud.enabled,
@@ -97,6 +97,22 @@ module.exports = function registerCloudIPC({
       hasAccessToken: !!cloud.accessToken,
       ready: !!(cloud.enabled && cloud.serverUrl && cloud.profileId)
     };
+  }
+
+  ipcMain.handle('cloud:status', async () => redactedCloudStatus());
+
+  ipcMain.handle('cloud:save-access-token', async (_, payload = {}) => {
+    const token = String(payload.accessToken || '').trim();
+    if (!token) return { success: false, error: 'Access token is empty.' };
+    const cfg = getConfig();
+    cfg.cloud = cfg.cloud || {};
+    if (typeof payload.enabled === 'boolean') cfg.cloud.enabled = payload.enabled;
+    if (payload.serverUrl) cfg.cloud.serverUrl = normalizeBaseUrl(payload.serverUrl);
+    cfg.cloud.accessToken = token;
+    setConfig(cfg);
+    saveConfig(cfg);
+    sendLog?.('CLOUD', 'Cloud access token saved locally (redacted).');
+    return { success: true, cloud: redactedCloudStatus() };
   });
 
   ipcMain.handle('cloud:health', async () => {

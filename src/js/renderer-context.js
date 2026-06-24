@@ -37,6 +37,26 @@ window.resolveSessionReference = function resolveSessionReference(text, surface 
   return window.hexContextState?.resolveReference?.(text, surface) || null;
 };
 
+function makeMinimalDesktopContext() {
+  return {
+    recent: [],
+    recentSummary: 'lite-mode:on-demand',
+    promotedRecent: [],
+    knownLocations: [],
+    fileCandidates: [],
+    folderCandidates: [],
+    appCandidates: [],
+    gameCandidates: [],
+    windowCandidates: [],
+    processCandidates: [],
+    inventoryHighlights: [],
+    entityMatches: [],
+    inventorySummary: 'desktop context deferred by Lite Performance Mode',
+    inventoryAgeMinutes: null,
+    deferred: true
+  };
+}
+
 window.buildAIContextState = async function buildAIContextState(userText, options = {}) {
   const config = options.config || window._hexConfig || {};
   const sysStats = options.sysStats || window.sysStats || {};
@@ -55,26 +75,14 @@ window.buildAIContextState = async function buildAIContextState(userText, option
   if (resolvedReference) {
     sessionContext.resolvedReference = { ...resolvedReference };
   }
-  const desktopContext = window.buildHexDesktopContext
+  const wantsDesktopContext = options.forceDesktopContext === true
+    || !window.hexPerformancePolicy?.isLite?.()
+    || window.hexPerformancePolicy?.needsDesktopContext?.(userText);
+  const desktopContext = wantsDesktopContext && window.buildHexDesktopContext
     ? window.buildHexDesktopContext()
-    : {
-      recent: [],
-      recentSummary: 'none',
-      promotedRecent: [],
-      knownLocations: [],
-      fileCandidates: [],
-      folderCandidates: [],
-      appCandidates: [],
-      gameCandidates: [],
-      windowCandidates: [],
-      processCandidates: [],
-      inventoryHighlights: [],
-      entityMatches: [],
-      inventorySummary: 'apps=0 | files=0 | folders=0 | games=0 | windows=0 | processes=0 | locations=0',
-      inventoryAgeMinutes: null
-    };
+    : makeMinimalDesktopContext();
 
-  if (userText) {
+  if (userText && wantsDesktopContext) {
     const entityMatches = window.hexPcEntityMemory?.search?.(userText, [], 6) || [];
     desktopContext.entityMatches = entityMatches.map((item, index) => `${index + 1}. ${item.label || item.value || item.path || 'item'} [${item.kind || 'item'}]`);
   } else if (!Array.isArray(desktopContext.entityMatches)) {

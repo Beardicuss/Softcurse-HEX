@@ -46,6 +46,11 @@ function setBar(id, pct) {
 
 function updateStats(data) {
   sysStats = data;
+  window.sysStats = data;
+  if (window.isVoiceAgiActive?.()) {
+    window.setVoiceAgiHealth?.(data);
+    return;
+  }
 
   setVitalValue('v-cpu', `${data.cpu}%`, data.cpu > 80 ? (data.cpu > 95 ? 'crit' : 'warn') : '');
   setVitalValue('v-ram', `${data.ram}%`, data.ram > 80 ? (data.ram > 95 ? 'crit' : 'warn') : '');
@@ -59,6 +64,7 @@ function updateStats(data) {
   setBar('bar-cpu', data.cpu);
   setBar('bar-ram', data.ram);
   setBar('bar-disk', data.disk);
+  window.setVoiceAgiHealth?.(data);
 
   const now = Date.now();
   if (data.cpu > 90 && now - lastAlertCpu > 300000) {
@@ -98,6 +104,7 @@ function animateCount(id, target, suffix = '') {
 }
 
 function updateHealthStats() {
+  if (window.isVoiceAgiActive?.()) return;
   const stats = window.activityMonitor.stats;
   animateCount('stat-files', stats.filesScanned);
   document.getElementById('stat-space').textContent = stats.spaceFreed || '0 B';
@@ -107,6 +114,8 @@ function updateHealthStats() {
   animateCount('stat-integrity', health, '%');
   const bar = document.getElementById('integrity-bar');
   if (bar) bar.style.width = health + '%';
+
+  window.setVoiceAgiHealth?.(window.sysStats || {});
 
   if (health < 80 && (!window._threatPlayed || Date.now() - window._threatPlayed > 60000)) {
     window.hexAudio?.play('threat', 1.0);
@@ -197,3 +206,6 @@ window.setBar = setBar;
 window.animateCount = animateCount;
 window.updateHealthStats = updateHealthStats;
 window.handleProactiveMsg = handleProactiveMsg;
+
+
+

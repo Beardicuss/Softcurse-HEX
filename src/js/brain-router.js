@@ -156,6 +156,34 @@
     return 'local-response-no-provider';
   }
 
+  function actionTypeMatchesDomain(actionType, domain) {
+    const action = String(actionType || '').toLowerCase();
+    const d = String(domain || '').toLowerCase();
+    if (!action || !d) return false;
+    if (d.includes('browser')) return action.startsWith('web_') || action.includes('browser');
+    if (d.includes('desktop')) return !action.startsWith('web_') || /(file|folder|app|game|process|window|clipboard|screenshot|volume|system)/.test(action);
+    return action.includes(d) || d.includes(action);
+  }
+
+  function recoveryActionsForFailure(failure, actionPlan) {
+    const actionType = String(failure?.actionType || '').toLowerCase();
+    const domain = String(actionPlan?.domain || '').toLowerCase();
+    const surface = String(failure?.surface || actionPlan?.suggestedSurface || '').toLowerCase();
+    if (surface === 'browser' || domain.includes('browser') || actionType.startsWith('web_')) {
+      return [{ type: 'web_read', args: [] }];
+    }
+    return [];
+  }
+  function recentMatchingFailure(packet, actionPlan) {
+    const timeline = Array.isArray(packet?.actionTimeline) ? packet.actionTimeline : [];
+    const domain = actionPlan?.domain || '';
+    const surface = actionPlan?.suggestedSurface || '';
+    return timeline.find((item) => {
+      if (String(item?.status || '').toLowerCase() !== 'failure') return false;
+      if (surface && item?.surface && String(item.surface).toLowerCase() !== String(surface).toLowerCase()) return false;
+      return actionTypeMatchesDomain(item?.actionType || item?.kind, domain);
+    }) || null;
+  }
   function buildRouteHints(route, systemState, reason = '', extra = {}) {
     const packet = systemState?.cloudContext || window.hexCloudSync?._contextPacketCache?.packet || null;
     const actionPlan = extra.actionPlan || systemState?.brainPreflightPlan || window.hexBrainActionPlanner?.classify?.(extra.userMsg || '', systemState) || null;
@@ -192,6 +220,7 @@
         activeTopic: packet.topics?.active?.label || null,
         browserOpen: !!packet.browser?.open,
         browserTitle: packet.browser?.title || null,
+        continuityState: packet.continuityState || null,
         memoryPreview: cloudMemories.slice(0, 3),
         desktop: summarizeDesktopPacket(packet)
       } : null,
@@ -210,7 +239,6 @@
     const cloudPacket = systemState.cloudContext || window.hexCloudSync?._contextPacketCache?.packet || null;
     const rememberFact = extractRememberFact(userMsg);
     const actionPlan = systemState.brainPreflightPlan || window.hexBrainActionPlanner?.classify?.(userMsg, systemState) || null;
-
     if (rememberFact) {
       window.hexBrainCore?.saveLocalFact?.(rememberFact);
       window.hexCloudSync?.runDetached?.('sync explicit memory', () => window.hexCloudSync.rememberFact(rememberFact, {
@@ -286,6 +314,36 @@
         hints: buildRouteHints('inventory-answer', systemState, 'server-desktop-context', { actionPlan, userMsg })
       };
     }
+    const failedAction = recentMatchingFailure(cloudPacket, actionPlan);
+    if (failedAction && actionPlan && /action|follow-up/.test(actionPlan.domain || '')) {
+      return {
+        mode: 'action-recovery-local',
+        reason: 'recent-action-failure',
+        text: window.hexBrainResponseComposer?.actionRecoveryReply?.(lang, failedAction, actionPlan) || window.hexBrainCore?.survivalReply?.({ userMsg, lang }) || '',
+        actions: recoveryActionsForFailure(failedAction, actionPlan),
+        hints: buildRouteHints('local-reflex', systemState, 'recent-action-failure', { actionPlan, userMsg, confidence: 0.83 })
+      };
+    }
+
+    const directBrowserAction = window.hexBrainActionRecovery?.actionsForObviousBrowserCommand?.({ userMsg, systemState, lang, actionPlan });
+    if (directBrowserAction?.actions?.length) {
+      return {
+        mode: 'direct-browser-action',
+        reason: directBrowserAction.reason || 'direct-browser-action',
+        text: directBrowserAction.text || '',
+        actions: directBrowserAction.actions,
+        hints: buildRouteHints('direct-browser-action', systemState, directBrowserAction.reason || 'direct-browser-action', { actionPlan: directBrowserAction.plan || actionPlan, userMsg, confidence: 0.92 })
+      };
+    }    const directLocalAction = window.hexBrainActionRecovery?.actionsForObviousLocalCommand?.({ userMsg, systemState, lang, actionPlan });
+    if (directLocalAction?.actions?.length) {
+      return {
+        mode: 'direct-local-action',
+        reason: directLocalAction.reason || 'direct-local-action',
+        text: directLocalAction.text || '',
+        actions: directLocalAction.actions,
+        hints: buildRouteHints('direct-local-action', systemState, directLocalAction.reason || 'direct-local-action', { actionPlan: directLocalAction.plan || actionPlan, userMsg, confidence: 0.9 })
+      };
+    }
     if (isMemoryQuestion(userMsg)) {
       const cloudFacts = extractCloudMemories(cloudPacket);
       const localFacts = extractLocalMemory(userMsg);
@@ -358,8 +416,4 @@
     localProviderHealth
   };
 })();
-
-
-
-
 

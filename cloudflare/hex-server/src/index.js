@@ -3,6 +3,7 @@ import { buildHunterCapabilityPacket, toPublicCapabilityPacket, updateProviderCa
 import { buildTopicLedger, persistTopicTransition } from './topic-ledger';
 import { cancelPendingActivities, insertActivityEvent, listActivityEvents } from './activity-store';
 import { assembleContextPacketV2 } from './context-packet-v2';
+import { buildPriorityReferences } from './retrieval-priority';
 export class ProfileSession {
   constructor(state, env) {
     this.state = state;
@@ -750,10 +751,14 @@ function rankRelevantMemories(query, memories, limit = 6, retrievalPlan = null) 
   const source = Array.isArray(memories) ? memories : [];
 
   return source
-    .map((memory) => ({
-      ...memory,
-      score: scoreMemoryMatch(queryText, tokens, memory, retrievalPlan)
-    }))
+    .map((memory) => {
+      const score = scoreMemoryMatch(queryText, tokens, memory, retrievalPlan);
+      return {
+        ...memory,
+        score,
+        retrievalReason: buildMemoryRetrievalReason(queryText, tokens, memory, retrievalPlan, score)
+      };
+    })
     .filter((memory) => memory.score > 0 || !queryText)
     .sort((a, b) => (b.score - a.score) || ((b.confidence || 0) - (a.confidence || 0)))
     .slice(0, limit)
@@ -766,10 +771,14 @@ function rankRelevantTurns(query, turns, limit = 6, retrievalPlan = null) {
   const source = Array.isArray(turns) ? turns : [];
 
   return source
-    .map((turn, index) => ({
-      ...turn,
-      score: scoreTurnMatch(queryText, tokens, turn, index, source.length, retrievalPlan)
-    }))
+    .map((turn, index) => {
+      const score = scoreTurnMatch(queryText, tokens, turn, index, source.length, retrievalPlan);
+      return {
+        ...turn,
+        score,
+        retrievalReason: buildTurnRetrievalReason(queryText, tokens, turn, index, source.length, retrievalPlan, score)
+      };
+    })
     .filter((turn) => turn.score > 0 || !queryText)
     .sort((a, b) => (b.score - a.score))
     .slice(0, limit)
@@ -880,8 +889,17 @@ function extractContinuityReferences(continuity, query, options = {}) {
     if (turn?.surface === 'browser' && turn?.content) browserPool.push(String(turn.content).substring(0, 180));
   }
   const browserHits = rankReferenceStrings(queryText, browserPool, 6);
+  const priority = buildPriorityReferences({
+    query: queryText,
+    desktopByCategory,
+    focusOrder,
+    desktopHits,
+    browserHits,
+    limit: 12
+  });
 
   return {
+    priority,
     desktop: desktopHits,
     desktopByCategory,
     desktopFocusOrder: focusOrder,
@@ -1083,6 +1101,36 @@ function rankReferenceStrings(query, values, limit = 8) {
     .map((item) => item.value);
 }
 
+function buildMemoryRetrievalReason(queryText, tokens, memory, retrievalPlan = null, score = 0) {
+  const reasons = [];
+  const kind = String(memory?.kind || '').toLowerCase();
+  const hay = [memory?.content, memory?.kind, memory?.status].filter(Boolean).join(' ').toLowerCase();
+  const matched = tokens.filter((token) => hay.includes(token)).slice(0, 4);
+  if (matched.length) reasons.push('matched: ' + matched.join(', '));
+  if (memory?.confidence != null) reasons.push('confidence ' + Number(memory.confidence || 0).toFixed(2));
+  if (/identity|preference|registration/.test(kind)) reasons.push('profile memory');
+  if (kind === 'device_inventory') reasons.push('device inventory');
+  if (Array.isArray(retrievalPlan?.focusKinds) && retrievalPlan.focusKinds.some((item) => kind.includes(item) || item.includes(kind))) reasons.push('focus kind ' + retrievalPlan.focusKinds.join('/'));
+  if (retrievalPlan?.surface === 'browser' && /browser|page|result|link|video|article/.test(kind)) reasons.push('browser surface');
+  if (retrievalPlan?.surface === 'desktop' && /device_inventory|app|file|folder|game|window|process/.test(kind)) reasons.push('desktop surface');
+  if (retrievalPlan?.intent === 'continuity' && /identity|preference|registration|summary|conversation/.test(kind)) reasons.push('continuity intent');
+  if (!reasons.length && !queryText) reasons.push('recent memory fallback');
+  return reasons.slice(0, 4).join(' | ') || ('score ' + Number(score || 0).toFixed(2));
+}
+
+function buildTurnRetrievalReason(queryText, tokens, turn, index, total, retrievalPlan = null, score = 0) {
+  const reasons = [];
+  const hay = [turn?.role, turn?.surface, turn?.content, turn?.summary].filter(Boolean).join(' ').toLowerCase();
+  const matched = tokens.filter((token) => hay.includes(token)).slice(0, 4);
+  if (matched.length) reasons.push('matched: ' + matched.join(', '));
+  const recency = Math.max(0, total - index);
+  if (recency > 0) reasons.push('recent turn ' + recency);
+  if (String(turn?.role || '').toLowerCase() === 'user') reasons.push('user turn');
+  if (retrievalPlan?.surface && String(turn?.surface || '').toLowerCase() === retrievalPlan.surface) reasons.push('surface ' + retrievalPlan.surface);
+  if (retrievalPlan?.intent === 'action' && /(open|launch|play|click|focus|close|run|search|find|show)/i.test(String(turn?.content || ''))) reasons.push('action intent');
+  if (retrievalPlan?.intent === 'continuity' && String(turn?.role || '').toLowerCase() === 'user') reasons.push('continuity intent');
+  return reasons.slice(0, 4).join(' | ') || ('score ' + Number(score || 0).toFixed(2));
+}
 function scoreMemoryMatch(queryText, tokens, memory, retrievalPlan = null) {
   const hay = [memory?.content, memory?.kind, memory?.status].filter(Boolean).join(' ');
   const base = scoreTextMatch(queryText, tokens, hay);

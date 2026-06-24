@@ -9,6 +9,9 @@ window.sysStats = sysStats;
 let taskState = {}; // taskId → { status, startTime }
 let prevAlerts = {}; // prevent duplicate proactive alerts
 let currentMode = 'hex'; // unified identity; Cardinal remains a wake-word alias
+let voiceSurfaceOverride = null; // null = hologram, 'chat'/'settings' = show normal UI
+let voiceAgiHintIndex = 0;
+let voiceAgiHintTimer = null;
 window.currentMode = currentMode;
 
 function refreshIdentityUI() {
@@ -22,11 +25,13 @@ function refreshIdentityUI() {
 function switchMode(_mode) {
   currentMode = 'hex';
   window.currentMode = currentMode;
-  if (window.hexVoice) window.hexVoice.wakeWord = 'hex';
+  if (window.hexVoice && config?.voice?.wakeWord) {
+    window.hexVoice.wakeWord = String(config.voice.wakeWord).toLowerCase();
+  }
   const wakeInput = document.getElementById('cfg-wakeword');
-  if (wakeInput) wakeInput.value = 'hex';
+  if (wakeInput && config?.voice?.wakeWord) wakeInput.value = config.voice.wakeWord;
   refreshIdentityUI();
-  showToast('◆ HEX · QUIET CARDINAL', 'Unified identity active. Wake words: HEX or Cardinal.', '', 2600);
+  showToast('◆ HEX · QUIET CARDINAL', 'Unified identity active. Wake words: HEX, Cardinal, or your custom word.', '', 2600);
 }
 
 function restoreMode() {
@@ -53,12 +58,12 @@ function buildModeLogo(_mode) {
 
   const name = document.createElement('span');
   name.textContent = 'H.E.X.';
-  name.style.cssText = 'letter-spacing:4px;';
+  name.style.cssText = 'letter-spacing:5px;font-weight:800;color:var(--c-text-primary);text-shadow:0 0 18px rgba(79,255,240,0.32);';
   title.appendChild(name);
 
   const sub = document.createElement('span');
   sub.textContent = 'THE QUIET CARDINAL';
-  sub.style.cssText = 'font-family:var(--font-m);font-size:11px;letter-spacing:2.4px;color:var(--c-text-muted);margin-left:2px;';
+  sub.style.cssText = 'font-family:var(--font-tactical);font-size:10px;font-weight:600;letter-spacing:3px;color:var(--c-cyan-soft);margin-left:2px;opacity:.82;text-shadow:0 0 14px rgba(79,255,240,.2);';
   title.appendChild(sub);
 
   const badge = document.querySelector('.topbar-badge');
@@ -94,6 +99,7 @@ window.hexAudio = {
     window.addEventListener('keydown', unlock, { once: true, capture: true });
 
     document.addEventListener('mouseover', (e) => {
+      if (window.isVoiceAgiActive?.()) return;
       if (e.target.tagName === 'BUTTON' || e.target.classList.contains('stab') || e.target.closest('.stab') || e.target.closest('button')) {
         this.play('hover', 0.18);
       }
@@ -217,7 +223,7 @@ async function init() {
     await window.hexAPI.voice.setModelsDir(config.voice.modelsDir).catch(() => { });
   }
   // Await voice init so local engine status is ready before first use
-  await window.hexVoice.init({ ...(config.voice || {}), llm: config.llm });
+  await window.hexVoice.init({ ...(config.voice || {}), llm: config.llm, performance: config.performance || {} });
 
   // Voices may already be loaded (browser cached them before callback was wired).
   // Apply saved name now; onVoicesLoaded will re-apply if they load later.
@@ -232,7 +238,7 @@ async function init() {
       window.hexVoice.setVoiceByName(config.voice.voiceName);
     }
     // Also restore engine settings (Piper/OS/GCloud) in case this fires late
-    window.hexVoice._ttsEngine = config.voice?.ttsEngine || 'os';
+    window.hexVoice._ttsEngine = (config.voice?.ttsEngine === 'local' && !window.hexPerformancePolicy?.allowLocalTts?.()) ? 'os' : (config.voice?.ttsEngine || 'os');
     window.hexVoice._localVoiceLang = config.voice?.localVoiceLang || 'en';
     window.hexVoice._localSpeed = config.voice?.localSpeed ?? 1.0;
     window.hexVoice._gcloudKey = '';
@@ -248,22 +254,34 @@ async function init() {
     } else {
       document.getElementById('chat-input').value = text;
       addLog('VOICE', `Heard: "${text}"`);
+      updateMicUI(window.hexVoice?.isListening, 'processing');
       sendMessage();
     }
   };
   window.hexVoice.onWakeWord = () => {
     window.hexAudio?.play('mic_on', 0.55);
     addLog('VOICE', 'Wake word detected. Listening for one command.');
+    updateMicUI(true, 'listening');
+    if (voiceCommandListenTimer) clearTimeout(voiceCommandListenTimer);
+    voiceCommandListenTimer = setTimeout(() => updateMicUI(window.hexVoice?.isListening, 'standby'), 6500);
   };
-  window.hexVoice.onStateChange = (listening) => updateMicUI(listening);
+  window.hexVoice.onSpeakStart = () => {
+    if (window.hexVoice?.isListening) window.setVoiceAgiState?.('speaking');
+  };
+  window.hexVoice.onSpeakEnd = () => {
+    if (window.hexVoice?.isListening) window.setVoiceAgiState?.('standby');
+  };  window.hexVoice.onStateChange = (listening) => updateMicUI(listening, listening ? 'standby' : 'off');
   window.hexVoice.setLanguage(lang);
+  updateMicUI(window.hexVoice?.isListening, window.hexVoice?.isListening ? 'standby' : 'off');
 
   if (!config.voice || config.voice.enabled !== false) {
     setTimeout(() => {
       if (!window.hexVoice?.isListening) {
-        window.hexVoice.startListening(true).catch((err) => {
-          addLog('VOICE', 'Microphone autostart failed: ' + (err?.message || String(err)));
-        });
+        window.hexVoice.startListening(true)
+          .then(() => updateMicUI(window.hexVoice?.isListening, window.hexVoice?.isListening ? 'standby' : 'off'))
+          .catch((err) => {
+            addLog('VOICE', 'Microphone autostart failed: ' + (err?.message || String(err)));
+          });
       }
     }, 900);
   }
@@ -333,10 +351,11 @@ async function init() {
   startHexAnimation();
 
   // Glitch tears (random)
-  window._hexIntervals.push(setInterval(spawnGlitchTear, 12000));
+  window._hexIntervals.push(setInterval(() => { if (!window.isVoiceAgiActive?.()) spawnGlitchTear(); }, 12000));
 
   // Uptime
   window._hexIntervals.push(setInterval(() => {
+    if (window.isVoiceAgiActive?.()) return;
     document.getElementById('v-uptime').textContent = window.activityMonitor.getUptime();
   }, 1000));
 
@@ -354,6 +373,9 @@ async function init() {
       window.hexVoice.speak(greet);
     }
   }, 1000);
+
+  // Late voice AGI startup reconciliation: some STT backends report active after init settles.
+  setTimeout(() => updateMicUI(window.hexVoice?.isListening, window.hexVoice?.isListening ? 'standby' : 'off'), 1800);
 
   window.hexPcAwarenessLoop?.start?.();
   window.hexPcBootstrap?.bootstrap?.()
@@ -454,22 +476,187 @@ function handleInputKey(e) { return window.handleInputKey(e); }
 // == 3D ORB & GLITCH EFFECTS ==
 // Extracted to orb.js
 // ── VOICE ─────────────────────────────────────────────────────
-function toggleMic() {
-  window.hexVoice.toggleListening();
+function setVoiceAgiSurface(listening, mode = 'standby') {
+  const surface = document.getElementById('voice-agi-surface');
+  const app = document.getElementById('app');
+  const stateEl = document.getElementById('voice-agi-state');
+  const hintEl = document.getElementById('voice-agi-hint');
+  const shouldShow = !!listening && !voiceSurfaceOverride;
+  const roots = [document.documentElement, document.body, app, surface].filter(Boolean);
+  const states = ['voice-agi-standby', 'voice-agi-listening', 'voice-agi-processing', 'voice-agi-action', 'voice-agi-speaking'];
+  for (const root of roots) {
+    root.classList.toggle('voice-agi-mode', shouldShow);
+    for (const state of states) root.classList.remove(state);
+    if (shouldShow) root.classList.add(`voice-agi-${mode}`);
+  }
+  if (surface) {
+    surface.classList.toggle('voice-agi-visible', shouldShow);
+    surface.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
+  }
+  if (shouldShow) {
+    stopHexAnimation?.();
+    startVoiceAgiAnimation?.();
+  } else {
+    stopVoiceAgiAnimation?.();
+    startHexAnimation?.();
+  }
+  if (!shouldShow) return;
+  const labels = {
+    standby: 'STANDBY',
+    listening: 'LISTENING',
+    processing: 'PROCESSING',
+    action: 'EXECUTING',
+    speaking: 'SPEAKING'
+  };
+  if (stateEl) stateEl.textContent = labels[mode] || 'ONLINE';
+  updateVoiceAgiHint(mode, true);
+  ensureVoiceAgiHintCycle(mode);
 }
 
-function updateMicUI(listening) {
+function getVoiceAgiHints(mode = 'standby') {
+  if (mode === 'speaking') return ['HEX is responding. Say show interface if you want the full cockpit.', 'Voice output active. Say voice mode off to stop listening after this.', 'Tip: show interface keeps microphone online while revealing the full UI.'];
+  const wakeWord = window.hexVoice?.wakeWord || config?.voice?.wakeWord || 'hex';
+  const pressure = window.hexPerformancePolicy?.isSystemUnderPressure?.(window.sysStats) ? 'System load is high. Prefer short commands until vitals stabilize.' : null;
+  const base = mode === 'listening'
+    ? [
+      'Command channel open. Speak naturally.',
+      'Try: open YouTube and search for Eminem.',
+      'Try: open settings, then say open chat to return.',
+      'Try: open second file after a search result list.',
+      'Say: voice mode off to shut down the microphone and return to cockpit.'
+    ]
+    : [
+      `Wake word: ${wakeWord}. Then give one clear command.`,
+      'Useful: open settings, open chat, search browser, launch an app.',
+      'Follow-up ready: after results, say open first file or open third video.',
+      'Browser continuity is active: say open third video after a YouTube search.',
+      'Say: voice mode off to leave this surface and stop listening.'
+    ];
+  return pressure ? [pressure, ...base] : base;
+}
+
+function updateVoiceAgiHint(mode = 'standby', immediate = false) {
+  const hintEl = document.getElementById('voice-agi-hint');
+  if (!hintEl) return;
+  const hints = getVoiceAgiHints(mode);
+  const next = hints[voiceAgiHintIndex % hints.length];
+  voiceAgiHintIndex += 1;
+  if (immediate) {
+    hintEl.textContent = next;
+    hintEl.classList.remove('hint-swap');
+    return;
+  }
+  hintEl.classList.add('hint-swap');
+  setTimeout(() => {
+    hintEl.textContent = next;
+    hintEl.classList.remove('hint-swap');
+  }, 220);
+}
+
+function ensureVoiceAgiHintCycle(mode = 'standby') {
+  if (voiceAgiHintTimer) return;
+  voiceAgiHintTimer = setInterval(() => {
+    const surface = document.getElementById('voice-agi-surface');
+    if (!surface?.classList.contains('voice-agi-visible')) return;
+    const activeMode = surface.classList.contains('voice-agi-listening') ? 'listening'
+      : surface.classList.contains('voice-agi-speaking') ? 'speaking'
+        : surface.classList.contains('voice-agi-processing') ? 'processing'
+          : surface.classList.contains('voice-agi-action') ? 'action'
+            : mode;
+    updateVoiceAgiHint(activeMode);
+  }, 5000);
+}
+
+function updateVoiceAgiHealth(data = window.sysStats || {}) {
+  const surface = document.getElementById('voice-agi-surface');
+  if (!surface) return;
+  const cpu = Number(data.cpu || 0);
+  const ram = Number(data.ram || 0);
+  const disk = Number(data.disk || 0);
+  const health = Number(window.activityMonitor?.stats?.sessionHealth ?? 100);
+  const critical = cpu >= 92 || ram >= 92 || disk >= 96 || health < 65;
+  const warning = cpu >= 78 || ram >= 82 || disk >= 90 || health < 82;
+  surface.classList.toggle('voice-health-critical', critical);
+  surface.classList.toggle('voice-health-danger', critical);
+  surface.classList.toggle('voice-health-warning', !critical && warning);
+}
+
+window.setVoiceAgiHealth = updateVoiceAgiHealth;
+window.isVoiceAgiActive = function () {
+  return document.getElementById('voice-agi-surface')?.classList.contains('voice-agi-visible') === true;
+};
+
+window.setVoiceAgiState = function (mode = 'standby') {
+  setVoiceAgiSurface(window.hexVoice?.isListening, mode);
+};
+
+window.openVoiceSurface = function () {
+  voiceSurfaceOverride = null;
+  if (window.hexVoice && !window.hexVoice.isListening) {
+    window.hexVoice.startListening?.(true)
+      ?.then?.(() => updateMicUI(window.hexVoice?.isListening, window.hexVoice?.isListening ? 'standby' : 'off'))
+      ?.catch?.((err) => addLog?.('VOICE', 'Ghost Deck activation failed: ' + (err?.message || String(err)), 'warn'));
+  }
+  setVoiceAgiSurface(window.hexVoice?.isListening, window.hexVoice?.isListening ? 'standby' : 'off');
+};
+
+window.closeVoiceSurface = function () {
+  voiceSurfaceOverride = 'chat';
+  if (window.hexVoice?.isListening) window.hexVoice.stopListening?.();
+  updateMicUI(false, 'off');
+  setTimeout(() => document.getElementById('chat-input')?.focus(), 30);
+};
+
+window.showInterfaceSurface = function () {
+  voiceSurfaceOverride = 'chat';
+  setVoiceAgiSurface(false, 'off');
+  if (window.hexVoice?.isListening) {
+    const labelEl = document.getElementById('mic-label');
+    const statusEl = document.getElementById('mic-status');
+    const micBtn = document.getElementById('mic-btn');
+    if (labelEl) labelEl.textContent = 'STANDBY';
+    statusEl?.classList.remove('active');
+    statusEl?.classList.add('standby');
+    micBtn?.classList.add('active');
+  }
+  setTimeout(() => document.getElementById('chat-input')?.focus(), 30);
+};
+
+window.hideInterfaceSurface = function () {
+  voiceSurfaceOverride = null;
+  setVoiceAgiSurface(window.hexVoice?.isListening, window.hexVoice?.isListening ? 'standby' : 'off');
+};
+
+window.openChatSurface = function () {
+  window.showInterfaceSurface?.();
+};
+
+window.openSettingsSurface = function () {
+  voiceSurfaceOverride = 'settings';
+  setVoiceAgiSurface(false, 'off');
+  if (typeof openSettings === 'function') openSettings();
+};
+function toggleMic() {
+  if (!window.hexVoice?.isListening) voiceSurfaceOverride = null;
+  window.hexVoice.toggleListening();
+  setTimeout(() => updateMicUI(window.hexVoice?.isListening, window.hexVoice?.isListening ? 'standby' : 'off'), 80);
+}
+
+function updateMicUI(listening, mode = null) {
   const statusEl = document.getElementById('mic-status');
   const labelEl = document.getElementById('mic-label');
   const micBtn = document.getElementById('mic-btn');
-  const key = listening ? 'microphone_on' : 'microphone_off';
-  if (labelEl) labelEl.textContent = listening
-    ? (window.i18n.t('listening') || 'LISTENING...')
-    : (window.i18n.t('microphone_off') || 'MIC OFF');
-  statusEl?.classList.toggle('active', listening);
+  const voiceMode = mode || (listening ? 'standby' : 'off');
+  if (labelEl) {
+    if (!listening || voiceMode === 'off') labelEl.textContent = window.i18n.t('microphone_off') || 'MIC OFF';
+    else if (voiceMode === 'listening') labelEl.textContent = window.i18n.t('listening') || 'LISTENING...';
+    else labelEl.textContent = 'STANDBY';
+  }
+  statusEl?.classList.toggle('active', listening && voiceMode === 'listening');
+  statusEl?.classList.toggle('standby', listening && voiceMode !== 'listening');
   micBtn?.classList.toggle('active', listening);
-  if (listening) {
-    addLog('VOICE', 'Voice input active. Listening...');
+  setVoiceAgiSurface(listening, voiceMode);
+  if (listening && voiceMode === 'listening') {
     window.hexAudio.play('mic_on', 0.8);
   }
 }
@@ -711,4 +898,20 @@ async function checkVoiceStatus() {
 // ════════════════════════════════════════════════════════════════════════════════
 // == COMMANDS ==
 // Extracted to commands.js
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

@@ -155,26 +155,44 @@ function nsUpdateDaemons() {
     const config = window._hexConfig || {};
     const dHunter = document.getElementById('daemon-hunter');
     if (dHunter) {
+        const setHunterState = (text, cls) => {
+            dHunter.textContent = text;
+            dHunter.className = 'daemon-val ' + cls;
+        };
         const cloudEnabled = !!(config?.cloud?.enabled && config?.cloud?.serverUrl);
-        if (!cloudEnabled || !window.hexAPI?.cloud?.hunterStatus) {
-            dHunter.textContent = 'offline';
-            dHunter.className = 'daemon-val offline';
+        if (!cloudEnabled || !window.hexAPI?.cloud?.status) {
+            setHunterState('offline', 'offline');
         } else {
-            window.hexAPI.cloud.hunterStatus().then((status) => {
-                if (status?.success && status.configured) {
-                    dHunter.textContent = 'online';
-                    dHunter.className = 'daemon-val active';
-                } else {
-                    dHunter.textContent = 'offline';
-                    dHunter.className = 'daemon-val offline';
-                }
-            }).catch(() => {
-                dHunter.textContent = 'offline';
-                dHunter.className = 'daemon-val offline';
-            });
+            setHunterState('checking', 'pending');
+            window.hexAPI.cloud.status()
+                .then(async (cloudStatus) => {
+                    const hasToken = cloudStatus?.hasAccessToken === true || config.cloud?.hasAccessToken === true;
+                    if (!cloudStatus?.enabled || !cloudStatus?.serverUrl || !hasToken) {
+                        setHunterState('offline', 'offline');
+                        return;
+                    }
+
+                    const capabilityResult = await window.hexAPI.getProviderCapabilities?.({ force: false }).catch(() => null);
+                    if (capabilityResult?.success && capabilityResult.capabilities) {
+                        const packet = capabilityResult.capabilities;
+                        if (packet.stale || packet.degraded) {
+                            setHunterState('degraded', 'warn');
+                        } else {
+                            setHunterState('online', 'active');
+                        }
+                        return;
+                    }
+
+                    const status = await window.hexAPI.cloud.hunterStatus?.().catch(() => null);
+                    if (status?.success && status.configured) {
+                        setHunterState('online', 'active');
+                    } else {
+                        setHunterState('offline', 'offline');
+                    }
+                })
+                .catch(() => setHunterState('offline', 'offline'));
         }
     }
-
     const dVision = document.getElementById('daemon-vision');
     if (dVision) {
         if (window.visionEnabled) {
@@ -405,6 +423,7 @@ window.nsTrackCommand = function () { _ns.commandCount++; };
 window.nsTrackAction = function () { _ns.actionCount++; };
 
 function nsRefreshAll() {
+    if (window.isVoiceAgiActive?.()) return;
     const nsPanel = document.getElementById('panel-left');
     if (nsPanel && nsPanel.offsetParent === null) return;
 
@@ -452,3 +471,4 @@ window.neuralSurface = {
     trackCommand: window.nsTrackCommand,
     trackAction: window.nsTrackAction,
 };
+

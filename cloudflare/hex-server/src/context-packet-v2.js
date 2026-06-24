@@ -29,6 +29,17 @@ export function assembleContextPacketV2({
     kind: text(item?.kind, 40),
     text: text(item?.text, LIMITS.text)
   }));
+  const projectedMemories = boundedObjects(relevantMemories, LIMITS.memories, (item) => ({
+    id: item?.id || null,
+    kind: text(item?.kind, 60),
+    content: text(item?.content, LIMITS.text),
+    confidence: finite(item?.confidence),
+    retrievalReason: text(item?.retrievalReason, 160) || null
+  }));
+  const projectedTurns = turns.map((turn) => ({
+    ...turn,
+    retrievalReason: text(turn?.retrievalReason, 160) || null
+  }));
   const actions = boundedObjects(actionTimeline, LIMITS.actions, (item) => ({
     kind: text(item?.kind, 40),
     status: text(item?.status, 20) || null,
@@ -37,26 +48,29 @@ export function assembleContextPacketV2({
     surface: text(item?.surface, 40) || 'chat',
     at: item?.at || null
   }));
+  const generatedAt = new Date().toISOString();
 
   return {
     schema: CONTEXT_PACKET_SCHEMA,
-    generatedAt: new Date().toISOString(),
+    generatedAt,
     query: text(query, 500),
     profile: projectProfile(continuity?.profile),
     session: projectSession(continuity?.session),
+    continuityState: buildContinuityState(continuity, actions, projectedTurns, generatedAt),
     activeGoal: buildActiveGoal(continuity, tasks),
     topics: projectTopics(continuity?.topicLedger),
     browser: projectBrowser(continuity?.browser),
     workingMemory: projectWorkingMemory(continuity?.workingMemory),
     desktopContext: projectDesktopContext(continuity?.desktopContext),
-    retrieval: retrieval || null,
-    relevantMemories: boundedObjects(relevantMemories, LIMITS.memories, (item) => ({
-      id: item?.id || null,
-      kind: text(item?.kind, 60),
-      content: text(item?.content, LIMITS.text),
-      confidence: finite(item?.confidence)
-    })),
-    relevantTurns: turns,
+    retrieval: enrichRetrievalSummary(retrieval, {
+      relevantMemories: projectedMemories,
+      relevantTurns: projectedTurns,
+      references,
+      unresolvedTasks: tasks,
+      actionTimeline: actions
+    }),
+    relevantMemories: projectedMemories,
+    relevantTurns: projectedTurns,
     references: projectReferences(references),
     unresolvedTasks: tasks,
     actionTimeline: actions,
@@ -70,8 +84,8 @@ export function assembleContextPacketV2({
     budgets: {
       limits: LIMITS,
       used: {
-        memories: countChars(relevantMemories),
-        turns: countChars(turns),
+        memories: countChars(projectedMemories),
+        turns: countChars(projectedTurns),
         references: countChars(references),
         tasks: countChars(tasks),
         actions: countChars(actions)
@@ -80,6 +94,92 @@ export function assembleContextPacketV2({
   };
 }
 
+function buildContinuityState(continuity = {}, actions = [], turns = [], generatedAt = null) {
+  const session = continuity?.session || {};
+  const browser = continuity?.browser || {};
+  const desktop = continuity?.desktopContext || {};
+  const lastTurn = [...(Array.isArray(turns) ? turns : [])].reverse().find((turn) => turn?.created_at) || null;
+  const lastAction = [...(Array.isArray(actions) ? actions : [])].reverse().find((action) => action?.at || action?.text) || null;
+  const generatedTime = Date.parse(generatedAt || new Date().toISOString());
+  const ageSeconds = (value) => {
+    const time = Date.parse(value || '');
+    if (!Number.isFinite(time) || !Number.isFinite(generatedTime)) return null;
+    return Math.max(0, Math.round((generatedTime - time) / 1000));
+  };
+
+  return {
+    schema: 'hex.continuity-state.v1',
+    activeSurface: text(session.activeSurface, 40) || 'chat',
+    sessionUpdatedAt: session.updatedAt || session.updated_at || null,
+    inventoryUpdatedAt: desktop.inventoryUpdatedAt || null,
+    lastTurnAt: lastTurn?.created_at || null,
+    lastActionAt: lastAction?.at || null,
+    lastActionStatus: text(lastAction?.status, 20) || null,
+    browser: {
+      open: browser?.open === true,
+      title: text(browser?.title, LIMITS.text) || null,
+      url: text(browser?.url, 500) || null
+    },
+    hasDesktopInventory: !!(
+      desktop.inventorySummary ||
+      (Array.isArray(desktop.inventoryHighlights) && desktop.inventoryHighlights.length) ||
+      (Array.isArray(desktop.promotedRecent) && desktop.promotedRecent.length)
+    ),
+    freshness: {
+      sessionSeconds: ageSeconds(session.updatedAt || session.updated_at),
+      inventorySeconds: ageSeconds(desktop.inventoryUpdatedAt),
+      lastTurnSeconds: ageSeconds(lastTurn?.created_at),
+      lastActionSeconds: ageSeconds(lastAction?.at)
+    }
+  };
+}
+function enrichRetrievalSummary(retrieval = {}, projected = {}) {
+  const references = projected.references || {};
+  const desktopByCategory = references.desktopByCategory || {};
+  const categoryCounts = Object.fromEntries(Object.entries(desktopByCategory).map(([key, values]) => [key, Array.isArray(values) ? values.length : 0]));
+  const memoryReasons = (projected.relevantMemories || [])
+    .filter((item) => item.retrievalReason)
+    .slice(0, 6)
+    .map((item) => ({ id: item.id, kind: item.kind, reason: item.retrievalReason }));
+  const turnReasons = (projected.relevantTurns || [])
+    .filter((item) => item.retrievalReason)
+    .slice(0, 6)
+    .map((item) => ({ id: item.id, role: item.role, reason: item.retrievalReason }));
+  const actionStatusCounts = (projected.actionTimeline || []).reduce((acc, item) => {
+    const status = item.status || 'unknown';
+    acc[status] = (acc[status] || 0) + 1;
+    return acc;
+  }, {});
+  const actionReasons = (projected.actionTimeline || [])
+    .slice(0, 6)
+    .map((item) => ({
+      kind: item.kind,
+      status: item.status || 'unknown',
+      actionType: item.actionType || null,
+      reason: [item.status || 'unknown', item.actionType || item.kind, item.surface || 'chat'].filter(Boolean).join(' | ')
+    }));
+
+  return {
+    ...(retrieval || {}),
+    schema: 'hex.retrieval-summary.v1',
+    categoryCounts,
+    actionStatusCounts,
+    selectedCounts: {
+      memories: (projected.relevantMemories || []).length,
+      turns: (projected.relevantTurns || []).length,
+      priorityReferences: Array.isArray(references.priority) ? references.priority.length : 0,
+      desktopReferences: Array.isArray(references.desktop) ? references.desktop.length : 0,
+      browserReferences: Array.isArray(references.browser) ? references.browser.length : 0,
+      unresolvedTasks: (projected.unresolvedTasks || []).length,
+      actionTimeline: (projected.actionTimeline || []).length
+    },
+    reasons: {
+      memories: memoryReasons,
+      turns: turnReasons,
+      actions: actionReasons
+    }
+  };
+}
 function buildActiveGoal(continuity, tasks) {
   const session = continuity?.session || {};
   const value = tasks[0]?.text || session.primaryGoal || continuity?.workingMemory?.currentTask || null;
@@ -139,7 +239,8 @@ function boundedTurns(items) {
     role: item?.role === 'assistant' ? 'assistant' : 'user',
     content: text(item?.content, LIMITS.text),
     surface: text(item?.surface, 40) || 'chat',
-    created_at: item?.created_at || null
+    created_at: item?.created_at || null,
+    retrievalReason: text(item?.retrievalReason, 160) || null
   }));
 }
 
@@ -148,6 +249,7 @@ function projectReferences(refs = {}) {
     query: text(refs.query, 500),
     requestedSurface: text(refs.requestedSurface, 40) || null,
     desktopFocusOrder: (refs.desktopFocusOrder || []).slice(0, 9).map((item) => text(item, 40)),
+    priority: boundedPriorityReferenceList(refs.priority),
     desktop: boundedReferenceList(refs.desktop),
     browser: boundedReferenceList(refs.browser),
     desktopByCategory: Object.fromEntries(Object.entries(refs.desktopByCategory || {}).slice(0, 9).map(([key, value]) => [
@@ -164,6 +266,18 @@ function boundedReferenceList(items, limit = LIMITS.references.items) {
     label: text(item?.label || item, LIMITS.text),
     path: text(item?.path, LIMITS.text) || null,
     value: text(item?.value, LIMITS.text) || null
+  }));
+}
+
+function boundedPriorityReferenceList(items, limit = LIMITS.references.items) {
+  return boundedObjects(items, { items: limit, chars: LIMITS.references.chars }, (item) => ({
+    index: finite(item?.index),
+    kind: text(item?.kind, 40),
+    label: text(item?.label || item, LIMITS.text),
+    path: text(item?.path, LIMITS.text) || null,
+    value: text(item?.value, LIMITS.text) || null,
+    confidence: finite(item?.confidence),
+    retrievalReason: text(item?.retrievalReason, 160) || null
   }));
 }
 

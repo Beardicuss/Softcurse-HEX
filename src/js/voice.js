@@ -19,6 +19,8 @@ class HexVoice {
 
     this.onTranscript = null;
     this.onStateChange = null;
+    this.onSpeakStart = null;
+    this.onSpeakEnd = null;
     this.onWakeWord = null;
     this.onVoicesLoaded = null;
     this._onError = null;
@@ -177,21 +179,25 @@ class HexVoice {
     const clean = text.replace(/\[ACTION:[^\]]+\]/g, '').replace(/[*_`#]/g, '').replace(/\n+/g, ' ').trim();
     if (!clean) return;
     const ttsLang = this._ttsEngine === 'local' ? (this._localVoiceLang || this._sttLang || 'en') : (this._sttLang || 'en');
+    const finishSpeaking = () => this.onSpeakEnd?.();
+    this.onSpeakStart?.(clean);
 
     if (this._ttsEngine === 'local') {
       const base = ttsLang.includes(':') ? ttsLang.split(':')[0] : ttsLang;
       if (this._localTTS?.[ttsLang] || this._localTTS?.[base]) {
-        try { await this._speakLocal(clean, ttsLang); return; }
+        try { await this._speakLocal(clean, ttsLang); setTimeout(finishSpeaking, Math.max(900, clean.length * 55)); return; }
         catch (e) { console.warn('Local TTS failed:', e.message); }
       }
     }
     if (this._useGCloud) {
-      try { await this._speakGCloud(clean, { gcVoice: opts.gcVoice || this._gcloudVoice, rate: opts.rate ?? 1.0, pitch: opts.pitch ?? 1.0 }); return; }
+      try { await this._speakGCloud(clean, { gcVoice: opts.gcVoice || this._gcloudVoice, rate: opts.rate ?? 1.0, pitch: opts.pitch ?? 1.0 }); setTimeout(finishSpeaking, Math.max(900, clean.length * 55)); return; }
       catch (e) { console.warn('GCloud TTS failed:', e.message); }
     }
-    if (!this.synthesis) return;
+    if (!this.synthesis) { finishSpeaking(); return; }
     const utt = new SpeechSynthesisUtterance(clean);
     utt.lang = opts.lang || this.langCode; utt.rate = opts.rate ?? 0.95; utt.pitch = opts.pitch ?? 0.85; utt.volume = opts.volume ?? 0.9;
+    utt.onend = finishSpeaking;
+    utt.onerror = finishSpeaking;
     const best = this._selectedVoice
       || this._voices.find(v => v.lang === utt.lang)
       || this._voices.find(v => v.lang.startsWith(utt.lang.split('-')[0]))
@@ -379,6 +385,19 @@ class HexVoice {
     const cleaned = String(transcript || '').trim();
     if (!cleaned) return;
     if (this._sleepWakeHook && this._sleepWakeHook(cleaned)) return;
+    if (this._isShowInterfaceCommand(cleaned)) {
+      window.showInterfaceSurface?.();
+      return;
+    }
+    if (this._isHideInterfaceCommand(cleaned)) {
+      window.hideInterfaceSurface?.();
+      return;
+    }
+    if (this._isVoiceModeOffCommand(cleaned)) {
+      window.closeVoiceSurface?.();
+      this.onTranscript?.('voice mode off', true);
+      return;
+    }
     if (window.hexSleep && !window.hexSleep.isSleeping) window.hexSleep.resetIdle();
     if (!this.wakeWordMode) {
       this.onTranscript?.(cleaned, true);
@@ -402,6 +421,24 @@ class HexVoice {
     }
   }
 
+
+
+  _isShowInterfaceCommand(transcript) {
+    const text = String(transcript || '').trim().toLowerCase().replace(/[.!?]+$/g, '');
+    return /^(?:show|open|reveal|bring\s+back|bring\s+up)\s+(?:the\s+)?(?:interface|main\s+interface|default\s+interface|cockpit|hex\s+interface|ui)$/.test(text);
+  }
+
+  _isHideInterfaceCommand(transcript) {
+    const text = String(transcript || '').trim().toLowerCase().replace(/[.!?]+$/g, '');
+    return /^(?:hide|close|dismiss)\s+(?:the\s+)?(?:interface|main\s+interface|default\s+interface|cockpit|hex\s+interface|ui)$/.test(text)
+      || /^(?:return|go\s+back)\s+(?:to\s+)?(?:voice\s+mode|hologram|ghost\s+deck)$/.test(text);
+  }
+  _isVoiceModeOffCommand(transcript) {
+    const text = String(transcript || '').trim().toLowerCase().replace(/[.!?]+$/g, '');
+    return /^(?:please\s+)?(?:turn\s+off|switch\s+off|shut\s+down|close|exit|disable|deactivate|stop)\s+(?:the\s+)?(?:voice\s+mode|voice\s+surface|agi\s+mode|hologram|ghost\s+deck|command\s+deck)$/.test(text)
+      || /^(?:voice\s+mode|voice\s+surface|agi\s+mode|hologram|ghost\s+deck|command\s+deck)\s+(?:off|offline|down)$/.test(text)
+      || /^(?:return\s+to\s+cockpit|back\s+to\s+cockpit|normal\s+interface)$/.test(text);
+  }
   _matchWakePhrase(transcript) {
     const text = String(transcript || '').trim().toLowerCase();
     const phrases = new Set(['hex', 'cardinal', 'hey hex', 'hey cardinal', this.wakeWord]);
@@ -576,4 +613,7 @@ class HexVoice {
 }
 
 window.hexVoice = new HexVoice();
+
+
+
 

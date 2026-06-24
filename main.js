@@ -105,7 +105,13 @@ async function isLocalLlmReachable(baseUrl) {
 
 async function startConfiguredLocalLlm() {
   const cfg = getConfig();
+  const perf = cfg.performance || {};
+  const mode = String(perf.mode || 'lite').toLowerCase();
   if (!cfg.llm?.autoOllama) return;
+  if (mode !== 'deep-local' || perf.localModelAutostart !== true) {
+    sendLog('SYSTEM', 'Local model autostart is disabled by Lite Performance Mode.');
+    return;
+  }
 
   if (cfg.llm?.provider === 'llamacpp') {
     if (localLlmProcess && !localLlmProcess.killed) return;

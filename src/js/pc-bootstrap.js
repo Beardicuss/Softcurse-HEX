@@ -59,6 +59,9 @@ window.hexPcBootstrap = (() => {
   }
 
   async function bootstrap() {
+    if (!window.hexPerformancePolicy?.allowStartupInventoryScan?.()) {
+      return { skipped: true, reason: 'performance-lite', locations: [], folders: 0, files: 0 };
+    }
     const startupLocations = window.hexPcKnownLocations?.listStartup?.() || [
       { alias: 'desktop' },
       { alias: 'documents' },

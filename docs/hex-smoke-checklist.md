@@ -63,6 +63,7 @@ Focused validation pass for `Softcurse H.E.X.` after the refactor and continuity
 ## Automatable checks in this pass
 
 - `node --check` across desktop and server JS
+- `npm run test:contracts`
 - `npm run build`
 - IPC handler coverage search for recent broken routes
 - Static review of chat send flow

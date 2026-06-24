@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 // == orb.js == 3D Thinking Animation & Glitch Effects =========================
 // Extracted from renderer.js
 // ── 3D ORB "THINKING" ANIMATION ──────────────────────────────
@@ -18,7 +18,13 @@ function resizeHexCanvas() {
   canvas.height = hexH = area.offsetHeight;
 }
 
+function stopHexAnimation() {
+  if (hexRAF) cancelAnimationFrame(hexRAF);
+  hexRAF = null;
+}
+
 function startHexAnimation() {
+  if (hexRAF) return;
   // ── Fibonacci sphere points ──
   const N = 400;
   const PHI = Math.PI * (3 - Math.sqrt(5));
@@ -198,5 +204,148 @@ function spawnGlitchTear() {
   el.style.top = Math.random() * 80 + 10 + 'vh';
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 200);
+}
+
+
+
+// ── Voice AGI Hologram Canvas ─────────────────────────────────────────────
+let voiceAgiCtx, voiceAgiRAF, voiceAgiPts, voiceAgiTick = 0;
+
+function initVoiceAgiCanvas() {
+  const canvas = document.getElementById('voice-agi-canvas');
+  if (!canvas) return;
+  voiceAgiCtx = canvas.getContext('2d', { alpha: true });
+  resizeVoiceAgiCanvas();
+  window.addEventListener('resize', resizeVoiceAgiCanvas);
+}
+
+function resizeVoiceAgiCanvas() {
+  const canvas = document.getElementById('voice-agi-canvas');
+  if (!canvas) return;
+  const size = Math.max(320, Math.min(620, Math.floor(Math.min(window.innerWidth, window.innerHeight) * 0.48)));
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  canvas.style.width = size + 'px';
+  canvas.style.height = size + 'px';
+  canvas.width = Math.floor(size * dpr);
+  canvas.height = Math.floor(size * dpr);
+  if (voiceAgiCtx) voiceAgiCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function getVoiceAgiPoints() {
+  if (voiceAgiPts) return voiceAgiPts;
+  const n = 620;
+  const phi = Math.PI * (3 - Math.sqrt(5));
+  voiceAgiPts = [];
+  for (let i = 0; i < n; i++) {
+    const y = 1 - (i / (n - 1)) * 2;
+    const r = Math.sqrt(Math.max(0, 1 - y * y));
+    const th = phi * i;
+    const ridge = 1 + Math.sin(i * 0.19) * 0.018 + Math.sin(i * 0.047) * 0.026;
+    voiceAgiPts.push({ x: Math.cos(th) * r * ridge, y: y * ridge, z: Math.sin(th) * r * ridge, seed: i });
+  }
+  return voiceAgiPts;
+}
+
+function stopVoiceAgiAnimation() {
+  if (voiceAgiRAF) cancelAnimationFrame(voiceAgiRAF);
+  voiceAgiRAF = null;
+}
+
+function startVoiceAgiAnimation() {
+  if (voiceAgiRAF) return;
+  if (!voiceAgiCtx) initVoiceAgiCanvas();
+  const canvas = document.getElementById('voice-agi-canvas');
+  if (!canvas || !voiceAgiCtx) return;
+  const pts = getVoiceAgiPoints();
+  let last = 0;
+  function palette(surface) {
+    if (surface?.classList.contains('voice-health-critical') || surface?.classList.contains('voice-health-danger')) {
+      return { a: [255, 79, 58], b: [255, 178, 76], c: [255, 45, 92] };
+    }
+    if (surface?.classList.contains('voice-health-warning')) {
+      return { a: [255, 210, 95], b: [255, 138, 56], c: [255, 76, 108] };
+    }
+    return { a: [82, 255, 238], b: [67, 137, 255], c: [255, 84, 126] };
+  }
+  function rot(p, ry, rx, rz) {
+    let x = p.x, y = p.y, z = p.z;
+    const cy = Math.cos(ry), sy = Math.sin(ry);
+    [x, z] = [x * cy + z * sy, -x * sy + z * cy];
+    const cx = Math.cos(rx), sx = Math.sin(rx);
+    [y, z] = [y * cx - z * sx, y * sx + z * cx];
+    const cz = Math.cos(rz), sz = Math.sin(rz);
+    [x, y] = [x * cz - y * sz, x * sz + y * cz];
+    return { x, y, z };
+  }
+  function frame(ts) {
+    voiceAgiRAF = requestAnimationFrame(frame);
+    if (ts - last < 58) return; // ~17fps, intentionally light
+    last = ts;
+    const surface = document.getElementById('voice-agi-surface');
+    if (!surface?.classList.contains('voice-agi-visible')) return;
+    voiceAgiTick += 1;
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    const ctx = voiceAgiCtx;
+    ctx.clearRect(0, 0, w, h);
+    ctx.globalCompositeOperation = 'source-over';
+    const cx = w / 2;
+    const cy = h / 2;
+    const speaking = surface.classList.contains('voice-agi-speaking');
+    const modeBoost = speaking ? 1.18 : surface.classList.contains('voice-agi-listening') ? 1.14
+      : surface.classList.contains('voice-agi-processing') || surface.classList.contains('voice-agi-action') ? 1.24
+        : 1;
+    const radius = Math.min(w, h) * 0.31 * modeBoost;
+    const pal = palette(surface);
+    const ry = voiceAgiTick * 0.012;
+    const rx = 0.32 + Math.sin(voiceAgiTick * 0.018) * 0.08;
+    const rz = Math.sin(voiceAgiTick * 0.011) * 0.08;
+    const projected = pts.map((p) => {
+      const speechWave = speaking ? Math.sin(p.y * 7 + voiceAgiTick * 0.34) * 0.085 : 0;
+      const wave = Math.sin(p.seed * 0.071 + voiceAgiTick * 0.055) * 0.035 + speechWave;
+      const rp = { x: p.x * (1 + wave), y: p.y * (1 - wave * 0.25), z: p.z * (1 + wave) };
+      const q = rot(rp, ry, rx, rz);
+      const depth = (q.z + 1.25) / 2.5;
+      const persp = 540 / (540 + q.z * radius);
+      return { x: cx + q.x * radius * persp, y: cy + q.y * radius * persp, z: q.z, depth, seed: p.seed };
+    }).sort((a, b) => a.z - b.z);
+
+    const glow = ctx.createRadialGradient(cx, cy, radius * 0.05, cx, cy, radius * 1.22);
+    glow.addColorStop(0, `rgba(${pal.a[0]},${pal.a[1]},${pal.a[2]},0.20)`);
+    glow.addColorStop(0.42, `rgba(${pal.b[0]},${pal.b[1]},${pal.b[2]},0.08)`);
+    glow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * 1.35, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalCompositeOperation = 'lighter';
+    for (const pt of projected) {
+      if (pt.depth < 0.08) continue;
+      const edge = Math.hypot(pt.x - cx, pt.y - cy) / radius;
+      const rim = Math.max(0, Math.min(1, (edge - 0.64) / 0.36));
+      const sparkle = Math.max(0, Math.sin(pt.seed * 0.31 + voiceAgiTick * 0.19)) * 0.22;
+      const mix = (pt.depth * 0.55 + rim * 0.55 + sparkle) % 1;
+      const ca = mix < 0.45 ? pal.a : mix < 0.75 ? pal.b : pal.c;
+      const alpha = Math.min(0.92, 0.12 + pt.depth * 0.34 + rim * 0.34 + sparkle);
+      const size = 0.55 + pt.depth * 1.15 + rim * 0.9;
+      ctx.fillStyle = `rgba(${ca[0]},${ca[1]},${ca[2]},${alpha})`;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Elegant edge arcs, not Jupiter rings.
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 3; i++) {
+      const phase = voiceAgiTick * 0.018 + i * 2.1;
+      ctx.strokeStyle = `rgba(${pal.a[0]},${pal.a[1]},${pal.a[2]},${0.08 + i * 0.035})`;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * (0.92 + i * 0.08), phase, phase + Math.PI * (0.35 + i * 0.08));
+      ctx.stroke();
+    }
+  }
+  frame(0);
 }
 

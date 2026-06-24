@@ -8,13 +8,29 @@ window.buildHexCompactSystemPrompt = function buildHexCompactSystemPrompt(state,
   const desktop = state.desktopContext || {};
   const cloudContext = state.cloudContext || {};
   const cloudSummary = cloudContext.summary || {};
+  const cloudState = cloudContext.continuityState || {};
+  const cloudFreshness = cloudState.freshness || {};
+  const fmtAge = (value) => Number.isFinite(Number(value)) ? (Math.round(Number(value) / 60) + 'm') : 'n/a';
   const cloudMemoryHits = Array.isArray(cloudContext.relevantMemories) ? cloudContext.relevantMemories.slice(0, 4).map((item) => item.content) : [];
   const cloudTurnHits = Array.isArray(cloudContext.relevantTurns) ? cloudContext.relevantTurns.slice(0, 3).map((item) => String(item.role || 'user').toUpperCase() + ': ' + String(item.content || '').substring(0, 120)) : [];
+  const cloudRetrievalReasons = [
+    ...((cloudContext.retrieval?.reasons?.memories || []).slice(0, 3).map((item) => 'memory ' + (item.kind || 'item') + ': ' + item.reason)),
+    ...((cloudContext.retrieval?.reasons?.turns || []).slice(0, 2).map((item) => 'turn ' + (item.role || 'user') + ': ' + item.reason))
+  ].filter(Boolean).slice(0, 5);
+  const cloudSelectedCounts = cloudContext.retrieval?.selectedCounts || {};
+  const cloudActionStatusCounts = cloudContext.retrieval?.actionStatusCounts || {};
   const cloudTasks = (cloudContext.unresolvedTasks || []).slice(0, 4).map((item) => item.text).filter(Boolean);
   const cloudActions = (cloudContext.actionTimeline || []).slice(0, 4).map((item) => item.kind + ': ' + item.text).filter(Boolean);
   const cloudCommitments = (cloudContext.dialogue?.commitments || []).slice(0, 3).map((item) => item.text).filter(Boolean);
   const cloudCorrections = (cloudContext.dialogue?.corrections || []).slice(0, 3).map((item) => item.text).filter(Boolean);
   const formatCloudRefs = (items) => (items || []).map((item) => item?.label || item?.value || item).filter(Boolean);
+  const formatRecoveredAction = (item) => {
+    if (!item || typeof item !== 'object') return 'none';
+    const status = item.success === false ? 'failed' : 'succeeded';
+    const type = String(item.type || 'action');
+    const summary = String(item.summary || item.reason || '').replace(/\\s+/g, ' ').trim();
+    return (type + ' ' + status + (summary ? ': ' + summary : '')).substring(0, 220);
+  };
   const recentUserMessages = Array.isArray(session.recentUserMessages) ? session.recentUserMessages.slice(-4) : [];
   const recentAssistantSummaries = Array.isArray(session.recentAssistantSummaries) ? session.recentAssistantSummaries.slice(-3) : [];
   const activeTopics = Array.isArray(session.activeTopics) ? session.activeTopics.slice(0, 8) : [];
@@ -72,8 +88,12 @@ window.buildHexCompactSystemPrompt = function buildHexCompactSystemPrompt(state,
     'Brain action plan: ' + (state.brainRoute?.actionPlan?.domain || 'dialogue') + ' | surface: ' + (state.brainRoute?.actionPlan?.suggestedSurface || 'chat') + ' | urgency: ' + (state.brainRoute?.actionPlan?.urgency || 'normal') + ' | reasons: ' + ((state.brainRoute?.actionPlan?.reasons || []).join(', ') || 'none'),
     'Cloud goal: ' + (cloudContext.activeGoal?.text || cloudSummary.goal || 'none'),
     'Cloud active topic: ' + (cloudContext.topics?.active?.label || 'none'),
+    'Cloud continuity: surface ' + (cloudState.activeSurface || 'chat') + ' | browser ' + (cloudState.browser?.open ? 'OPEN' : 'CLOSED') + ' | inventory ' + (cloudState.hasDesktopInventory ? 'YES' : 'NO') + ' | session age ' + fmtAge(cloudFreshness.sessionSeconds) + ' | inventory age ' + fmtAge(cloudFreshness.inventorySeconds) + ' | last action ' + (cloudState.lastActionStatus || 'none'),
     'Cloud paused topics: ' + ((cloudContext.topics?.paused || []).map((item) => item.label).join(' | ') || 'none'),
     'Cloud memory hits: ' + (cloudMemoryHits.join(' | ') || 'none'),
+    'Cloud retrieval: memories ' + (cloudSelectedCounts.memories || 0) + ', turns ' + (cloudSelectedCounts.turns || 0) + ', desktop refs ' + (cloudSelectedCounts.desktopReferences || 0) + ', browser refs ' + (cloudSelectedCounts.browserReferences || 0) + ', actions ' + (cloudSelectedCounts.actionTimeline || 0),
+    'Cloud action outcomes: success ' + (cloudActionStatusCounts.success || 0) + ', failure ' + (cloudActionStatusCounts.failure || 0) + ', pending ' + (cloudActionStatusCounts.pending || 0),
+    'Cloud retrieval why: ' + (cloudRetrievalReasons.join(' | ') || 'none'),
     'Cloud desktop refs: ' + (formatCloudRefs(cloudContext.references?.desktop || cloudSummary.desktopReferences).join(' | ') || 'none'),
     'Unresolved tasks: ' + (cloudTasks.join(' | ') || 'none'),
     'Recent actions: ' + (cloudActions.join(' | ') || 'none'),
@@ -86,6 +106,7 @@ window.buildHexCompactSystemPrompt = function buildHexCompactSystemPrompt(state,
     'Latest user message: ' + (session.lastUserMessage || userMsg || '--'),
     'Last assistant reply: ' + String(session.lastAssistantMessage || '--').substring(0, 180),
     'Last action plan: ' + (session.lastActionSummary || 'none'),
+    'Last recovered action: ' + formatRecoveredAction(session.lastRecoveredAction),
     'Last system/browser data: ' + String(session.lastSystemDataSummary || 'none').substring(0, 220),
     'Working task: ' + (working.currentTask || 'none'),
     'Session warmth: ' + (warmSession != null ? (warmSession + ' min since last active turn') : 'unknown'),

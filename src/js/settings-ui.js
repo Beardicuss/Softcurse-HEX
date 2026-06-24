@@ -157,6 +157,29 @@ function clearNode(node) {
   window.hexRenderUtils.clearNode(node);
 }
 
+function updatePerformanceSettingsUI() {
+  const mode = document.getElementById('cfg-performance-mode')?.value || 'lite';
+  const hint = document.getElementById('performance-mode-hint');
+  const localEngine = document.getElementById('cfg-autoollama');
+  if (hint) {
+    if (mode === 'lite') {
+      hint.textContent = 'Lite: cloud/server continuity preferred; Qwen, Whisper, Piper, and inventory scans stay on-demand.';
+      hint.style.color = 'var(--cyan)';
+    } else if (mode === 'balanced') {
+      hint.textContent = 'Balanced: keeps cloud-first behavior, but allows more local helpers when you ask for them.';
+      hint.style.color = 'var(--accent)';
+    } else {
+      hint.textContent = 'Deep Local: local model/voice autostart is allowed if enabled. This can heavily load the laptop.';
+      hint.style.color = 'var(--orange)';
+    }
+  }
+  if (localEngine) {
+    localEngine.title = mode === 'deep-local'
+      ? 'Deep Local can autostart local engines when enabled.'
+      : 'Lite/Balanced keep local engines on-demand even if this toggle is enabled.';
+  }
+}
+
 function appendText(parent, text) {
   parent.appendChild(document.createTextNode(text));
 }
@@ -185,12 +208,51 @@ const STALE_PROVIDER_MODELS = {
 
 let _lastLiveKeysMap = {};
 let _lastManualKeysMap = {};
+let _lastCapabilityPacket = null;
 
 function capabilitiesToKeyMap(providers = {}) {
   return Object.fromEntries(Object.entries(providers || {}).map(([provider, capability]) => [
     provider,
     Array(Math.max(0, Number(capability?.validKeys || 0))).fill(null)
   ]));
+}
+function getCapabilityHealth(packet = _lastCapabilityPacket) {
+  if (!packet) return { label: 'OFFLINE', color: 'var(--orange)', detail: 'No provider capability packet loaded yet.' };
+  if (packet.stale) return { label: 'STALE', color: 'var(--orange)', detail: 'Using last-known Hunter capability packet while the bridge refreshes.' };
+  if (packet.degraded || Number(packet.summary?.degradedProviders || 0) > 0) return { label: 'DEGRADED', color: 'var(--orange)', detail: 'Some providers are invalid, unavailable, or using fallback capability data.' };
+  if (Number(packet.summary?.readyProviders || 0) > 0) return { label: 'LIVE', color: 'var(--cyan)', detail: 'Hunter capability packet is fresh and has usable providers.' };
+  return { label: 'ONLINE / EMPTY', color: 'var(--muted)', detail: 'Hunter is reachable, but no usable provider keys are currently loaded.' };
+}
+
+function getCapabilityForProvider(provider) {
+  return _lastCapabilityPacket?.providers?.find((item) => item.provider === provider) || null;
+}
+
+function renderCapabilityStateBanner() {
+  const banner = document.getElementById('capability-state-banner');
+  if (!banner) return;
+  const health = getCapabilityHealth();
+  const summary = _lastCapabilityPacket?.summary || {};
+  banner.style.display = '';
+  banner.style.color = health.color;
+  banner.style.borderColor = health.color;
+  banner.textContent = health.label + ' :: ' + health.detail
+    + ' Providers ' + Number(summary.readyProviders || 0) + '/' + Number(summary.totalProviders || 0)
+    + ' ready, keys ' + Number(summary.liveKeys || 0)
+    + (_lastCapabilityPacket?.source ? ', source ' + _lastCapabilityPacket.source : '');
+}
+
+function getProviderStatusBadge(provider, count) {
+  const cap = getCapabilityForProvider(provider);
+  const status = String(cap?.status || (count > 0 ? 'ready' : 'empty')).toUpperCase();
+  const color = status === 'READY'
+    ? '#00ffc8'
+    : status === 'COOLDOWN'
+      ? 'var(--accent)'
+      : ['DEGRADED', 'INVALID', 'UNAVAILABLE'].includes(status)
+        ? 'var(--orange)'
+        : 'var(--muted)';
+  return { status, color };
 }
 function getProviderLabel(provider) {
   return LIVE_PROVIDER_LABELS[provider] || String(provider || '').trim().toUpperCase();
@@ -624,6 +686,16 @@ async function openSettings(targetTab = 'tab-general') {
   if (sysTray) sysTray.value = String(cfg.system?.minimizeToTray === true);
   const sleepEl = document.getElementById('cfg-sleep-timeout');
   if (sleepEl) sleepEl.value = cfg.sleepTimeoutMin || 0;
+  const perf = cfg.performance || {};
+  const perfModeEl = document.getElementById('cfg-performance-mode');
+  const perfVoiceEl = document.getElementById('cfg-performance-voice');
+  const perfTtsEl = document.getElementById('cfg-performance-local-tts');
+  const perfAwarenessEl = document.getElementById('cfg-performance-awareness');
+  if (perfModeEl) perfModeEl.value = perf.mode || 'lite';
+  if (perfVoiceEl) perfVoiceEl.value = String(perf.continuousVoice === true);
+  if (perfTtsEl) perfTtsEl.value = String(perf.localTts === true);
+  if (perfAwarenessEl) perfAwarenessEl.value = perf.awareness || 'on-demand';
+  updatePerformanceSettingsUI();
 
   document.getElementById('cfg-model').value = cfg.llm?.model || '';
   if (document.getElementById('cfg-visionkey')) document.getElementById('cfg-visionkey').value = cfg.llm?.visionApiKey || '';
@@ -686,6 +758,7 @@ async function openSettings(targetTab = 'tab-general') {
   updateTtsEngineUI();
   updateProviderUI();
   renderProviderFailurePanel();
+  renderCapabilityStateBanner();
   // Start on the requested tab
   switchSettingsTab(targetTab);
   // Auto-show voice status info when general is loaded (shows in voice tab when switched)
@@ -719,20 +792,34 @@ async function testCloudConnection() {
     return;
   }
 
+  const enteredAccessToken = (document.getElementById('cfg-cloud-token')?.value || '').trim();
+  const serverUrl = (document.getElementById('cfg-cloud-url')?.value || '').trim();
   const draftConfig = {
     ...config,
     cloud: {
       ...(config.cloud || {}),
       enabled,
-      serverUrl: (document.getElementById('cfg-cloud-url')?.value || '').trim(),
-      accessToken: (document.getElementById('cfg-cloud-token')?.value || '').trim(),
+      serverUrl,
+      accessToken: enteredAccessToken,
     }
   };
 
   const prevConfig = config;
   config = draftConfig;
   window._hexConfig = draftConfig;
-  await window.hexAPI.setConfig(draftConfig);
+  if (enteredAccessToken) {
+    if (!window.hexAPI.cloud?.saveAccessToken) throw new Error('Desktop bridge is missing cloud token save support. Restart or rebuild HEX.');
+    const tokenSave = await window.hexAPI.cloud.saveAccessToken({ accessToken: enteredAccessToken, enabled, serverUrl });
+    if (!tokenSave?.success) throw new Error(tokenSave?.error || 'Failed to save cloud access token');
+    if (tokenSave.cloud?.hasAccessToken !== true) throw new Error('Cloud token save returned without a stored token flag.');
+    draftConfig.cloud = { ...(draftConfig.cloud || {}), ...(tokenSave.cloud || {}) };
+  }
+  const savedDraft = await window.hexAPI.setConfig(draftConfig);
+  if (savedDraft?.cloud) {
+    draftConfig.cloud = { ...(draftConfig.cloud || {}), ...savedDraft.cloud };
+    config.cloud = draftConfig.cloud;
+    window._hexConfig.cloud = draftConfig.cloud;
+  }
 
   statusEl.textContent = 'Checking cloud server and hunter bridge...';
   statusEl.style.color = 'var(--accent)';
@@ -767,14 +854,29 @@ async function testCloudConnection() {
     statusEl.textContent = 'Cloud/Hunter check failed: ' + error.message;
     statusEl.style.color = 'var(--orange)';
   } finally {
+    const cloudStatus = await window.hexAPI.cloud.status().catch(() => null);
+    if (cloudStatus) {
+      draftConfig.cloud = {
+        ...(draftConfig.cloud || {}),
+        enabled: cloudStatus.enabled === true,
+        serverUrl: cloudStatus.serverUrl || draftConfig.cloud?.serverUrl || '',
+        hasAccessToken: cloudStatus.hasAccessToken === true,
+        profileId: cloudStatus.profileId || draftConfig.cloud?.profileId || '',
+        sessionId: cloudStatus.sessionId || draftConfig.cloud?.sessionId || '',
+        deviceId: cloudStatus.deviceId || draftConfig.cloud?.deviceId || ''
+      };
+    }
     config = draftConfig;
     window._hexConfig = draftConfig;
     if (prevConfig !== draftConfig) {
-      await window.hexAPI.setConfig(draftConfig);
+      const saved = await window.hexAPI.setConfig(draftConfig);
+      if (saved?.cloud) {
+        config.cloud = { ...(config.cloud || {}), ...saved.cloud };
+        window._hexConfig.cloud = config.cloud;
+      }
     }
   }
 }
-
 function populateVoiceSelect(selectedName) {
   const sel = document.getElementById('cfg-voice');
   if (!sel) return;
@@ -1090,6 +1192,14 @@ async function saveSettings() {
     browser: {
       searchEngine: document.getElementById('cfg-searchengine')?.value || 'google'
     },
+    performance: {
+      ...(config.performance || {}),
+      mode: document.getElementById('cfg-performance-mode')?.value || 'lite',
+      localModelAutostart: (document.getElementById('cfg-performance-mode')?.value || 'lite') === 'deep-local' && document.getElementById('cfg-autoollama')?.value === 'true',
+      continuousVoice: document.getElementById('cfg-performance-voice')?.value === 'true',
+      localTts: document.getElementById('cfg-performance-local-tts')?.value === 'true',
+      awareness: document.getElementById('cfg-performance-awareness')?.value || 'on-demand'
+    },
     voice: {
       ...config.voice,
       // modelsDir: always read from field so it persists even without clicking APPLY
@@ -1125,16 +1235,38 @@ async function saveSettings() {
     sleepTimeoutMin: parseInt(document.getElementById('cfg-sleep-timeout')?.value) || 0,
   };
 
+  const enteredCloudAccessToken = (document.getElementById('cfg-cloud-token')?.value || '').trim();
   const prevLang = config.language;
   // Merge personalities into config before saving
   const pcfg = window.hexPersonalities.toConfig();
   config = { ...config, ...newCfg, ...pcfg };
   window._hexConfig = config;
-  await window.hexAPI.setConfig(config);
+  if (enteredCloudAccessToken) {
+    if (!window.hexAPI.cloud?.saveAccessToken) throw new Error('Desktop bridge is missing cloud token save support. Restart or rebuild HEX.');
+    const tokenSave = await window.hexAPI.cloud.saveAccessToken({
+      accessToken: enteredCloudAccessToken,
+      enabled: config.cloud?.enabled === true,
+      serverUrl: config.cloud?.serverUrl || ''
+    });
+    if (!tokenSave?.success) throw new Error(tokenSave?.error || 'Failed to save cloud access token');
+    if (tokenSave.cloud?.hasAccessToken !== true) throw new Error('Cloud token save returned without a stored token flag.');
+    config.cloud = { ...(config.cloud || {}), ...(tokenSave.cloud || {}) };
+    window._hexConfig.cloud = config.cloud;
+  }
+  const savedConfig = await window.hexAPI.setConfig(config);
+  if (savedConfig?.cloud) {
+    config.cloud = { ...(config.cloud || {}), ...savedConfig.cloud };
+    window._hexConfig.cloud = config.cloud;
+    const cloudTokenEl = document.getElementById('cfg-cloud-token');
+    if (cloudTokenEl) {
+      cloudTokenEl.value = '';
+      cloudTokenEl.placeholder = config.cloud?.hasAccessToken ? 'Token configured - enter to replace' : '';
+    }
+  }
   window.hexAI.configure(config);
   window.hexVoice.wakeWord = config.voice.wakeWord;
   window.hexVoice.setVoiceByName(config.voice.voiceName);
-  window.hexVoice._ttsEngine = config.voice.ttsEngine || 'os';
+  window.hexVoice._ttsEngine = (config.voice.ttsEngine === 'local' && !window.hexPerformancePolicy?.allowLocalTts?.()) ? 'os' : (config.voice.ttsEngine || 'os');
   window.hexVoice._localVoiceLang = config.voice.localVoiceLang || 'en';
   window.hexVoice._localSpeed = config.voice.localSpeed ?? 1.0;
   window.hexVoice._gcloudKey = '';
@@ -1216,6 +1348,7 @@ async function loadLiveArsenal() {
       _lastManualKeysMap = res.manualKeys || {};
       syncProviderOptions(_lastLiveKeysMap);
       renderLiveArsenal(_lastLiveKeysMap);
+      renderCapabilityStateBanner();
       renderManualKeyList(_lastManualKeysMap);
     }
   } catch (e) {
@@ -1278,11 +1411,12 @@ function renderLiveArsenal(keysMap) {
       stats.style.color = 'var(--muted)';
       stats.style.fontSize = '12px';
 
+      const providerBadge = getProviderStatusBadge(provider, count);
       const badge = window.hexRenderUtils.createEl('div', {
-        text: count > 0 ? 'READY' : 'EMPTY'
+        text: providerBadge.status
       });
-      badge.style.color = count > 0 ? '#00ffc8' : 'var(--muted)';
-      badge.style.textShadow = count > 0 ? '0 0 5px #00ffc8' : 'none';
+      badge.style.color = providerBadge.color;
+      badge.style.textShadow = providerBadge.status === 'READY' ? '0 0 5px #00ffc8' : 'none';
       badge.style.alignSelf = 'center';
       badge.style.gridRow = '1 / span 2';
       badge.style.gridColumn = '2';
@@ -1295,6 +1429,7 @@ function renderLiveArsenal(keysMap) {
   }
 
   countEl.textContent = total;
+  renderCapabilityStateBanner();
   updateProviderUI();
 }
 
@@ -1448,7 +1583,6 @@ window.addEventListener('click', (event) => {
 });
 
 document.getElementById('cfg-cloud-test')?.addEventListener('click', testCloudConnection);
-
-
-
-
+document.getElementById('cfg-performance-mode')?.addEventListener('change', updatePerformanceSettingsUI);
+document.getElementById('cfg-performance-voice')?.addEventListener('change', updatePerformanceSettingsUI);
+document.getElementById('cfg-performance-local-tts')?.addEventListener('change', updatePerformanceSettingsUI);
