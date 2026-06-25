@@ -71,9 +71,9 @@
   function extractRememberFact(text) {
     const raw = clean(text);
     const patterns = [
-      /(?:remember that|remember|save that)\s+(.+)/i,
-      /(?:запомни(?: что)?|сохрани(?: что)?)\s+(.+)/i,
-      /(?:დაიმახსოვრე(?: რომ)?|შეინახე(?: რომ)?)\s+(.+)/i
+      /^(?:remember that|remember|save that)\s+(.+)/i,
+      /^(?:запомни(?: что)?|сохрани(?: что)?)\s+(.+)/i,
+      /^(?:დაიმახსოვრე(?: რომ)?|შეინახე(?: რომ)?)\s+(.+)/i
     ];
     for (const pattern of patterns) {
       const match = raw.match(pattern);
@@ -131,13 +131,47 @@
     };
   }
 
+  function packetFreshness(packet, purpose = 'session') {
+    if (!packet) return { fresh: false, stale: false, reason: 'no-packet', ageSeconds: null };
+    const state = packet.continuityState || null;
+    if (!state?.schema) return { fresh: true, stale: false, reason: 'legacy-packet-no-freshness', ageSeconds: null };
+    const freshness = state.freshness || {};
+    const ageFor = (keys) => {
+      for (const key of keys) {
+        const value = Number(freshness[key]);
+        if (Number.isFinite(value)) return value;
+      }
+      return null;
+    };
+    const rules = {
+      browser: { keys: ['lastTurnSeconds', 'sessionSeconds'], max: 15 * 60, requires: () => state.browser?.open === true },
+      inventory: { keys: ['inventorySeconds', 'sessionSeconds'], max: 6 * 60 * 60, requires: () => state.hasDesktopInventory === true },
+      action: { keys: ['lastActionSeconds', 'lastTurnSeconds', 'sessionSeconds'], max: 20 * 60, requires: () => true },
+      session: { keys: ['sessionSeconds', 'lastTurnSeconds'], max: 45 * 60, requires: () => true },
+      memory: { keys: ['sessionSeconds', 'lastTurnSeconds'], max: 24 * 60 * 60, requires: () => true },
+      profile: { keys: ['sessionSeconds'], max: 30 * 24 * 60 * 60, requires: () => true }
+    };
+    const rule = rules[purpose] || rules.session;
+    const ageSeconds = ageFor(rule.keys);
+    if (rule.requires && !rule.requires()) return { fresh: false, stale: true, reason: purpose + '-state-missing', ageSeconds };
+    if (ageSeconds == null) return { fresh: true, stale: false, reason: 'freshness-age-missing', ageSeconds };
+    const fresh = ageSeconds <= rule.max;
+    return { fresh, stale: !fresh, reason: fresh ? purpose + '-fresh' : purpose + '-stale', ageSeconds };
+  }
+
+  function cloudForPurpose(packet, purpose) {
+    return packetFreshness(packet, purpose).fresh ? packet : null;
+  }
+
   function inferConfidence(route, packet, memoryCount) {
-    if (route === 'provider' || route === 'server-context-provider') return packet ? 0.72 : 0.45;
+    const freshness = packetFreshness(packet, route === 'browser-answer' ? 'browser' : route === 'inventory-answer' ? 'inventory' : 'session');
+    const stalePenalty = freshness.stale ? -0.18 : 0;
+    if (route === 'provider' || route === 'server-context-provider') return packet ? Math.max(0.48, 0.72 + stalePenalty) : 0.45;
     if (route === 'memory-answer') return memoryCount > 0 ? 0.9 : 0.62;
-    if (route === 'continuity-answer') return packet?.activeGoal || packet?.topics?.active ? 0.88 : 0.68;
+    if (route === 'continuity-answer') return (packet?.activeGoal || packet?.topics?.active ? 0.88 : 0.68) + stalePenalty;
     if (route === 'profile-answer') return packet?.profile ? 0.9 : 0.64;
-    if (route === 'browser-answer') return packet?.browser ? 0.86 : 0.55;
-    if (route === 'inventory-answer') return packet?.desktopContext ? 0.84 : 0.55;
+    if (route === 'browser-answer') return packet?.browser ? Math.max(0.55, 0.86 + stalePenalty) : 0.55;
+    if (route === 'inventory-answer') return packet?.desktopContext ? Math.max(0.55, 0.84 + stalePenalty) : 0.55;
     if (route === 'status-answer' || route === 'local-reflex') return 0.82;
     return 0.5;
   }
@@ -147,7 +181,8 @@
   }
 
   function recommendedNext(route, packet) {
-    if (providerRequired(route)) return packet ? 'reason-with-server-context' : 'try-provider-or-local-fallback';
+    const freshness = packetFreshness(packet, route === 'browser-answer' ? 'browser' : route === 'inventory-answer' ? 'inventory' : 'session');
+    if (providerRequired(route)) return packet ? (freshness.stale ? 'reason-with-server-background-memory' : 'reason-with-server-context') : 'try-provider-or-local-fallback';
     if (route === 'memory-answer') return 'answer-from-memory-only';
     if (route === 'continuity-answer') return 'continue-current-task-from-server-state';
     if (route === 'browser-answer') return 'use-browser-session-state';
@@ -203,6 +238,7 @@
       reason,
       confidence,
       serverPacket: !!packet,
+      serverPacketFreshness: packetFreshness(packet, actionPlan?.suggestedSurface === 'browser' ? 'browser' : actionPlan?.suggestedSurface === 'desktop' ? 'inventory' : 'session'),
       serverMemoryHits: memoryCount,
       localMemoryReady: !!window.hexMemory,
       providerLayer: 'unstable-external',
@@ -237,6 +273,10 @@
     const lang = normalizeLang(input.lang);
     const systemState = input.systemState || {};
     const cloudPacket = systemState.cloudContext || window.hexCloudSync?._contextPacketCache?.packet || null;
+    const freshSessionPacket = cloudForPurpose(cloudPacket, 'session');
+    const freshBrowserPacket = cloudForPurpose(cloudPacket, 'browser');
+    const freshInventoryPacket = cloudForPurpose(cloudPacket, 'inventory');
+    const freshActionPacket = cloudForPurpose(cloudPacket, 'action');
     const rememberFact = extractRememberFact(userMsg);
     const actionPlan = systemState.brainPreflightPlan || window.hexBrainActionPlanner?.classify?.(userMsg, systemState) || null;
     if (rememberFact) {
@@ -275,13 +315,13 @@
       };
     }
 
-    if (isContinuityQuestion(userMsg) && cloudPacket) {
+    if (isContinuityQuestion(userMsg) && freshSessionPacket) {
       return {
         mode: 'continuity-answer',
-        reason: 'server-continuity',
-        text: window.hexBrainResponseComposer?.continuityReply?.(lang, cloudPacket) || window.hexBrainCore?.survivalReply?.({ userMsg, lang }) || '',
+        reason: 'server-continuity-fresh',
+        text: window.hexBrainResponseComposer?.continuityReply?.(lang, freshSessionPacket) || window.hexBrainCore?.survivalReply?.({ userMsg, lang }) || '',
         actions: [],
-        hints: buildRouteHints('continuity-answer', systemState, 'server-continuity', { actionPlan, userMsg })
+        hints: buildRouteHints('continuity-answer', systemState, 'server-continuity-fresh', { actionPlan, userMsg })
       };
     }
 
@@ -295,26 +335,26 @@
       };
     }
 
-    if (isBrowserQuestion(userMsg) && cloudPacket?.browser) {
+    if (isBrowserQuestion(userMsg) && freshBrowserPacket?.browser) {
       return {
         mode: 'browser-answer',
-        reason: 'server-browser-state',
-        text: window.hexBrainResponseComposer?.browserReply?.(lang, cloudPacket) || window.hexBrainCore?.survivalReply?.({ userMsg, lang }) || '',
+        reason: 'server-browser-state-fresh',
+        text: window.hexBrainResponseComposer?.browserReply?.(lang, freshBrowserPacket) || window.hexBrainCore?.survivalReply?.({ userMsg, lang }) || '',
         actions: [],
-        hints: buildRouteHints('browser-answer', systemState, 'server-browser-state', { actionPlan, userMsg })
+        hints: buildRouteHints('browser-answer', systemState, 'server-browser-state-fresh', { actionPlan, userMsg })
       };
     }
 
-    if (isInventoryQuestion(userMsg) && cloudPacket?.desktopContext) {
+    if (isInventoryQuestion(userMsg) && freshInventoryPacket?.desktopContext) {
       return {
         mode: 'inventory-answer',
-        reason: 'server-desktop-context',
-        text: window.hexBrainResponseComposer?.inventoryReply?.(lang, cloudPacket) || window.hexBrainCore?.survivalReply?.({ userMsg, lang }) || '',
+        reason: 'server-desktop-context-fresh',
+        text: window.hexBrainResponseComposer?.inventoryReply?.(lang, freshInventoryPacket) || window.hexBrainCore?.survivalReply?.({ userMsg, lang }) || '',
         actions: [],
-        hints: buildRouteHints('inventory-answer', systemState, 'server-desktop-context', { actionPlan, userMsg })
+        hints: buildRouteHints('inventory-answer', systemState, 'server-desktop-context-fresh', { actionPlan, userMsg })
       };
     }
-    const failedAction = recentMatchingFailure(cloudPacket, actionPlan);
+    const failedAction = recentMatchingFailure(freshActionPacket, actionPlan);
     if (failedAction && actionPlan && /action|follow-up/.test(actionPlan.domain || '')) {
       return {
         mode: 'action-recovery-local',
@@ -399,13 +439,14 @@
         hints: buildRouteHints('local-reflex', systemState, 'simple-dialogue-local-first', { actionPlan, userMsg, confidence: 0.78 })
       };
     }
-    const routeMode = cloudPacket ? 'server-context-provider' : 'provider';
+    const routeMode = freshSessionPacket ? 'server-context-provider' : 'provider';
+    const routeReason = freshSessionPacket ? 'server-packet-attached' : (cloudPacket ? 'stale-server-packet-background' : 'needs-model-reasoning');
     return {
       mode: routeMode,
-      reason: cloudPacket ? 'server-packet-attached' : 'needs-model-reasoning',
+      reason: routeReason,
       text: null,
       actions: [],
-      hints: buildRouteHints(routeMode, systemState, cloudPacket ? 'server-packet-attached' : 'needs-model-reasoning', { actionPlan, userMsg })
+      hints: buildRouteHints(routeMode, systemState, routeReason, { actionPlan, userMsg })
     };
   }
 
@@ -413,7 +454,8 @@
     version: ROUTE_VERSION,
     route,
     extractCloudMemories,
-    localProviderHealth
+    localProviderHealth,
+    packetFreshness
   };
 })();
 

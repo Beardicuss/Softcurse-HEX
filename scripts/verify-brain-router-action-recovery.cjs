@@ -82,7 +82,40 @@ require(path.join(__dirname, '..', 'src', 'js', 'brain-router.js'));
   });
 
   assert.equal(harmless.mode, 'browser-answer');
-  assert.equal(harmless.reason, 'server-browser-state');
+  assert.equal(harmless.reason, 'server-browser-state-fresh');
+
+  const stalePacket = {
+    schema: 'hex.context-packet.v2',
+    continuityState: {
+      schema: 'hex.continuity-state.v1',
+      activeSurface: 'browser',
+      browser: { open: true, title: 'Old YouTube', url: 'https://youtube.com' },
+      hasDesktopInventory: true,
+      freshness: { sessionSeconds: 7200, lastTurnSeconds: 7200, inventorySeconds: 90000, lastActionSeconds: 7200 }
+    },
+    browser: { open: true, title: 'Old YouTube', url: 'https://youtube.com' },
+    relevantMemories: [{ kind: 'preference', content: 'User prefers YouTube follow-ups.' }]
+  };
+
+  const staleBrowser = await window.hexBrainRouter.route({
+    userMsg: 'what page is open',
+    lang: 'en',
+    systemState: { cloudContext: stalePacket }
+  });
+
+  assert.equal(staleBrowser.mode, 'provider');
+  assert.equal(staleBrowser.reason, 'stale-server-packet-background');
+  assert.equal(staleBrowser.hints.serverPacketFreshness.stale, true);
+  assert.equal(staleBrowser.hints.recommendedNext, 'reason-with-server-background-memory');
+
+  const staleMemory = await window.hexBrainRouter.route({
+    userMsg: 'what do you remember about me?',
+    lang: 'en',
+    systemState: { cloudContext: stalePacket }
+  });
+
+  assert.equal(staleMemory.mode, 'memory-answer');
+  assert.equal(staleMemory.reason, 'server-memory');
 
   console.log('Brain router action recovery contract OK');
 })().catch((error) => {

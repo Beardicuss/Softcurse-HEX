@@ -152,6 +152,27 @@ async function refreshBrainDatasetInspector() {
   pathEl.textContent = 'Path: ' + (stats.path || 'unknown') + (stats.lastCreatedAt ? ' · Last feedback: ' + new Date(stats.lastCreatedAt).toLocaleString() : '');
 }
 window.refreshBrainDatasetInspector = refreshBrainDatasetInspector;
+async function exportBrainDataset() {
+  const status = document.getElementById('brain-dataset-export-status');
+  if (status) {
+    status.style.color = 'var(--cyan)';
+    status.textContent = 'Exporting clean SFT and preference datasets...';
+  }
+  const result = await window.hexAPI?.exportFinetuneDatasets?.();
+  if (!result?.success) {
+    if (status) {
+      status.style.color = 'var(--orange)';
+      status.textContent = 'Export failed: ' + (result?.error || 'unknown error');
+    }
+    return;
+  }
+  if (status) {
+    status.style.color = 'var(--cyan)';
+    status.textContent = 'Exported SFT ' + (result.counts?.sft || 0) + ' rows -> ' + result.sftPath + ' | PREF ' + (result.counts?.preferences || 0) + ' rows -> ' + result.preferencePath;
+  }
+  refreshBrainDatasetInspector();
+}
+window.exportBrainDataset = exportBrainDataset;
 
 function clearNode(node) {
   window.hexRenderUtils.clearNode(node);
@@ -1566,6 +1587,7 @@ async function autoSyncProvider() {
 window.addEventListener('click', (event) => {
   if (event.target.closest('#brain-telemetry-refresh')) { refreshBrainTelemetryTab(); return; }
   if (event.target.closest('#brain-dataset-refresh')) { refreshBrainDatasetInspector(); return; }
+  if (event.target.closest('#brain-dataset-export')) { exportBrainDataset(); return; }
   const providerRow = event.target.closest('[data-live-provider]');
   if (providerRow) {
     selectLiveProvider(providerRow.dataset.liveProvider);

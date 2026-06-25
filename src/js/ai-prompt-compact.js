@@ -19,6 +19,8 @@ window.buildHexCompactSystemPrompt = function buildHexCompactSystemPrompt(state,
   ].filter(Boolean).slice(0, 5);
   const cloudSelectedCounts = cloudContext.retrieval?.selectedCounts || {};
   const cloudActionStatusCounts = cloudContext.retrieval?.actionStatusCounts || {};
+  const cloudContextUse = cloudContext.retrieval?.contextUse || {};
+  const cloudContextUseLine = 'active ' + ((cloudContextUse.active || []).join('/') || 'none') + ' | background ' + ((cloudContextUse.background || []).join('/') || 'none') + ' | missing ' + ((cloudContextUse.missing || []).join('/') || 'none');
   const cloudTasks = (cloudContext.unresolvedTasks || []).slice(0, 4).map((item) => item.text).filter(Boolean);
   const cloudActions = (cloudContext.actionTimeline || []).slice(0, 4).map((item) => item.kind + ': ' + item.text).filter(Boolean);
   const cloudCommitments = (cloudContext.dialogue?.commitments || []).slice(0, 3).map((item) => item.text).filter(Boolean);
@@ -94,6 +96,7 @@ window.buildHexCompactSystemPrompt = function buildHexCompactSystemPrompt(state,
     'Cloud retrieval: memories ' + (cloudSelectedCounts.memories || 0) + ', turns ' + (cloudSelectedCounts.turns || 0) + ', desktop refs ' + (cloudSelectedCounts.desktopReferences || 0) + ', browser refs ' + (cloudSelectedCounts.browserReferences || 0) + ', actions ' + (cloudSelectedCounts.actionTimeline || 0),
     'Cloud action outcomes: success ' + (cloudActionStatusCounts.success || 0) + ', failure ' + (cloudActionStatusCounts.failure || 0) + ', pending ' + (cloudActionStatusCounts.pending || 0),
     'Cloud retrieval why: ' + (cloudRetrievalReasons.join(' | ') || 'none'),
+    'Cloud context use: ' + cloudContextUseLine,
     'Cloud desktop refs: ' + (formatCloudRefs(cloudContext.references?.desktop || cloudSummary.desktopReferences).join(' | ') || 'none'),
     'Unresolved tasks: ' + (cloudTasks.join(' | ') || 'none'),
     'Recent actions: ' + (cloudActions.join(' | ') || 'none'),

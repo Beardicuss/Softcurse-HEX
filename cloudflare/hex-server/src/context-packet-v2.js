@@ -49,6 +49,7 @@ export function assembleContextPacketV2({
     at: item?.at || null
   }));
   const generatedAt = new Date().toISOString();
+  const continuityState = buildContinuityState(continuity, actions, projectedTurns, generatedAt);
 
   return {
     schema: CONTEXT_PACKET_SCHEMA,
@@ -56,7 +57,7 @@ export function assembleContextPacketV2({
     query: text(query, 500),
     profile: projectProfile(continuity?.profile),
     session: projectSession(continuity?.session),
-    continuityState: buildContinuityState(continuity, actions, projectedTurns, generatedAt),
+    continuityState,
     activeGoal: buildActiveGoal(continuity, tasks),
     topics: projectTopics(continuity?.topicLedger),
     browser: projectBrowser(continuity?.browser),
@@ -67,7 +68,8 @@ export function assembleContextPacketV2({
       relevantTurns: projectedTurns,
       references,
       unresolvedTasks: tasks,
-      actionTimeline: actions
+      actionTimeline: actions,
+      continuityState
     }),
     relevantMemories: projectedMemories,
     relevantTurns: projectedTurns,
@@ -107,7 +109,7 @@ function buildContinuityState(continuity = {}, actions = [], turns = [], generat
     return Math.max(0, Math.round((generatedTime - time) / 1000));
   };
 
-  return {
+  const state = {
     schema: 'hex.continuity-state.v1',
     activeSurface: text(session.activeSurface, 40) || 'chat',
     sessionUpdatedAt: session.updatedAt || session.updated_at || null,
@@ -131,6 +133,46 @@ function buildContinuityState(continuity = {}, actions = [], turns = [], generat
       lastTurnSeconds: ageSeconds(lastTurn?.created_at),
       lastActionSeconds: ageSeconds(lastAction?.at)
     }
+  };
+  state.freshnessTiers = buildFreshnessTiers(state);
+  return state;
+}
+
+function buildFreshnessTiers(state = {}) {
+  const seconds = state.freshness || {};
+  const tier = (value, max, available = true) => {
+    if (!available) return 'missing';
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 'unknown';
+    return n <= max ? 'fresh' : 'stale';
+  };
+  return {
+    session: tier(seconds.sessionSeconds ?? seconds.lastTurnSeconds, 45 * 60),
+    browser: tier(seconds.lastTurnSeconds ?? seconds.sessionSeconds, 15 * 60, state.browser?.open === true),
+    inventory: tier(seconds.inventorySeconds ?? seconds.sessionSeconds, 6 * 60 * 60, state.hasDesktopInventory === true),
+    action: tier(seconds.lastActionSeconds ?? seconds.lastTurnSeconds ?? seconds.sessionSeconds, 20 * 60)
+  };
+}
+
+function buildContextUse(continuityState = {}) {
+  const tiers = continuityState.freshnessTiers || {};
+  const active = [];
+  const background = [];
+  const missing = [];
+  for (const key of ['session', 'browser', 'inventory', 'action']) {
+    const value = tiers[key] || 'unknown';
+    if (value === 'fresh' || value === 'unknown') active.push(key);
+    else if (value === 'stale') background.push(key);
+    else missing.push(key);
+  }
+  return {
+    schema: 'hex.context-use.v1',
+    active,
+    background,
+    missing,
+    guidance: background.length
+      ? 'Use stale areas only as background memory; prefer live/local state for those surfaces.'
+      : 'Server continuity is suitable for active routing.'
   };
 }
 function enrichRetrievalSummary(retrieval = {}, projected = {}) {
@@ -164,6 +206,7 @@ function enrichRetrievalSummary(retrieval = {}, projected = {}) {
     schema: 'hex.retrieval-summary.v1',
     categoryCounts,
     actionStatusCounts,
+    contextUse: buildContextUse(projected.continuityState || {}),
     selectedCounts: {
       memories: (projected.relevantMemories || []).length,
       turns: (projected.relevantTurns || []).length,

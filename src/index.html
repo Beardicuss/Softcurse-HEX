@@ -666,14 +666,14 @@
 
         <div style="display:flex;justify-content:space-between;align-items:center;margin:20px 0 12px;gap:10px;">
           <div class="settings-section-label" style="margin:0;">◆ LOCAL EVOLUTION DATASET</div>
-          <button type="button" id="brain-dataset-refresh" class="btn btn-secondary" style="font-size:13px;padding:4px 10px;">↻ SCAN</button>
+          <div style="display:flex;gap:8px;align-items:center;"><button type="button" id="brain-dataset-refresh" class="btn btn-secondary" style="font-size:13px;padding:4px 10px;">↻ SCAN</button><button type="button" id="brain-dataset-export" class="btn btn-secondary" style="font-size:13px;padding:4px 10px;">EXPORT CLEAN</button></div>
         </div>
         <div class="form-hint" style="margin-bottom:10px;line-height:1.5;">
           Shows the local JSONL records created by GOOD / WRONG / FIX. This does not train a model yet; it tells us whether HEX has enough clean feedback to evolve later.
         </div>
         <div id="brain-dataset-summary" class="form-hint" style="margin-bottom:8px;color:var(--cyan);">Dataset not scanned yet.</div>
         <div id="brain-dataset-grid" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:8px;"></div>
-        <div id="brain-dataset-path" class="form-hint" style="font-family:var(--font-m);word-break:break-all;color:var(--muted);"></div>
+        <div id="brain-dataset-path" class="form-hint" style="font-family:var(--font-m);word-break:break-all;color:var(--muted);"></div><div id="brain-dataset-export-status" class="form-hint" style="font-family:var(--font-m);word-break:break-all;color:var(--cyan);margin-top:6px;"></div>
       </div>
 
       <!-- ══ TAB: SECURITY ══════════════════════════════════ -->

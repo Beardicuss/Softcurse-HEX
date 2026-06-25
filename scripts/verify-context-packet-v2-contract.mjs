@@ -79,6 +79,10 @@ assert.equal(packet.continuityState.activeSurface, 'browser');
 assert.equal(packet.continuityState.browser.open, true);
 assert.equal(packet.continuityState.hasDesktopInventory, true);
 assert.equal(packet.continuityState.lastActionStatus, 'pending');
+assert.equal(packet.continuityState.freshnessTiers.browser, 'stale');
+assert.equal(packet.retrieval.contextUse.schema, 'hex.context-use.v1');
+assert.equal(packet.retrieval.contextUse.background.includes('browser'), true);
+assert.equal(packet.retrieval.contextUse.active.includes('session'), false);
 assert.equal(typeof packet.continuityState.freshness.sessionSeconds, 'number');
 assert.equal(typeof packet.continuityState.freshness.inventorySeconds, 'number');
 assert.equal(packet.activeGoal.text, 'Open selected YouTube result');
@@ -109,5 +113,6 @@ console.log('Context packet V2 contract OK:', {
   memoryReasons: packet.retrieval.reasons.memories.length,
   turnReasons: packet.retrieval.reasons.turns.length,
   actionReasons: packet.retrieval.reasons.actions.length,
+  contextBackground: packet.retrieval.contextUse.background.join(','),
   desktopCategories: Object.keys(packet.retrieval.categoryCounts).length
 });

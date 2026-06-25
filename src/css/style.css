@@ -3960,6 +3960,7 @@ body {
   overflow: hidden !important;
   display: -webkit-box !important;
   -webkit-line-clamp: 3 !important;
+  line-clamp: 3 !important;
   -webkit-box-orient: vertical !important;
   word-break: break-word !important;
   color: rgba(237,248,255,0.86) !important;

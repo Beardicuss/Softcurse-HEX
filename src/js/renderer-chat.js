@@ -92,6 +92,8 @@ function buildChatMsg(role, text, options = {}) {
       user: String(options.feedback?.user || window._lastUserMsg || '').slice(0, 4000),
       assistant: String(text || '').slice(0, 8000),
       brainRoute: options.feedback?.brainRoute || null,
+      language: document.documentElement?.lang || window._hexConfig?.language || 'en',
+      assistantMode: window.currentMode || window._hexConfig?.mode || 'hex',
       createdAt: new Date().toISOString()
     });
     const feedbackRow = window.hexRenderUtils.createEl('div', { className: 'chat-actions chat-feedback-actions' });

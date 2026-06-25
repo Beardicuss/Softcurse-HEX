@@ -6,6 +6,8 @@ window.buildHexSystemStateBlock = function buildHexSystemStateBlock(state, ctx) 
   const cloudFreshness = cloudState.freshness || {};
   const fmtAge = (value) => Number.isFinite(Number(value)) ? (Math.round(Number(value) / 60) + 'm') : 'n/a';
   const cloudActionStatusCounts = state.cloudContext?.retrieval?.actionStatusCounts || {};
+  const cloudContextUse = state.cloudContext?.retrieval?.contextUse || {};
+  const cloudContextUseLine = 'active ' + ((cloudContextUse.active || []).join('/') || 'none') + ' | background ' + ((cloudContextUse.background || []).join('/') || 'none') + ' | missing ' + ((cloudContextUse.missing || []).join('/') || 'none');
   const cloudRetrievalReasons = [
     ...((state.cloudContext?.retrieval?.reasons?.memories || []).slice(0, 3).map((item) => 'memory ' + (item.kind || 'item') + ': ' + item.reason)),
     ...((state.cloudContext?.retrieval?.reasons?.turns || []).slice(0, 2).map((item) => 'turn ' + (item.role || 'user') + ': ' + item.reason))
@@ -50,6 +52,7 @@ window.buildHexSystemStateBlock = function buildHexSystemStateBlock(state, ctx) 
     '  Cloud retrieval: memories ' + (cloudSelectedCounts.memories || 0) + ', turns ' + (cloudSelectedCounts.turns || 0) + ', desktop refs ' + (cloudSelectedCounts.desktopReferences || 0) + ', browser refs ' + (cloudSelectedCounts.browserReferences || 0) + ', actions ' + (cloudSelectedCounts.actionTimeline || 0),
     '  Cloud action outcomes: success ' + (cloudActionStatusCounts.success || 0) + ', failure ' + (cloudActionStatusCounts.failure || 0) + ', pending ' + (cloudActionStatusCounts.pending || 0),
     '  Cloud why: ' + (cloudRetrievalReasons.join(' | ') || 'none'),
+    '  Cloud context use: ' + cloudContextUseLine,
     '  Cloud refs: ' + ((state.cloudContext?.references?.desktop || []).map((item) => item?.label || item?.value || item).join(' | ') || 'none'),
     '  Pending tasks: ' + ((state.cloudContext?.unresolvedTasks || []).map((item) => item.text).join(' | ') || 'none'),
     '  Action timeline: ' + ((state.cloudContext?.actionTimeline || []).map((item) => item.kind + ': ' + item.text).join(' | ') || 'none'),
@@ -75,6 +78,8 @@ window.buildHexContinuityBlock = function buildHexContinuityBlock(state, userMsg
   const cloudFreshness = cloudState.freshness || {};
   const fmtAge = (value) => Number.isFinite(Number(value)) ? (Math.round(Number(value) / 60) + 'm') : 'n/a';
   const cloudActionStatusCounts = state.cloudContext?.retrieval?.actionStatusCounts || {};
+  const cloudContextUse = state.cloudContext?.retrieval?.contextUse || {};
+  const cloudContextUseLine = 'active ' + ((cloudContextUse.active || []).join('/') || 'none') + ' | background ' + ((cloudContextUse.background || []).join('/') || 'none') + ' | missing ' + ((cloudContextUse.missing || []).join('/') || 'none');
   const cloudRetrievalReasons = [
     ...((state.cloudContext?.retrieval?.reasons?.memories || []).slice(0, 3).map((item) => 'memory ' + (item.kind || 'item') + ': ' + item.reason)),
     ...((state.cloudContext?.retrieval?.reasons?.turns || []).slice(0, 2).map((item) => 'turn ' + (item.role || 'user') + ': ' + item.reason))
@@ -106,6 +111,7 @@ window.buildHexContinuityBlock = function buildHexContinuityBlock(state, userMsg
     '  Cloud retrieval      : memories ' + (cloudSelectedCounts.memories || 0) + ', turns ' + (cloudSelectedCounts.turns || 0) + ', desktop refs ' + (cloudSelectedCounts.desktopReferences || 0) + ', browser refs ' + (cloudSelectedCounts.browserReferences || 0) + ', actions ' + (cloudSelectedCounts.actionTimeline || 0),
     '  Cloud action outcomes : success ' + (cloudActionStatusCounts.success || 0) + ', failure ' + (cloudActionStatusCounts.failure || 0) + ', pending ' + (cloudActionStatusCounts.pending || 0),
     '  Cloud retrieval why  : ' + (cloudRetrievalReasons.join(' | ') || 'none'),
+    '  Cloud context use    : ' + cloudContextUseLine,
     '  Cloud turn hits      : ' + ((state.cloudContext?.relevantTurns || []).map((item) => (String(item.role || 'user').toUpperCase() + ': ' + String(item.content || '').substring(0, 100))).join(' | ') || 'none'),
     '  Cloud desktop refs   : ' + ((state.cloudContext?.references?.desktop || []).map((item) => item?.label || item?.value || item).join(' | ') || 'none'),
     '  HEX commitments     : ' + ((state.cloudContext?.dialogue?.commitments || []).map((item) => item.text).join(' | ') || 'none'),

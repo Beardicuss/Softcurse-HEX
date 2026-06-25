@@ -18,7 +18,7 @@
     "test:provider-queue": "node scripts/verify-ai-provider-queue-guard.cjs",
     "test:context-packet": "node scripts/verify-context-packet-v2-contract.mjs",
     "test:cloud-rehydrate": "node scripts/verify-cloud-context-rehydrator.cjs",
-    "test:contracts": "npm run test:capabilities && npm run test:desktop-capabilities && npm run test:live-keys && npm run test:provider-queue && npm run test:context-packet && npm run test:context-priority && npm run test:cloud-rehydrate && npm run test:action-outcomes && npm run test:prompt-actions && npm run test:brain-recovery && npm run test:brain-action-recovery && npm run test:ai-routed-actions && npm run test:ai-provider-action-recovery && npm run test:performance-policy && npm run test:cloud-lite-cache && npm run test:cloud-degraded-fallback && npm run test:cloud-token && npm run test:cloud-access-token && npm run test:config-save-secrets && npm run test:cloud-token-vault && npm run test:performance-settings",
+    "test:contracts": "npm run test:capabilities && npm run test:desktop-capabilities && npm run test:live-keys && npm run test:provider-queue && npm run test:context-packet && npm run test:context-priority && npm run test:cloud-rehydrate && npm run test:action-outcomes && npm run test:prompt-actions && npm run test:brain-recovery && npm run test:brain-action-recovery && npm run test:brain-evolution && npm run test:finetune-export && npm run test:ai-routed-actions && npm run test:ai-provider-action-recovery && npm run test:performance-policy && npm run test:cloud-lite-cache && npm run test:cloud-degraded-fallback && npm run test:cloud-token && npm run test:cloud-access-token && npm run test:config-save-secrets && npm run test:cloud-token-vault && npm run test:performance-settings",
     "test:action-outcomes": "node scripts/verify-action-outcome-recorder.cjs",
     "test:prompt-actions": "node scripts/verify-prompt-action-outcomes.cjs",
     "test:brain-recovery": "node scripts/verify-brain-router-action-recovery.cjs",
@@ -33,6 +33,8 @@
     "test:context-priority": "node scripts/verify-context-priority-references.mjs",
     "test:cloud-degraded-fallback": "node scripts/verify-cloud-degraded-fallback.cjs",
     "test:brain-action-recovery": "node scripts/verify-brain-action-provider-recovery.cjs",
+    "test:brain-evolution": "node scripts/verify-brain-evolution-recorder.cjs",
+    "test:finetune-export": "node scripts/verify-finetune-exporter.cjs",
     "test:ai-provider-action-recovery": "node scripts/verify-ai-provider-failure-action-recovery.cjs"
   },
   "dependencies": {
