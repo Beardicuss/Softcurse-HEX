@@ -97,9 +97,12 @@
           <div class="panel-kicker">CONTEXT OBSERVATORY</div>
           <h2>What Desktop HEX receives before thinking.</h2>
         </div>
-        <div class="query-bar">
-          <input id="context-query" type="text" value="dashboard refresh" aria-label="Context packet query">
-          <button type="button" id="refresh-context" class="forge-btn compact">Refresh Packet</button>
+        <div class="packet-controls" aria-label="Context packet scenarios">
+          <button type="button" class="scenario-chip active" data-context-query="dashboard refresh">Dashboard</button>
+          <button type="button" class="scenario-chip" data-context-query="open third video from current browser results">Browser follow-up</button>
+          <button type="button" class="scenario-chip" data-context-query="what apps files games and windows exist on this pc">Desktop inventory</button>
+          <button type="button" class="scenario-chip" data-context-query="continue our conversation with memory and preferences">Dialogue memory</button>
+          <button type="button" id="refresh-context" class="forge-btn compact">Refresh</button>
         </div>
       </div>
       <div class="observatory-grid">

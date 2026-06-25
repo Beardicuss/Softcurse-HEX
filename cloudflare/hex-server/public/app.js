@@ -394,14 +394,25 @@ async function submitToken(event) {
   status.textContent = 'Authorized.';
 }
 
+function getSelectedContextQuery() {
+  return document.querySelector('.scenario-chip.active')?.dataset.contextQuery || 'dashboard refresh';
+}
+
 document.addEventListener('click', async (event) => {
   const card = event.target.closest('[data-profile-id]');
   if (card) {
     await loadContinuity(card.dataset.profileId);
     return;
   }
+  const scenario = event.target.closest('[data-context-query]');
+  if (scenario) {
+    document.querySelectorAll('.scenario-chip').forEach((item) => item.classList.remove('active'));
+    scenario.classList.add('active');
+    await loadContextPacket(scenario.dataset.contextQuery || 'dashboard refresh');
+    return;
+  }
   if (event.target.closest('#refresh-context')) {
-    await loadContextPacket(document.getElementById('context-query')?.value || 'dashboard refresh');
+    await loadContextPacket(getSelectedContextQuery());
     return;
   }
   if (event.target.closest('#refresh-hunter')) {
