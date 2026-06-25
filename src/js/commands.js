@@ -64,6 +64,10 @@ async function tryDirectCommand(text) {
   if (/^(?:who\s+are\s+you|what\s+are\s+you)$/.test(t)) {
     return sayLocal('I am H.E.X., the Quiet Cardinal. Local brain online and listening.');
   }
+  if (/^(?:close|hide|dismiss|exit|back\s+from)\s+(?:the\s+)?(?:settings|settings\s+panel|settings\s+window)$/.test(t)) {
+    window.closeSettingsSurface?.();
+    return { handled: true };
+  }
   // Voice surface / UI navigation commands. These must stay local and instant.
   if (/^(?:open|show|bring\s+up)\s+(?:hex\s+)?settings$/.test(t) || t === 'settings') {
     window.openSettingsSurface?.();

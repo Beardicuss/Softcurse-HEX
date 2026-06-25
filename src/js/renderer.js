@@ -247,6 +247,7 @@ async function init() {
     window.hexVoice._gcloudVoice = config.voice?.gcloudVoice || 'ka-GE-Standard-A';
   };
   window.reminders.init();
+  document.getElementById('voice-agi-exit')?.addEventListener('click', () => window.closeVoiceSurface?.());
 
   // Wire voice callbacks
 async function dispatchVoiceCommand(text, source = 'voice') {
@@ -674,6 +675,17 @@ window.openSettingsSurface = function () {
   voiceSurfaceOverride = 'settings';
   setVoiceAgiSurface(false, 'off');
   if (typeof openSettings === 'function') openSettings();
+};
+
+window.closeSettingsSurface = function () {
+  if (typeof closeSettings === 'function') closeSettings();
+  if (window.hexVoice?.isListening) {
+    voiceSurfaceOverride = null;
+    setVoiceAgiSurface(true, 'standby');
+  } else {
+    voiceSurfaceOverride = 'chat';
+    setVoiceAgiSurface(false, 'off');
+  }
 };
 function toggleMic() {
   if (!window.hexVoice?.isListening) voiceSurfaceOverride = null;

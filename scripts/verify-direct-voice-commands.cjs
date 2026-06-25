@@ -6,7 +6,7 @@ const vm = require('vm');
 const assert = require('assert/strict');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'js', 'commands.js'), 'utf8');
-const state = { messages: [], spoken: [], actions: [], settingsOpened: 0, chatOpened: 0, voiceClosed: 0 };
+const state = { messages: [], spoken: [], actions: [], settingsOpened: 0, settingsClosed: 0, chatOpened: 0, voiceClosed: 0 };
 
 const context = {
   console,
@@ -16,6 +16,7 @@ const context = {
     _hexConfig: { userName: 'Dante' },
     hexVoice: { speak: (msg) => state.spoken.push(msg) },
     openSettingsSurface: () => { state.settingsOpened += 1; },
+    closeSettingsSurface: () => { state.settingsClosed += 1; },
     openChatSurface: () => { state.chatOpened += 1; },
     closeVoiceSurface: () => { state.voiceClosed += 1; },
     hexContextState: { getBrowserSessionState: () => ({ open: false }) },
@@ -51,6 +52,10 @@ const run = async () => {
   result = await context.tryDirectCommand('who are you?');
   assert.equal(result.handled, true, 'assistant identity question should be local');
   assert.match(state.messages.at(-1), /H\.E\.X\./);
+
+  result = await context.tryDirectCommand('close settings.');
+  assert.equal(result.handled, true, 'close settings should stay local');
+  assert.equal(state.settingsClosed, 1, 'settings surface should close');
 
   result = await context.tryDirectCommand('Open YouTube.');
   assert.equal(result.handled, true, 'open youtube with punctuation should be handled');

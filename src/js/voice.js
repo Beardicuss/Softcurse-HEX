@@ -6,7 +6,7 @@
 //
 // TTS: Local Piper → Google Cloud TTS → OS Web Speech synthesis
 
-const HEX_VOICE_BUILD = 'voice-command-20260625d';
+const HEX_VOICE_BUILD = 'voice-command-20260625f';
 
 class HexVoice {
   constructor() {
@@ -42,6 +42,7 @@ class HexVoice {
     this._localSpeed = 1.0;
     this._ttsAudioCtx = null;
     this._currentSource = null;
+    this._speakSeq = 0;
 
     // STT — AudioWorklet pipeline
     this._sttAudioCtx = null;
@@ -184,18 +185,26 @@ class HexVoice {
     const clean = text.replace(/\[ACTION:[^\]]+\]/g, '').replace(/[*_`#]/g, '').replace(/\n+/g, ' ').trim();
     if (!clean) return;
     const ttsLang = this._ttsEngine === 'local' ? (this._localVoiceLang || this._sttLang || 'en') : (this._sttLang || 'en');
-    const finishSpeaking = () => this.onSpeakEnd?.();
+    const seq = ++this._speakSeq;
+    const startedAt = Date.now();
+    const minMs = Math.max(1300, Math.min(12000, clean.length * 58));
+    const finishSpeaking = () => {
+      const remaining = Math.max(0, minMs - (Date.now() - startedAt));
+      setTimeout(() => {
+        if (seq === this._speakSeq) this.onSpeakEnd?.();
+      }, remaining);
+    };
     this.onSpeakStart?.(clean);
 
     if (this._ttsEngine === 'local') {
       const base = ttsLang.includes(':') ? ttsLang.split(':')[0] : ttsLang;
       if (this._localTTS?.[ttsLang] || this._localTTS?.[base]) {
-        try { await this._speakLocal(clean, ttsLang); setTimeout(finishSpeaking, Math.max(900, clean.length * 55)); return; }
+        try { await this._speakLocal(clean, ttsLang); setTimeout(finishSpeaking, minMs); return; }
         catch (e) { console.warn('Local TTS failed:', e.message); }
       }
     }
     if (this._useGCloud) {
-      try { await this._speakGCloud(clean, { gcVoice: opts.gcVoice || this._gcloudVoice, rate: opts.rate ?? 1.0, pitch: opts.pitch ?? 1.0 }); setTimeout(finishSpeaking, Math.max(900, clean.length * 55)); return; }
+      try { await this._speakGCloud(clean, { gcVoice: opts.gcVoice || this._gcloudVoice, rate: opts.rate ?? 1.0, pitch: opts.pitch ?? 1.0 }); setTimeout(finishSpeaking, minMs); return; }
       catch (e) { console.warn('GCloud TTS failed:', e.message); }
     }
     if (!this.synthesis) { finishSpeaking(); return; }
@@ -212,6 +221,7 @@ class HexVoice {
   }
 
   stopSpeaking() {
+    this._speakSeq++;
     this.synthesis?.cancel();
     if (this._currentSource) { try { this._currentSource.stop(); } catch (_) { } this._currentSource = null; }
   }
