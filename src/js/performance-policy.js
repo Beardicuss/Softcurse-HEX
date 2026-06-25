@@ -77,6 +77,31 @@ window.hexPerformancePolicy = (() => {
     return needsVisionContext(text);
   }
 
+  function allowDecorativeEffects(context = {}) {
+    if (isSystemUnderPressure(context.stats)) return false;
+    if (context.voiceSurface === true || window.isVoiceAgiActive?.() === true) return false;
+    return !isLite();
+  }
+
+  function allowHiddenPanelRefresh(context = {}) {
+    if (isSystemUnderPressure(context.stats)) return false;
+    if (context.voiceSurface === true || window.isVoiceAgiActive?.() === true) return false;
+    return true;
+  }
+
+  function uiRefreshIntervalMs(context = {}) {
+    if (!allowHiddenPanelRefresh(context)) return 60000;
+    if (isSystemUnderPressure(context.stats)) return 45000;
+    if (isLite()) return 30000;
+    if (isBalanced()) return 18000;
+    return 10000;
+  }
+
+  function allowTelemetryUiChatter(context = {}) {
+    if (context.voiceSurface === true || window.isVoiceAgiActive?.() === true) return false;
+    return !isLite() && !isSystemUnderPressure(context.stats);
+  }
+
   return {
     mode,
     isLite,
@@ -90,6 +115,10 @@ window.hexPerformancePolicy = (() => {
     allowStartupInventoryScan,
     needsDesktopContext,
     needsVisionContext,
-    allowVisionCapture
+    allowVisionCapture,
+    allowDecorativeEffects,
+    allowHiddenPanelRefresh,
+    uiRefreshIntervalMs,
+    allowTelemetryUiChatter
   };
 })();

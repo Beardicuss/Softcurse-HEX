@@ -35,15 +35,6 @@
 
   <!-- ── V3 Global Overlays ────────────────────────── -->
   <div class="noise-overlay"></div>
-  <div class="pulsar-cursor">
-    <div class="pulsar-dot"></div>
-    <div class="pulsar-line top"></div>
-    <div class="pulsar-line bottom"></div>
-    <div class="pulsar-line left"></div>
-    <div class="pulsar-line right"></div>
-    <div class="pulsar-ring"></div>
-    <div class="pulsar-ring2"></div>
-  </div>
   <div id="toast-container"></div>
 
   <!-- ── Face Auth Lock Screen ────────────────────────── -->
@@ -1209,7 +1200,7 @@
   <script src="js/render-utils.js"></script>
   <script src="js/system.js"></script>
   <script src="js/performance-policy.js"></script>
-  <script src="js/voice.js"></script>
+  <script src="js/voice.js?v=voice-command-20260625e"></script>
   <script src="js/context-state.js"></script>
   <script src="js/candidate-store.js"></script>
   <script src="js/candidate-publishers.js"></script>
@@ -1251,7 +1242,7 @@
   <script src="js/memory.js"></script>
   <script src="js/hex-learn.js"></script>
   <script src="js/memory-ui.js"></script>
-  <script src="js/commands.js"></script>
+  <script src="js/commands.js?v=voice-command-20260625e"></script>
   <script src="js/personality-ui.js"></script>
   <script src="js/settings-ui.js"></script>
   <script src="js/v2-ui.js"></script>
@@ -1273,7 +1264,7 @@
   <script src="js/actions-device.js"></script>
   <script src="js/actions-ops.js"></script>
   <script src="js/actions-services.js"></script>
-  <script src="js/actions-assistant.js"></script>
+  <script src="js/actions-assistant.js?v=voice-command-20260625e"></script>
   <script src="js/actions-smart.js"></script>
   <script src="js/actions-butler.js"></script>
   <script src="js/actions.js"></script>
@@ -1281,37 +1272,15 @@
   <script src="js/sleep.js"></script>
   <script src="js/onboarding.js"></script>
   <script src="js/cloud-sync.js"></script>
-  <script src="js/renderer-send.js"></script>
-  <script src="js/renderer.js"></script>
+  <script src="js/renderer-send.js?v=voice-command-20260625e"></script>
+  <script src="js/renderer.js?v=voice-command-20260625e"></script>
   <script src="js/event-wiring.js"></script>
-  <!-- ── V3 Custom Cursor Tracking & Drag Hooks ──────────── -->
-  <div class="cyber-cursor"></div>
+  <!-- ── Window Drag Hooks ──────────── -->
   <script>
     (function () {
-      // 1. Cursor Tracking
-      const cursor = document.querySelector('.cyber-cursor');
-      if (cursor) {
-        document.addEventListener('mousemove', e => {
-          if (window.isVoiceAgiActive?.()) return;
-          cursor.style.left = e.clientX + 'px';
-          cursor.style.top = e.clientY + 'px';
-        });
+      // Native Windows cursor is used; custom cursor tracking disabled for performance.
 
-        document.addEventListener('mouseover', e => {
-          if (window.isVoiceAgiActive?.()) return;
-          if (e.target.closest('a, button, input, textarea, select, [role="button"], .task-card, .lang-btn, .win-btn, .toast-btn, .btn-primary, .btn-secondary, #mic-status, .task-run-btn, .stab')) {
-            cursor.classList.add('hovering');
-          }
-        });
-        document.addEventListener('mouseout', e => {
-          if (window.isVoiceAgiActive?.()) return;
-          if (e.target.closest('a, button, input, textarea, select, [role="button"], .task-card, .lang-btn, .win-btn, .toast-btn, .btn-primary, .btn-secondary, #mic-status, .task-run-btn, .stab')) {
-            cursor.classList.remove('hovering');
-          }
-        });
-      }
-
-      // 2. Custom JS Topbar Drag
+      // Custom JS Topbar Drag
       const topbar = document.getElementById('topbar');
       if (topbar) {
         let isDragging = false;
@@ -1342,10 +1311,3 @@
 </body>
 
 </html>
-
-
-
-
-
-
-

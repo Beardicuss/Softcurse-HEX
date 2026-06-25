@@ -214,8 +214,8 @@
         }
 
         // 3. Resume neural surface
-        if (_suspended.neuralInterval && typeof nsRefreshAll === 'function') {
-            window._nsRefreshInterval = setInterval(nsRefreshAll, 10000);
+        if (_suspended.neuralInterval && typeof window.neuralSurface?.start === 'function') {
+            window.neuralSurface.start();
             _suspended.neuralInterval = null;
         }
 
@@ -231,7 +231,7 @@
             // Re-create the intervals since the old IDs were cleared
             window._hexIntervals = window._hexIntervals || [];
             if (typeof updateClock === 'function') window._hexIntervals.push(setInterval(updateClock, 1000));
-            if (typeof spawnGlitchTear === 'function') window._hexIntervals.push(setInterval(spawnGlitchTear, 12000));
+            if (typeof spawnGlitchTear === 'function') window._hexIntervals.push(setInterval(() => { if (window.hexPerformancePolicy?.allowDecorativeEffects?.()) spawnGlitchTear(); }, 12000));
             window._hexIntervals.push(setInterval(() => {
                 const el = document.getElementById('v-uptime');
                 if (el) el.textContent = window.activityMonitor?.getUptime?.() || '';

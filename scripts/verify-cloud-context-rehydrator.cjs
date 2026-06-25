@@ -75,6 +75,8 @@ assert.ok(appCategory, 'app category should be merged');
 assert.equal(appCategory.items[0].meta.retrievalSchema, 'hex.retrieval-summary.v1');
 assert.equal(appCategory.items[0].meta.categoryCount, 2);
 assert.equal(appCategory.items[0].meta.retrievalReason, 'focus kind app');
+assert.equal(appCategory.items[0].meta.contextFresh, true);
+assert.equal(appCategory.items[0].meta.contextStale, false);
 
 const memoryIngest = ingested.find((entry) => entry.kind === 'recent' && entry.items.some((item) => item.meta?.source === 'cloud-memory'));
 assert.ok(memoryIngest, 'cloud memory should be ingested locally');
@@ -84,7 +86,33 @@ assert.equal(memoryIngest.items[0].meta.retrievalSchema, 'hex.retrieval-summary.
 const browserIngest = ingested.find((entry) => entry.kind === 'browser');
 assert.ok(browserIngest, 'browser references should be ingested into PC entity memory');
 assert.equal(browserIngest.items[0].meta.retrievalReason, 'matched: video');
+assert.equal(browserIngest.items[0].meta.contextFresh, true);
 
+
+merged.length = 0;
+ingested.length = 0;
+synced = false;
+promoted = false;
+persisted = false;
+
+const stalePacket = {
+  ...packet,
+  continuityState: {
+    ...packet.continuityState,
+    freshness: { sessionSeconds: 7200, inventorySeconds: 90000, lastTurnSeconds: 7200, lastActionSeconds: 7200 }
+  }
+};
+
+assert.equal(window.hexCloudContextRehydrator.applyPacket(stalePacket), true);
+assert.equal(synced, true, 'awareness may still receive stale background candidates');
+assert.equal(promoted, false, 'stale inventory must not promote as live state');
+assert.equal(persisted, false, 'stale inventory must not overwrite persisted inventory');
+
+const staleApp = merged.find((entry) => entry.kind === 'app' && entry.items.some((item) => item.label === 'Chrome'));
+assert.ok(staleApp, 'stale app category should still be available as background context');
+assert.equal(staleApp.items[0].meta.contextStale, true);
+const staleAppIngest = ingested.find((entry) => entry.kind === 'app' && entry.items.some((item) => item.label === 'Chrome'));
+assert.ok(staleAppIngest.weight < 1.3, 'stale inventory should ingest with reduced weight');
 console.log('Cloud context rehydrator contract OK:', {
   merged: merged.length,
   ingested: ingested.length,

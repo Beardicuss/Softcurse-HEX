@@ -75,6 +75,87 @@ require(path.join(__dirname, '..', 'src', 'js', 'brain-router.js'));
   assert.equal(directBack.mode, 'direct-browser-action');
   assert.equal(directBack.actions[0].type, 'web_back');
   assert.equal(directBack.hints.providerRequired, false);
+  const directForward = await window.hexBrainRouter.route({
+    userMsg: 'go forward',
+    lang: 'en',
+    systemState: { browserSession: { open: true, title: 'YouTube' } }
+  });
+
+  assert.equal(directForward.mode, 'direct-browser-action');
+  assert.equal(directForward.actions[0].type, 'web_forward');
+  assert.equal(directForward.hints.providerRequired, false);
+
+  const directCloseBrowser = await window.hexBrainRouter.route({
+    userMsg: 'close browser',
+    lang: 'en',
+    systemState: { browserSession: { open: true, title: 'YouTube' } }
+  });
+
+  assert.equal(directCloseBrowser.mode, 'direct-browser-action');
+  assert.equal(directCloseBrowser.actions[0].type, 'web_close');
+  assert.equal(directCloseBrowser.hints.providerRequired, false);
+
+  const directSettings = await window.hexBrainRouter.route({
+    userMsg: 'open settings',
+    lang: 'en',
+    systemState: {}
+  });
+
+  assert.equal(directSettings.mode, 'direct-local-action');
+  assert.equal(directSettings.actions[0].type, 'open_settings');
+  assert.equal(directSettings.hints.providerRequired, false);
+
+  const directHideInterface = await window.hexBrainRouter.route({
+    userMsg: 'hide interface',
+    lang: 'en',
+    systemState: {}
+  });
+
+  assert.equal(directHideInterface.mode, 'direct-local-action');
+  assert.equal(directHideInterface.actions[0].type, 'close_voice_surface');
+  assert.equal(directHideInterface.hints.providerRequired, false);
+  const directVolume = await window.hexBrainRouter.route({
+    userMsg: 'set volume to 25',
+    lang: 'en',
+    systemState: {}
+  });
+
+  assert.equal(directVolume.mode, 'direct-local-action');
+  assert.equal(directVolume.actions[0].type, 'set_volume');
+  assert.deepEqual(directVolume.actions[0].args, ['25']);
+  assert.equal(directVolume.hints.providerRequired, false);
+
+  const directClipboard = await window.hexBrainRouter.route({
+    userMsg: 'read clipboard',
+    lang: 'en',
+    systemState: {}
+  });
+
+  assert.equal(directClipboard.mode, 'direct-local-action');
+  assert.equal(directClipboard.actions[0].type, 'get_clipboard');
+  assert.equal(directClipboard.hints.providerRequired, false);
+  const directProcesses = await window.hexBrainRouter.route({
+    userMsg: 'show running processes',
+    lang: 'en',
+    systemState: {}
+  });
+
+  assert.equal(directProcesses.mode, 'direct-local-action');
+  assert.equal(directProcesses.actions[0].type, 'list_processes');
+  assert.equal(directProcesses.hints.providerRequired, false);
+  assert.match(directProcesses.text, /running processes/i);
+
+  const directGames = await window.hexBrainRouter.route({
+    userMsg: 'list my games',
+    lang: 'en',
+    systemState: {}
+  });
+
+  assert.equal(directGames.mode, 'direct-local-action');
+  assert.equal(directGames.actions[0].type, 'list_games');
+  assert.equal(directGames.hints.providerRequired, false);
+  assert.match(directGames.text, /installed games/i);
+
   const harmless = await window.hexBrainRouter.route({
     userMsg: 'what page is open',
     lang: 'en',
@@ -84,6 +165,30 @@ require(path.join(__dirname, '..', 'src', 'js', 'brain-router.js'));
   assert.equal(harmless.mode, 'browser-answer');
   assert.equal(harmless.reason, 'server-browser-state-fresh');
 
+  const lastTurnPacket = {
+    schema: 'hex.context-packet.v2',
+    continuityState: {
+      schema: 'hex.continuity-state.v1',
+      activeSurface: 'chat',
+      hasDesktopInventory: true,
+      freshness: { sessionSeconds: 40, lastTurnSeconds: 8, inventorySeconds: 100, lastActionSeconds: 60 }
+    },
+    relevantTurns: [
+      { role: 'user', content: 'open youtube and search eminem' },
+      { role: 'assistant', content: 'Opening the browser and searching for eminem.' }
+    ]
+  };
+
+  const lastTurn = await window.hexBrainRouter.route({
+    userMsg: 'what was my last message?',
+    lang: 'en',
+    systemState: { cloudContext: lastTurnPacket }
+  });
+
+  assert.equal(lastTurn.mode, 'last-turn-answer');
+  assert.equal(lastTurn.reason, 'server-last-turn-fresh');
+  assert.equal(lastTurn.hints.providerRequired, false);
+  assert.match(lastTurn.text, /open youtube and search eminem/i);
   const stalePacket = {
     schema: 'hex.context-packet.v2',
     continuityState: {
@@ -108,6 +213,14 @@ require(path.join(__dirname, '..', 'src', 'js', 'brain-router.js'));
   assert.equal(staleBrowser.hints.serverPacketFreshness.stale, true);
   assert.equal(staleBrowser.hints.recommendedNext, 'reason-with-server-background-memory');
 
+  const staleLastTurn = await window.hexBrainRouter.route({
+    userMsg: 'what was my last message?',
+    lang: 'en',
+    systemState: { cloudContext: stalePacket }
+  });
+
+  assert.equal(staleLastTurn.mode, 'provider');
+  assert.equal(staleLastTurn.reason, 'stale-server-packet-background');
   const staleMemory = await window.hexBrainRouter.route({
     userMsg: 'what do you remember about me?',
     lang: 'en',

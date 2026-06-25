@@ -19,6 +19,40 @@ window.hexCloudContextRehydrator = (() => {
     return fallback;
   }
 
+
+  function packetFreshness(packet = {}, purpose = 'session') {
+    const state = packet?.continuityState || null;
+    if (!state?.schema) return { fresh: true, stale: false, reason: 'legacy-packet-no-freshness', ageSeconds: null };
+    const freshness = state.freshness || {};
+    const rules = {
+      browser: { keys: ['lastTurnSeconds', 'sessionSeconds'], max: 15 * 60, requires: () => state.browser?.open === true },
+      inventory: { keys: ['inventorySeconds', 'sessionSeconds'], max: 6 * 60 * 60, requires: () => state.hasDesktopInventory === true },
+      action: { keys: ['lastActionSeconds', 'lastTurnSeconds', 'sessionSeconds'], max: 20 * 60, requires: () => true },
+      session: { keys: ['sessionSeconds', 'lastTurnSeconds'], max: 45 * 60, requires: () => true },
+      memory: { keys: ['sessionSeconds', 'lastTurnSeconds'], max: 24 * 60 * 60, requires: () => true }
+    };
+    const rule = rules[purpose] || rules.session;
+    const ageSeconds = rule.keys.map((key) => Number(freshness[key])).find((value) => Number.isFinite(value));
+    if (rule.requires && !rule.requires()) return { fresh: false, stale: true, reason: purpose + '-state-missing', ageSeconds: ageSeconds ?? null };
+    if (ageSeconds == null) return { fresh: true, stale: false, reason: 'freshness-age-missing', ageSeconds: null };
+    const fresh = ageSeconds <= rule.max;
+    return { fresh, stale: !fresh, reason: fresh ? purpose + '-fresh' : purpose + '-stale', ageSeconds };
+  }
+
+  function freshnessMeta(packet, purpose) {
+    const freshness = packetFreshness(packet, purpose);
+    return {
+      contextPurpose: purpose,
+      contextFresh: freshness.fresh,
+      contextStale: freshness.stale,
+      contextFreshnessReason: freshness.reason,
+      contextAgeSeconds: freshness.ageSeconds
+    };
+  }
+
+  function weightFor(packet, purpose, weight) {
+    return packetFreshness(packet, purpose).stale ? Math.max(0.2, weight * 0.45) : weight;
+  }
   function fromStrings(list, fallbackKind = 'recent', source = 'cloud-reference') {
     return (Array.isArray(list) ? list : [])
       .map((value, index) => {
@@ -73,38 +107,38 @@ window.hexCloudContextRehydrator = (() => {
     const byCategory = references?.desktopByCategory || {};
     const categoryCounts = packet?.retrieval?.categoryCounts || {};
     const schema = packet?.retrieval?.schema || null;
-    const categoryMeta = (category) => ({ retrievalSchema: schema, categoryCount: categoryCounts[category] || 0 });
-    rehydrateBucket('app', normalizeDesktopCandidates(byCategory.apps, 'app', 'cloud-category', categoryMeta('apps')), 1.3);
-    rehydrateBucket('file', normalizeDesktopCandidates(byCategory.files, 'file', 'cloud-category', categoryMeta('files')), 1.2);
-    rehydrateBucket('folder', normalizeDesktopCandidates(byCategory.folders, 'folder', 'cloud-category', categoryMeta('folders')), 1.2);
-    rehydrateBucket('game', normalizeDesktopCandidates(byCategory.games, 'game', 'cloud-category', categoryMeta('games')), 1.35);
-    rehydrateBucket('window', normalizeDesktopCandidates(byCategory.windows, 'window', 'cloud-category', categoryMeta('windows')), 1.05);
-    rehydrateBucket('process', normalizeDesktopCandidates(byCategory.processes, 'process', 'cloud-category', categoryMeta('processes')), 1.0);
-    rehydrateBucket('folder', normalizeDesktopCandidates(byCategory.locations, 'folder', 'cloud-category', categoryMeta('locations')), 1.2);
-    rehydrateBucket('recent', normalizeDesktopCandidates(byCategory.recent, 'recent', 'cloud-category', categoryMeta('recent')), 1.15);
+    const categoryMeta = (category) => ({ retrievalSchema: schema, categoryCount: categoryCounts[category] || 0, ...freshnessMeta(packet, 'inventory') });
+    rehydrateBucket('app', normalizeDesktopCandidates(byCategory.apps, 'app', 'cloud-category', categoryMeta('apps')), weightFor(packet, 'inventory', 1.3));
+    rehydrateBucket('file', normalizeDesktopCandidates(byCategory.files, 'file', 'cloud-category', categoryMeta('files')), weightFor(packet, 'inventory', 1.2));
+    rehydrateBucket('folder', normalizeDesktopCandidates(byCategory.folders, 'folder', 'cloud-category', categoryMeta('folders')), weightFor(packet, 'inventory', 1.2));
+    rehydrateBucket('game', normalizeDesktopCandidates(byCategory.games, 'game', 'cloud-category', categoryMeta('games')), weightFor(packet, 'inventory', 1.35));
+    rehydrateBucket('window', normalizeDesktopCandidates(byCategory.windows, 'window', 'cloud-category', categoryMeta('windows')), weightFor(packet, 'inventory', 1.05));
+    rehydrateBucket('process', normalizeDesktopCandidates(byCategory.processes, 'process', 'cloud-category', categoryMeta('processes')), weightFor(packet, 'inventory', 1.0));
+    rehydrateBucket('folder', normalizeDesktopCandidates(byCategory.locations, 'folder', 'cloud-category', categoryMeta('locations')), weightFor(packet, 'inventory', 1.2));
+    rehydrateBucket('recent', normalizeDesktopCandidates(byCategory.recent, 'recent', 'cloud-category', categoryMeta('recent')), weightFor(packet, 'inventory', 1.15));
   }
 
-  function rehydrateDesktopContext(desktopContext = {}) {
-    rehydrateBucket('app', normalizeDesktopCandidates(desktopContext.appCandidates || desktopContext.apps, 'app'), 1.25);
-    rehydrateBucket('file', normalizeDesktopCandidates(desktopContext.fileCandidates || desktopContext.files, 'file'), 1.15);
-    rehydrateBucket('folder', normalizeDesktopCandidates(desktopContext.folderCandidates || desktopContext.folders, 'folder'), 1.2);
-    rehydrateBucket('game', normalizeDesktopCandidates(desktopContext.gameCandidates || desktopContext.games, 'game'), 1.3);
-    rehydrateBucket('window', normalizeDesktopCandidates(desktopContext.windowCandidates || desktopContext.windows, 'window'), 1.0);
-    rehydrateBucket('process', normalizeDesktopCandidates(desktopContext.processCandidates || desktopContext.processes, 'process'), 0.95);
-    rehydrateBucket('recent', normalizeDesktopCandidates(desktopContext.promotedRecent || desktopContext.inventoryHighlights, 'recent'), 1.35);
-    rehydrateBucket('folder', normalizeDesktopCandidates(desktopContext.knownLocations, 'folder', 'cloud-location'), 1.25);
-    rehydrateBucket('recent', normalizeDesktopCandidates(desktopContext.entityMatches, 'recent', 'cloud-entity'), 1.3);
+  function rehydrateDesktopContext(desktopContext = {}, packet = {}) {
+    rehydrateBucket('app', normalizeDesktopCandidates(desktopContext.appCandidates || desktopContext.apps, 'app', 'cloud-desktop', freshnessMeta(packet, 'inventory')), weightFor(packet, 'inventory', 1.25));
+    rehydrateBucket('file', normalizeDesktopCandidates(desktopContext.fileCandidates || desktopContext.files, 'file', 'cloud-desktop', freshnessMeta(packet, 'inventory')), weightFor(packet, 'inventory', 1.15));
+    rehydrateBucket('folder', normalizeDesktopCandidates(desktopContext.folderCandidates || desktopContext.folders, 'folder', 'cloud-desktop', freshnessMeta(packet, 'inventory')), weightFor(packet, 'inventory', 1.2));
+    rehydrateBucket('game', normalizeDesktopCandidates(desktopContext.gameCandidates || desktopContext.games, 'game', 'cloud-desktop', freshnessMeta(packet, 'inventory')), weightFor(packet, 'inventory', 1.3));
+    rehydrateBucket('window', normalizeDesktopCandidates(desktopContext.windowCandidates || desktopContext.windows, 'window', 'cloud-desktop', freshnessMeta(packet, 'inventory')), weightFor(packet, 'inventory', 1.0));
+    rehydrateBucket('process', normalizeDesktopCandidates(desktopContext.processCandidates || desktopContext.processes, 'process', 'cloud-desktop', freshnessMeta(packet, 'inventory')), weightFor(packet, 'inventory', 0.95));
+    rehydrateBucket('recent', normalizeDesktopCandidates(desktopContext.promotedRecent || desktopContext.inventoryHighlights, 'recent', 'cloud-desktop', freshnessMeta(packet, 'inventory')), weightFor(packet, 'inventory', 1.35));
+    rehydrateBucket('folder', normalizeDesktopCandidates(desktopContext.knownLocations, 'folder', 'cloud-location', freshnessMeta(packet, 'inventory')), weightFor(packet, 'inventory', 1.25));
+    rehydrateBucket('recent', normalizeDesktopCandidates(desktopContext.entityMatches, 'recent', 'cloud-entity', freshnessMeta(packet, 'inventory')), weightFor(packet, 'inventory', 1.3));
   }
 
   function rehydrateReferences(references = {}, packet = {}) {
     const retrievalSchema = packet?.retrieval?.schema || null;
-    const priorityItems = normalizeDesktopCandidates(references.priority, 'recent', 'cloud-priority', { retrievalSchema, priority: true });
-    const desktopItems = normalizeDesktopCandidates(references.desktop, 'recent', 'cloud-reference', { retrievalSchema });
-    const browserItems = normalizeDesktopCandidates(references.browser, 'browser', 'cloud-browser', { retrievalSchema });
-    rehydrateBucket('recent', priorityItems, 1.45);
-    window.hexPcEntityMemory?.ingest?.(priorityItems, 'priority', 1.45);
-    rehydrateBucket('recent', desktopItems, 1.15);
-    window.hexPcEntityMemory?.ingest?.(browserItems, 'browser', 1.1);
+    const priorityItems = normalizeDesktopCandidates(references.priority, 'recent', 'cloud-priority', { retrievalSchema, priority: true, ...freshnessMeta(packet, 'session') });
+    const desktopItems = normalizeDesktopCandidates(references.desktop, 'recent', 'cloud-reference', { retrievalSchema, ...freshnessMeta(packet, 'inventory') });
+    const browserItems = normalizeDesktopCandidates(references.browser, 'browser', 'cloud-browser', { retrievalSchema, ...freshnessMeta(packet, 'browser') });
+    rehydrateBucket('recent', priorityItems, weightFor(packet, 'session', 1.45));
+    window.hexPcEntityMemory?.ingest?.(priorityItems, 'priority', weightFor(packet, 'session', 1.45));
+    rehydrateBucket('recent', desktopItems, weightFor(packet, 'inventory', 1.15));
+    window.hexPcEntityMemory?.ingest?.(browserItems, 'browser', weightFor(packet, 'browser', 1.1));
     rehydrateDesktopByCategory(references, packet);
   }
   function rehydrateMemories(memories = [], packet = {}) {
@@ -128,18 +162,20 @@ window.hexCloudContextRehydrator = (() => {
         };
       })
       .filter(Boolean);
-    rehydrateBucket('recent', items, 1.1);
+    rehydrateBucket('recent', items, weightFor(packet, 'memory', 1.1));
   }
 
   function applyPacket(packet = null) {
     if (!packet || typeof packet !== 'object') return false;
     lastContinuityState = packet.continuityState && typeof packet.continuityState === 'object' ? { ...packet.continuityState } : null;
-    rehydrateDesktopContext(packet.desktopContext || {});
+    rehydrateDesktopContext(packet.desktopContext || {}, packet);
     rehydrateReferences(packet.references || {}, packet);
     rehydrateMemories(packet.relevantMemories || packet.memories || [], packet);
     window.hexPcAwareness?.syncFromCandidates?.();
-    window.hexPcEntityPromoter?.promoteInventorySnapshot?.();
-    window.hexPcInventory?.persistNow?.();
+    if (packetFreshness(packet, 'inventory').fresh) {
+      window.hexPcEntityPromoter?.promoteInventorySnapshot?.();
+      window.hexPcInventory?.persistNow?.();
+    }
     return true;
   }
 

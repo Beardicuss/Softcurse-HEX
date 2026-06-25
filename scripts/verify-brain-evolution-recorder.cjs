@@ -39,6 +39,7 @@ const item = {
   user: 'open third video',
   assistant: 'I opened a new browser instead.',
   language: 'en',
+  actions: [{ type: 'web_find_click', args: ['third video'] }],
   brainRoute: {
     mode: 'provider',
     reason: 'needs-model-reasoning',
@@ -59,6 +60,15 @@ assert.equal(record.trainingIntent, 'action-routing-correction');
 assert.equal(record.quality.usableForSft, true);
 assert.equal(record.quality.usableForPreference, true);
 assert.equal(record.quality.usableAsNegative, true);
+assert.equal(record.quality.route.localFirst, false);
+assert.equal(record.quality.route.providerRequired, true);
+assert.equal(record.quality.route.confidenceBand, 'low');
+assert.equal(record.quality.route.serverFreshnessState, 'fresh');
+assert.equal(record.quality.action.hasActions, true);
+assert.equal(record.quality.action.expectedActionTypes[0], 'web_find_click');
+assert.equal(record.quality.action.likelyActionFeedback, true);
+assert.equal(record.quality.context.browserOpen, true);
+assert.equal(record.quality.context.cloudContinuityPresent, true);
 assert.equal(record.context.schema, 'hex.feedback-context.v1');
 assert.equal(record.context.route.actionSurface, 'browser');
 assert.equal(record.context.cloudContinuity.freshnessTiers.browser, 'fresh');

@@ -11,6 +11,42 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hex-finetune-export-'));
 const finetunePath = path.join(tmp, 'hex-finetune.jsonl');
 const handlers = new Map();
 
+const quality = {
+  label: 'corrected',
+  usableForSft: true,
+  usableForPreference: true,
+  usableAsNegative: true,
+  route: {
+    routeKnown: true,
+    mode: 'provider',
+    reason: 'needs-model-reasoning',
+    confidence: 0.91,
+    confidenceBand: 'high',
+    localFirst: false,
+    providerRequired: true,
+    serverPacket: true,
+    serverFreshnessState: 'fresh'
+  },
+  action: {
+    expectedActionCount: 1,
+    expectedActionTypes: ['web_find_click'],
+    hasActions: true,
+    routedActionDomain: 'browser',
+    routedActionSurface: 'browser',
+    likelyActionFeedback: true
+  },
+  context: {
+    language: 'en',
+    voiceMode: true,
+    activeSurface: 'browser',
+    browserOpen: true,
+    hasCurrentTask: true,
+    cloudContinuityPresent: true,
+    cloudFreshnessKnown: true,
+    serverPacketStale: false,
+    serverPacketFresh: true
+  }
+};
 const rows = [
   {
     type: 'hex_evolution_feedback',
@@ -26,6 +62,7 @@ const rows = [
     trainingIntent: 'dialogue-style',
     language: 'en',
     context: { route: { mode: 'dialogue' } },
+    quality,
     messages: [
       { role: 'user', content: 'hello hex' },
       { role: 'assistant', content: 'I am with you, Dante.' }
@@ -48,6 +85,7 @@ const rows = [
     trainingIntent: 'action-routing-correction',
     language: 'en',
     context: { route: { actionSurface: 'browser' } },
+    quality,
     prompt: 'open third video',
     chosen: 'I will use the current browser results and open the third video.',
     rejected: 'Opening a new browser window.'
@@ -100,9 +138,13 @@ const manifest = JSON.parse(fs.readFileSync(result.manifestPath, 'utf8'));
 assert.equal(sftLines.length, 1);
 assert.deepEqual(sftLines[0].messages[0], { role: 'user', content: 'hello hex' });
 assert.equal(sftLines[0].metadata.trainingIntent, 'dialogue-style');
+assert.equal(sftLines[0].metadata.quality.route.confidenceBand, 'high');
+assert.equal(sftLines[0].metadata.quality.action.expectedActionTypes[0], 'web_find_click');
 assert.equal(prefLines.length, 1);
 assert.equal(prefLines[0].prompt, 'open third video');
 assert.equal(prefLines[0].metadata.context.route.actionSurface, 'browser');
+assert.equal(prefLines[0].metadata.quality.usableForPreference, true);
+assert.equal(prefLines[0].metadata.quality.context.browserOpen, true);
 assert.equal(manifest.counts.preferences, 1);
 
 fs.rmSync(tmp, { recursive: true, force: true });

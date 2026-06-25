@@ -136,7 +136,7 @@ window.sendHexMessage = async function sendHexMessage() {
     window.hexAudio.stop('processing');
     const hexText = result.text || '…';
     window.updateSessionContextForAssistant(hexText, result.actions || []);
-    addHexMessage(hexText, { feedback: { user: text, brainRoute: result.brainRoute || null } });
+    addHexMessage(hexText, { feedback: { user: text, brainRoute: result.brainRoute || null, actions: result.actions || [] } });
     addLog('HEX', `→ ${String(hexText).substring(0, 100)}${hexText.length > 100 ? '…' : ''}`);
 
     stage = 'post reply context';
@@ -197,6 +197,7 @@ window.sendHexMessage = async function sendHexMessage() {
       return result;
     };
     stage = 'action execution';
+    if (actions.length > 0 && window.hexVoice?.isListening) window.setVoiceAgiState?.('action');
     if (parallelBatch.length > 0) {
       const batchStart = Date.now();
       const promises = parallelBatch.map(async (action) => {
@@ -243,7 +244,7 @@ window.sendHexMessage = async function sendHexMessage() {
         const followText = followUp.text || '';
         if (followText && followText !== '…') {
           window.updateSessionContextForAssistant(followText, followUp.actions || []);
-          addHexMessage(followText, { feedback: { user: text, brainRoute: followUp.brainRoute || null } });
+          addHexMessage(followText, { feedback: { user: text, brainRoute: followUp.brainRoute || null, actions: followUp.actions || [] } });
           if (config.voice?.enabled !== false) speakWithConfig(followText);
         }
       } catch (_) {

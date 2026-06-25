@@ -6,7 +6,8 @@
 //  Returns { handled: true } if executed, { handled: false } otherwise.
 // ════════════════════════════════════════════════════════════════════════════════
 async function tryDirectCommand(text) {
-  const raw = text.trim();
+  const rawInput = text.trim();
+  const raw = rawInput.replace(/[\s.!?]+$/g, '').trim();
   const t = raw.toLowerCase();
 
   const rememberResolvedReference = (resolved) => {
@@ -42,6 +43,27 @@ async function tryDirectCommand(text) {
   };
 
 
+  const sayLocal = (msg) => {
+    addHexMessage?.(msg);
+    window.hexVoice?.speak?.(msg);
+    return { handled: true };
+  };
+
+  if (/^(?:what(?:'s| is)?\s+)?(?:the\s+)?time(?:\s+is\s+it)?$/.test(t) || /^what\s+time\s+is\s+it$/.test(t)) {
+    const now = new Date();
+    return sayLocal(`It is ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
+  }
+  if (/^(?:what(?:'s| is)?\s+)?(?:the\s+)?(?:date|day)(?:\s+is\s+it)?(?:\s+today)?$/.test(t) || /^what\s+day\s+is\s+it$/.test(t)) {
+    const now = new Date();
+    return sayLocal(`Today is ${now.toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.`);
+  }
+  if (/^(?:who\s+am\s+i|what(?:'s| is)\s+my\s+name)$/.test(t)) {
+    const name = window._hexConfig?.userName || 'Dante';
+    return sayLocal(`You are ${name}.`);
+  }
+  if (/^(?:who\s+are\s+you|what\s+are\s+you)$/.test(t)) {
+    return sayLocal('I am H.E.X., the Quiet Cardinal. Local brain online and listening.');
+  }
   // Voice surface / UI navigation commands. These must stay local and instant.
   if (/^(?:open|show|bring\s+up)\s+(?:hex\s+)?settings$/.test(t) || t === 'settings') {
     window.openSettingsSurface?.();
@@ -55,7 +77,7 @@ async function tryDirectCommand(text) {
     window.openVoiceSurface?.();
     return { handled: true };
   }
-  if (/^(?:close|exit|disable|turn\s+off|switch\s+off|shut\s+down|stop|deactivate)\s+(?:the\s+)?(?:voice\s+mode|voice\s+surface|agi\s+mode|hologram|ghost\s+deck|command\s+deck)$/.test(t) || /^(?:voice\s+mode|voice\s+surface|agi\s+mode|hologram|ghost\s+deck|command\s+deck)\s+(?:off|offline|down)$/.test(t) || /^(?:return\s+to\s+cockpit|back\s+to\s+cockpit|normal\s+interface)$/.test(t)) {
+  if (/^(?:close|exit|disable|turn\s+of+f?|switch\s+of+f?|shut\s+down|stop|deactivate)\s+(?:the\s+)?(?:voice\s+mode|voice\s+surface|agi\s+mode|hologram|ghost\s+deck|command\s+deck)$/.test(t) || /^(?:voice\s+mode|voice\s+surface|agi\s+mode|hologram|ghost\s+deck|command\s+deck)\s+(?:off|offline|down)$/.test(t) || /^(?:return\s+to\s+cockpit|back\s+to\s+cockpit|normal\s+interface)$/.test(t)) {
     window.closeVoiceSurface?.();
     addLog?.('VOICE', 'Voice mode offline. Returning to cockpit.');
     return { handled: true };
@@ -304,8 +326,3 @@ async function tryDirectCommand(text) {
 
   return { handled: false };
 }
-
-
-
-
-

@@ -45,6 +45,10 @@
     return /(what are we doing|where did we stop|what was next|last task|current goal|continue from|что мы делаем|где остановились|что дальше|текущая цель|последняя задача|რას ვაკეთებთ|სად გავჩერდით|შემდეგ რა|მიმდინარე მიზანი)/i.test(raw);
   }
 
+  function isLastTurnQuestion(text) {
+    return /(what did i (just )?(say|ask)|what was my last (message|question)|what did you just say|repeat last|last message|последн(ее|ий).*сообщ|что я (сказал|спросил)|что ты сказал|ბოლო შეტყობინება|რა გკითხე|რა ვთქვი|რა თქვი)/i.test(clean(text));
+  }
+
   function isBrowserQuestion(text) {
     return /(what page|which page|browser open|current tab|open tab|where am i browsing|какая страница|что открыто в браузере|текущая вкладка|браузер открыт|რომელი გვერდი|ბრაუზერში რა არის|მიმდინარე ტაბი)/i.test(clean(text));
   }
@@ -315,6 +319,15 @@
       };
     }
 
+    if (isLastTurnQuestion(userMsg) && freshSessionPacket) {
+      return {
+        mode: 'last-turn-answer',
+        reason: 'server-last-turn-fresh',
+        text: window.hexBrainResponseComposer?.lastTurnReply?.(lang, freshSessionPacket) || window.hexBrainCore?.survivalReply?.({ userMsg, lang }) || '',
+        actions: [],
+        hints: buildRouteHints('continuity-answer', systemState, 'server-last-turn-fresh', { actionPlan, userMsg })
+      };
+    }
     if (isContinuityQuestion(userMsg) && freshSessionPacket) {
       return {
         mode: 'continuity-answer',

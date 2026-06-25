@@ -23,7 +23,7 @@ function updateClock() {
     });
   }
 
-  if (now.getSeconds() % 8 === 0 && now.getSeconds() !== glitchScheduled && clock) {
+  if (window.hexPerformancePolicy?.allowDecorativeEffects?.() && now.getSeconds() % 8 === 0 && now.getSeconds() !== glitchScheduled && clock) {
     glitchScheduled = now.getSeconds();
     clock.classList.add('glitch-burst');
     setTimeout(() => clock.classList.remove('glitch-burst'), 400);
@@ -104,7 +104,7 @@ function animateCount(id, target, suffix = '') {
 }
 
 function updateHealthStats() {
-  if (window.isVoiceAgiActive?.()) return;
+  if (window.hexPerformancePolicy && !window.hexPerformancePolicy.allowHiddenPanelRefresh?.()) return;
   const stats = window.activityMonitor.stats;
   animateCount('stat-files', stats.filesScanned);
   document.getElementById('stat-space').textContent = stats.spaceFreed || '0 B';

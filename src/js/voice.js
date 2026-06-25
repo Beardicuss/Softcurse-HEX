@@ -6,6 +6,8 @@
 //
 // TTS: Local Piper → Google Cloud TTS → OS Web Speech synthesis
 
+const HEX_VOICE_BUILD = 'voice-command-20260625d';
+
 class HexVoice {
   constructor() {
     this.isListening = false;
@@ -16,12 +18,14 @@ class HexVoice {
     this.wakeWordMode = true;
     this._wakeArmedUntil = 0;
     this._wakeWindowMs = 8000;
+    this._wakeTimer = null;
 
     this.onTranscript = null;
     this.onStateChange = null;
     this.onSpeakStart = null;
     this.onSpeakEnd = null;
     this.onWakeWord = null;
+    this.onWakeTimeout = null;
     this.onVoicesLoaded = null;
     this._onError = null;
 
@@ -80,6 +84,7 @@ class HexVoice {
       this._ollamaUrl = config.llm?.baseUrl || 'http://localhost:11434';
     }
     this._applyVoiceName(this._voiceName);
+    window.addLog?.('VOICE', 'Voice runtime build: ' + HEX_VOICE_BUILD);
     // Await engine check so _localSTT/_localTTS are populated before anything calls speak()
     await this._checkLocalEngines();
     return true;
@@ -381,9 +386,98 @@ class HexVoice {
     this._routeTranscript(cleaned);
   }
 
+  _normalizeTranscript(transcript) {
+    return String(transcript || '')
+      .normalize('NFKC')
+      .replace(/[\u200B-\u200D\uFEFF]/g, '')
+      .replace(/[’‘]/g, "'")
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  _extractWakeCommand(transcript) {
+    const raw = this._normalizeTranscript(transcript);
+    const text = raw.toLowerCase();
+    const match = text.match(/^(hey[\s\W_]+)?(cardinal|hex)[\s\W_]+(.+)$/iu);
+    if (match?.[2] && match?.[3]) {
+      const command = match[3].replace(/^[\s,.:;!?-]+/, '').trim();
+      if (command) return { phrase: match[2], command };
+    }
+
+    const customWake = this._normalizeTranscript(this.wakeWord).toLowerCase();
+    const builtIns = ['hey cardinal', 'hey hex', 'cardinal', 'hex'];
+    if (customWake && !builtIns.includes(customWake) && text.startsWith(customWake)) {
+      const command = text.slice(customWake.length).replace(/^[\s,.:;!?-]+/, '').trim();
+      if (command) return { phrase: customWake, command };
+    }
+    return null;
+  }
+  _resetVadState() {
+    this._vadSpeechBuf = [];
+    this._vadSilence = 0;
+    this._vadActive = false;
+  }
+
+  _clearWakeCommandWindow() {
+    this._wakeArmedUntil = 0;
+    if (this._wakeTimer) {
+      clearTimeout(this._wakeTimer);
+      this._wakeTimer = null;
+    }
+  }
+
+  _armWakeCommandWindow(phrase) {
+    this._clearWakeCommandWindow();
+    this._lastTranscribe = 0;
+    this._resetVadState();
+    this._wakeArmedUntil = Date.now() + this._wakeWindowMs;
+    this._notifyWakeWord(phrase);
+    this._wakeTimer = setTimeout(() => {
+      if (this._wakeArmedUntil > 0) {
+        this._clearWakeCommandWindow();
+        this._resetVadState();
+        this.onWakeTimeout?.();
+      }
+    }, this._wakeWindowMs + 250);
+  }
+  _notifyWakeWord(phrase) {
+    try {
+      this.onWakeWord?.(phrase);
+    } catch (err) {
+      window.addLog?.('VOICE', 'Wake UI callback failed: ' + (err?.message || String(err)), 'warn');
+    }
+  }
+
+  _dispatchFinalVoiceCommand(command, source) {
+    const clean = this._normalizeTranscript(command);
+    if (!clean) return;
+    try {
+      if (typeof window.dispatchVoiceCommand === 'function') {
+        const result = window.dispatchVoiceCommand(clean, source);
+        if (result && typeof result.catch === 'function') {
+          result.catch((err) => window.addLog?.('VOICE', 'Voice dispatch failed: ' + (err?.message || String(err)), 'warn'));
+        }
+      } else {
+        this.onTranscript?.(clean, true);
+      }
+    } catch (err) {
+      window.addLog?.('VOICE', 'Voice dispatch failed: ' + (err?.message || String(err)), 'warn');
+      try { this.onTranscript?.(clean, true); } catch (_) {}
+    }
+  }
   _routeTranscript(transcript) {
-    const cleaned = String(transcript || '').trim();
+    const cleaned = this._normalizeTranscript(transcript);
     if (!cleaned) return;
+    window.addLog?.('VOICE', 'Route transcript: ' + cleaned.slice(0, 120));
+    const directWakeCommand = this._extractWakeCommand(cleaned);
+    if (directWakeCommand) {
+      this._clearWakeCommandWindow();
+      this._resetVadState();
+      window.addLog?.('VOICE', 'Direct wake command: ' + directWakeCommand.command);
+      this._notifyWakeWord(directWakeCommand.phrase);
+      this._dispatchFinalVoiceCommand(directWakeCommand.command, 'wake-command');
+      return;
+    }
     if (this._sleepWakeHook && this._sleepWakeHook(cleaned)) return;
     if (this._isShowInterfaceCommand(cleaned)) {
       window.showInterfaceSurface?.();
@@ -406,18 +500,20 @@ class HexVoice {
 
     const match = this._matchWakePhrase(cleaned);
     if (match) {
-      this._wakeArmedUntil = Date.now() + this._wakeWindowMs;
-      this.onWakeWord?.(match.phrase);
+      this._armWakeCommandWindow(match.phrase);
       if (match.command) {
-        this._wakeArmedUntil = 0;
-        this.onTranscript?.(match.command, true);
+        this._clearWakeCommandWindow();
+        this._resetVadState();
+        window.addLog?.('VOICE', 'Matched wake command: ' + match.command);
+        this._dispatchFinalVoiceCommand(match.command, 'matched-wake-command');
       }
       return;
     }
 
     if (Date.now() <= this._wakeArmedUntil) {
-      this._wakeArmedUntil = 0;
-      this.onTranscript?.(cleaned, true);
+      this._clearWakeCommandWindow();
+      this._resetVadState();
+      this._dispatchFinalVoiceCommand(cleaned, 'armed-command');
     }
   }
 
@@ -435,18 +531,27 @@ class HexVoice {
   }
   _isVoiceModeOffCommand(transcript) {
     const text = String(transcript || '').trim().toLowerCase().replace(/[.!?]+$/g, '');
-    return /^(?:please\s+)?(?:turn\s+off|switch\s+off|shut\s+down|close|exit|disable|deactivate|stop)\s+(?:the\s+)?(?:voice\s+mode|voice\s+surface|agi\s+mode|hologram|ghost\s+deck|command\s+deck)$/.test(text)
+    return /^(?:please\s+)?(?:turn\s+of+f?|switch\s+of+f?|shut\s+down|close|exit|disable|deactivate|stop)\s+(?:the\s+)?(?:voice\s+mode|voice\s+surface|agi\s+mode|hologram|ghost\s+deck|command\s+deck)$/.test(text)
       || /^(?:voice\s+mode|voice\s+surface|agi\s+mode|hologram|ghost\s+deck|command\s+deck)\s+(?:off|offline|down)$/.test(text)
       || /^(?:return\s+to\s+cockpit|back\s+to\s+cockpit|normal\s+interface)$/.test(text);
   }
   _matchWakePhrase(transcript) {
     const text = String(transcript || '').trim().toLowerCase();
-    const phrases = new Set(['hex', 'cardinal', 'hey hex', 'hey cardinal', this.wakeWord]);
-    for (const word of [...phrases]) this._wakeWordVariants(word).forEach((item) => phrases.add(item));
-    for (const phrase of [...phrases].filter(Boolean).sort((a, b) => b.length - a.length)) {
+    const customWake = String(this.wakeWord || '').trim().toLowerCase();
+    const builtIns = ['hey cardinal', 'hey hex', 'cardinal', 'hex'];
+    const custom = customWake && !builtIns.includes(customWake) ? [customWake] : [];
+    const phrases = [];
+    for (const phrase of [...builtIns, ...custom]) {
+      if (!phrase || phrases.includes(phrase)) continue;
+      phrases.push(phrase);
+      this._wakeWordVariants(phrase).forEach((item) => {
+        if (item && !phrases.includes(item)) phrases.push(item);
+      });
+    }
+    for (const phrase of phrases) {
       if (text === phrase) return { phrase, command: '' };
       if (text.startsWith(phrase + ' ') || text.startsWith(phrase + ',')) {
-        return { phrase, command: text.slice(phrase.length).replace(/^[s,.:;!?-]+/, '').trim() };
+        return { phrase, command: text.slice(phrase.length).replace(/^[\s,.:;!?-]+/, '').trim() };
       }
     }
     return null;
@@ -545,6 +650,8 @@ class HexVoice {
   stopListening() {
     this.continuous = false;
     this.isListening = false;
+    this._clearWakeCommandWindow();
+    this._resetVadState();
 
     // Tear down AudioWorklet pipeline
     if (this._workletNode) { try { this._workletNode.disconnect(); } catch (_) { } this._workletNode = null; }
@@ -613,7 +720,3 @@ class HexVoice {
 }
 
 window.hexVoice = new HexVoice();
-
-
-
-

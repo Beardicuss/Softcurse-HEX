@@ -7,6 +7,26 @@ window.hexAssistantActionHandler = (() => {
 
   async function handle(action) {
     switch (action.type) {
+      case 'open_settings': {
+        window.openSettingsSurface?.();
+        return { handled: true };
+      }
+
+      case 'open_chat_surface': {
+        window.openChatSurface?.();
+        return { handled: true };
+      }
+
+      case 'open_voice_surface': {
+        window.openVoiceSurface?.();
+        return { handled: true };
+      }
+
+      case 'close_voice_surface': {
+        window.closeVoiceSurface?.();
+        addLog?.('VOICE', 'Voice mode offline. Returning to cockpit.');
+        return { handled: true };
+      }
       case 'qr_code': {
         const qrText = action.args.join(':');
         const r = await window.hexAPI.butler.qrCode(qrText);

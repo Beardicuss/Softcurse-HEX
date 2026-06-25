@@ -81,6 +81,78 @@ window.hexBrainEvolution = (function () {
     };
   }
 
+  function confidenceBand(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 'unknown';
+    if (n >= 0.85) return 'high';
+    if (n >= 0.65) return 'medium';
+    return 'low';
+  }
+
+  function freshnessState(value) {
+    if (!value || typeof value !== 'object') return 'unknown';
+    if (value.stale === true) return 'stale';
+    if (value.fresh === true) return 'fresh';
+    return value.reason ? cleanText(value.reason, 80) : 'unknown';
+  }
+
+  function actionSummary(item = {}, route = null) {
+    const actions = Array.isArray(item.actions) ? item.actions : [];
+    const routeAction = route?.actionDomain || null;
+    const actionTypes = actions
+      .map((action) => cleanText(action?.type, 80))
+      .filter(Boolean)
+      .slice(0, 12);
+    return {
+      expectedActionCount: actions.length,
+      expectedActionTypes: actionTypes,
+      hasActions: actions.length > 0,
+      routedActionDomain: routeAction,
+      routedActionSurface: route?.actionSurface || null,
+      likelyActionFeedback: actions.length > 0 || /action|browser|desktop|follow-up/.test(String(routeAction || '').toLowerCase())
+    };
+  }
+
+  function routeQuality(route = null) {
+    if (!route) {
+      return {
+        routeKnown: false,
+        confidenceBand: 'unknown',
+        localFirst: false,
+        providerRequired: null,
+        serverFreshnessState: 'unknown'
+      };
+    }
+    const mode = cleanText(route.mode, 80);
+    const providerRequired = route.providerRequired === true;
+    return {
+      routeKnown: true,
+      mode,
+      reason: route.reason || null,
+      confidence: route.confidence,
+      confidenceBand: confidenceBand(route.confidence),
+      localFirst: providerRequired === false,
+      providerRequired,
+      serverPacket: route.serverPacket === true,
+      serverFreshnessState: freshnessState(route.serverFreshness)
+    };
+  }
+
+  function contextQuality(context = {}) {
+    const freshness = context.cloudContinuity?.freshness || null;
+    const route = context.route || null;
+    return {
+      language: context.language || 'en',
+      voiceMode: context.system?.voiceMode === true,
+      activeSurface: context.cloudContinuity?.activeSurface || context.localSession?.activeSurface || null,
+      browserOpen: context.cloudContinuity?.browserOpen === true,
+      hasCurrentTask: !!context.localSession?.currentTask,
+      cloudContinuityPresent: !!context.cloudContinuity,
+      cloudFreshnessKnown: !!freshness,
+      serverPacketStale: route?.serverFreshness?.stale === true,
+      serverPacketFresh: route?.serverFreshness?.fresh === true
+    };
+  }
   function buildPreferencePair(signal, item, correction) {
     const user = cleanText(item?.user, 4000);
     const assistant = cleanText(item?.assistant, 8000);
@@ -144,7 +216,10 @@ window.hexBrainEvolution = (function () {
         label: normalizedSignal === 'good' ? 'accepted' : (normalizedSignal === 'fix' ? 'corrected' : 'rejected'),
         usableForSft: normalizedSignal === 'good' || (normalizedSignal === 'fix' && !!cleanText(correction, 8000)),
         usableForPreference: normalizedSignal === 'fix' && !!cleanText(correction, 8000),
-        usableAsNegative: normalizedSignal === 'wrong' || normalizedSignal === 'fix'
+        usableAsNegative: normalizedSignal === 'wrong' || normalizedSignal === 'fix',
+        route: routeQuality(context.route),
+        action: actionSummary(item, context.route),
+        context: contextQuality(context)
       },
       tags: inferTags(normalizedSignal, item, correction),
       training: pair
@@ -163,6 +238,7 @@ window.hexBrainEvolution = (function () {
         trainingIntent: record.trainingIntent,
         language: record.language,
         context: record.context,
+        quality: record.quality,
         messages: record.training.messages
       }));
     }
@@ -174,6 +250,7 @@ window.hexBrainEvolution = (function () {
         trainingIntent: record.trainingIntent,
         language: record.language,
         context: record.context,
+        quality: record.quality,
         prompt: record.training.prompt,
         chosen: record.training.chosen,
         rejected: record.training.rejected

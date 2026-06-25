@@ -12,6 +12,7 @@ let currentMode = 'hex'; // unified identity; Cardinal remains a wake-word alias
 let voiceSurfaceOverride = null; // null = hologram, 'chat'/'settings' = show normal UI
 let voiceAgiHintIndex = 0;
 let voiceAgiHintTimer = null;
+let voiceCommandListenTimer = null;
 window.currentMode = currentMode;
 
 function refreshIdentityUI() {
@@ -248,29 +249,67 @@ async function init() {
   window.reminders.init();
 
   // Wire voice callbacks
-  window.hexVoice.onTranscript = (text, isFinal) => {
+async function dispatchVoiceCommand(text, source = 'voice') {
+  const input = document.getElementById('chat-input');
+  const clean = String(text || '').trim();
+  if (!clean) return false;
+  if (voiceCommandListenTimer) {
+    clearTimeout(voiceCommandListenTimer);
+    voiceCommandListenTimer = null;
+  }
+  if (input) input.value = clean;
+  addLog('VOICE', `Voice dispatch (${source}): "${clean}"`);
+  updateMicUI(window.hexVoice?.isListening, 'processing');
+  try {
+    await sendMessage();
+    return true;
+  } catch (err) {
+    addLog('VOICE', 'Command pipeline failed: ' + (err?.message || String(err)), 'warn');
+    return false;
+  } finally {
+    setTimeout(() => {
+      const speaking = document.getElementById('voice-agi-surface')?.classList.contains('voice-agi-speaking');
+      if (window.hexVoice?.isListening && !speaking) updateMicUI(true, 'standby');
+    }, 250);
+  }
+}
+
+window.dispatchVoiceCommand = dispatchVoiceCommand;
+
+  window.hexVoice.onTranscript = async (text, isFinal) => {
+    const input = document.getElementById('chat-input');
     if (!isFinal) {
-      document.getElementById('chat-input').value = text;
-    } else {
-      document.getElementById('chat-input').value = text;
-      addLog('VOICE', `Heard: "${text}"`);
-      updateMicUI(window.hexVoice?.isListening, 'processing');
-      sendMessage();
+      if (input) input.value = text;
+      return;
     }
+    addLog('VOICE', `Heard: "${text}"`);
+    await dispatchVoiceCommand(text, 'transcript');
   };
   window.hexVoice.onWakeWord = () => {
     window.hexAudio?.play('mic_on', 0.55);
     addLog('VOICE', 'Wake word detected. Listening for one command.');
     updateMicUI(true, 'listening');
     if (voiceCommandListenTimer) clearTimeout(voiceCommandListenTimer);
-    voiceCommandListenTimer = setTimeout(() => updateMicUI(window.hexVoice?.isListening, 'standby'), 6500);
+    voiceCommandListenTimer = setTimeout(() => {
+      voiceCommandListenTimer = null;
+      if (window.hexVoice?.isListening) updateMicUI(true, 'standby');
+    }, 6500);
+  };
+  window.hexVoice.onWakeTimeout = () => {
+    addLog('VOICE', 'Wake window expired. Returning to standby.');
+    if (voiceCommandListenTimer) {
+      clearTimeout(voiceCommandListenTimer);
+      voiceCommandListenTimer = null;
+    }
+    if (window.hexVoice?.isListening) updateMicUI(true, 'standby');
   };
   window.hexVoice.onSpeakStart = () => {
     if (window.hexVoice?.isListening) window.setVoiceAgiState?.('speaking');
   };
   window.hexVoice.onSpeakEnd = () => {
     if (window.hexVoice?.isListening) window.setVoiceAgiState?.('standby');
-  };  window.hexVoice.onStateChange = (listening) => updateMicUI(listening, listening ? 'standby' : 'off');
+  };
+  window.hexVoice.onStateChange = (listening) => updateMicUI(listening, listening ? 'standby' : 'off');
   window.hexVoice.setLanguage(lang);
   updateMicUI(window.hexVoice?.isListening, window.hexVoice?.isListening ? 'standby' : 'off');
 
@@ -300,7 +339,7 @@ async function init() {
 
   // System stats
   window.hexAPI.onSystemUpdate((data) => {
-    window.hexTaskBus?.push('Updating system telemetry...');
+    if (window.hexPerformancePolicy?.allowTelemetryUiChatter?.({ stats: data })) window.hexTaskBus?.push('Updating system telemetry...');
     updateStats(data);
   });
 
@@ -351,7 +390,7 @@ async function init() {
   startHexAnimation();
 
   // Glitch tears (random)
-  window._hexIntervals.push(setInterval(() => { if (!window.isVoiceAgiActive?.()) spawnGlitchTear(); }, 12000));
+  window._hexIntervals.push(setInterval(() => { if (window.hexPerformancePolicy?.allowDecorativeEffects?.()) spawnGlitchTear(); }, 12000));
 
   // Uptime
   window._hexIntervals.push(setInterval(() => {
@@ -778,8 +817,8 @@ document.addEventListener('keydown', (e) => {
 // Use this instead of hexVoice.speak() everywhere so rate/pitch/volume
 // saved by the user are ALWAYS applied, never the hardcoded defaults.
 function speakWithConfig(text) {
-  if (!text || config.voice?.enabled === false) return;
-  window.hexVoice.speak(text, {
+  if (!text || config.voice?.enabled === false) return Promise.resolve(false);
+  return window.hexVoice.speak(text, {
     rate: config.voice?.rate ?? 0.95,
     pitch: config.voice?.pitch ?? 0.85,
     volume: config.voice?.volume ?? 0.9
@@ -898,20 +937,3 @@ async function checkVoiceStatus() {
 // ════════════════════════════════════════════════════════════════════════════════
 // == COMMANDS ==
 // Extracted to commands.js
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

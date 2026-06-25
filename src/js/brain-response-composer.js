@@ -66,6 +66,27 @@
     return head + '\n' + lines.map((item) => '- ' + item).join('\n');
   }
 
+
+  function lastTurnReply(lang, packet) {
+    const l = normalizeLang(lang);
+    const turns = Array.isArray(packet?.relevantTurns) ? packet.relevantTurns : [];
+    const lastUser = [...turns].reverse().find((turn) => String(turn?.role || '').toLowerCase() === 'user' && clean(turn?.content));
+    const lastAssistant = [...turns].reverse().find((turn) => String(turn?.role || '').toLowerCase() === 'assistant' && clean(turn?.content));
+    const userText = clean(lastUser?.content);
+    const assistantText = clean(lastAssistant?.content);
+    if (!userText && !assistantText) {
+      if (l === 'ru') return 'Я не вижу свежего сообщения в серверной непрерывности. Могу продолжить с текущего локального контекста.';
+      if (l === 'ka') return 'სერვერის უწყვეტობაში ახალ შეტყობინებას ვერ ვხედავ. შემიძლია მიმდინარე ლოკალური კონტექსტიდან გავაგრძელო.';
+      return 'I do not see a fresh previous message in server continuity. I can continue from the current local context.';
+    }
+    if (l === 'ru') {
+      return 'Последнее твоё сообщение: ' + (userText || 'не найдено') + (assistantText ? '\nМой последний ответ: ' + assistantText : '');
+    }
+    if (l === 'ka') {
+      return 'შენი ბოლო შეტყობინება: ' + (userText || 'ვერ ვიპოვე') + (assistantText ? '\nჩემი ბოლო პასუხი: ' + assistantText : '');
+    }
+    return 'Your last message was: ' + (userText || 'not found') + (assistantText ? '\nMy last reply was: ' + assistantText : '');
+  }
   function browserReply(lang, packet) {
     const l = normalizeLang(lang);
     const browser = packet?.browser || {};
@@ -202,6 +223,7 @@
     memoryReply,
     profileReply,
     continuityReply,
+    lastTurnReply,
     browserReply,
     inventoryReply,
     statusReply,

@@ -41,7 +41,7 @@
       suggestedSurface = 'browser';
       urgency = 'high';
       reasons.push('browser-open-follow-up');
-    } else if (has(/\b(open|launch|run|show|reveal|locate|focus|close|kill|list|scan|find|search|file|folder|app|game|window|process|clipboard|screenshot|volume|mute|lock)\b/i, t)) {
+    } else if (has(/\b(open|launch|run|show|hide|reveal|locate|focus|close|kill|list|scan|find|search|file|folder|app|game|window|process|clipboard|screenshot|volume|mute|lock)\b/i, t)) {
       domain = 'desktop-action';
       suggestedSurface = 'desktop';
       urgency = 'high';

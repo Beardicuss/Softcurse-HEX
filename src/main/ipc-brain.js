@@ -90,6 +90,19 @@ module.exports = function registerBrainIPC({ ipcMain, app }) {
       if (row.language) languages[row.language] = (languages[row.language] || 0) + 1;
     };
 
+    const cleanQualityMetadata = (quality) => {
+      if (!quality || typeof quality !== 'object') return null;
+      return {
+        label: quality.label || null,
+        usableForSft: quality.usableForSft === true,
+        usableForPreference: quality.usableForPreference === true,
+        usableAsNegative: quality.usableAsNegative === true,
+        route: quality.route || null,
+        action: quality.action || null,
+        context: quality.context || null
+      };
+    };
+
     for (const row of rows) {
       if (row.type === 'hex_training_chat' && Array.isArray(row.messages)) {
         const clean = {
@@ -99,7 +112,8 @@ module.exports = function registerBrainIPC({ ipcMain, app }) {
             signal: row.signal || null,
             trainingIntent: row.trainingIntent || null,
             language: row.language || null,
-            context: row.context || null
+            context: row.context || null,
+            quality: cleanQualityMetadata(row.quality)
           }
         };
         const key = JSON.stringify(clean.messages);
@@ -118,7 +132,8 @@ module.exports = function registerBrainIPC({ ipcMain, app }) {
             sourceFeedbackId: row.sourceFeedbackId || null,
             trainingIntent: row.trainingIntent || null,
             language: row.language || null,
-            context: row.context || null
+            context: row.context || null,
+            quality: cleanQualityMetadata(row.quality)
           }
         };
         const key = [clean.prompt, clean.chosen, clean.rejected].join('\u0000');

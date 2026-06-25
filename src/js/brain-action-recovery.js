@@ -47,6 +47,16 @@
       if (lang === 'ka') return 'წინა გვერდზე ვბრუნდები.';
       return 'Going back in the current browser session.';
     }
+    if (type === 'web_forward') {
+      if (lang === 'ru') return 'Перехожу вперед в текущем браузере.';
+      if (lang === 'ka') return 'მიმდინარე ბრაუზერში წინ გადავდივარ.';
+      return 'Going forward in the current browser session.';
+    }
+    if (type === 'web_close') {
+      if (lang === 'ru') return 'Закрываю текущую браузерную сессию.';
+      if (lang === 'ka') return 'მიმდინარე ბრაუზერის სესიას ვხურავ.';
+      return 'Closing the current browser session.';
+    }
     if (type === 'web_refresh') {
       if (lang === 'ru') return 'Обновляю текущую страницу.';
       if (lang === 'ka') return 'მიმდინარე გვერდს ვაახლებ.';
@@ -56,6 +66,26 @@
       if (lang === 'ru') return 'Читаю текущую страницу.';
       if (lang === 'ka') return 'მიმდინარე გვერდს ვკითხულობ.';
       return 'Reading the current browser page.';
+    }
+    if (type === 'open_settings') {
+      if (lang === 'ru') return 'Открываю настройки H.E.X.';
+      if (lang === 'ka') return 'H.E.X.-ის პარამეტრებს ვხსნი.';
+      return 'Opening HEX settings.';
+    }
+    if (type === 'open_chat_surface') {
+      if (lang === 'ru') return 'Показываю основной интерфейс.';
+      if (lang === 'ka') return 'მთავარ ინტერფეისს ვაჩვენებ.';
+      return 'Showing the main interface.';
+    }
+    if (type === 'open_voice_surface') {
+      if (lang === 'ru') return 'Открываю голосовой режим.';
+      if (lang === 'ka') return 'ხმოვან რეჟიმს ვხსნი.';
+      return 'Opening voice mode.';
+    }
+    if (type === 'close_voice_surface') {
+      if (lang === 'ru') return 'Выключаю голосовой режим.';
+      if (lang === 'ka') return 'ხმოვან რეჟიმს ვთიშავ.';
+      return 'Turning voice mode off.';
     }
     if (type === 'open_folder') {
       const folder = clean(first?.args?.[0] || 'folder');
@@ -92,6 +122,47 @@
       if (lang === 'ru') return 'Проверяю состояние системы.';
       if (lang === 'ka') return 'სისტემის ჯანმრთელობას ვამოწმებ.';
       return 'Checking system health.';
+    }
+    if (type === 'list_processes') {
+      if (lang === 'ru') return 'Показываю текущие процессы.';
+      if (lang === 'ka') return 'მიმდინარე პროცესებს ვაჩვენებ.';
+      return 'Showing running processes.';
+    }
+    if (type === 'list_games') {
+      if (lang === 'ru') return 'Сканирую установленные игры.';
+      if (lang === 'ka') return 'დაყენებულ თამაშებს ვამოწმებ.';
+      return 'Scanning installed games.';
+    }
+    if (type === 'list_software') {
+      if (lang === 'ru') return 'Показываю установленные приложения.';
+      if (lang === 'ka') return 'დაყენებულ აპლიკაციებს ვაჩვენებ.';
+      return 'Showing installed apps.';
+    }
+    if (type === 'get_clipboard') {
+      if (lang === 'ru') return 'Читаю буфер обмена.';
+      if (lang === 'ka') return 'ბუფერს ვკითხულობ.';
+      return 'Reading the clipboard.';
+    }
+    if (type === 'set_volume') {
+      const level = clean(first?.args?.[0] || '50');
+      if (lang === 'ru') return 'Ставлю громкость на ' + level + '%.';
+      if (lang === 'ka') return 'ხმას ვაყენებ ' + level + '%-ზე.';
+      return 'Setting volume to ' + level + '%.';
+    }
+    if (type === 'mute') {
+      if (lang === 'ru') return 'Выключаю звук.';
+      if (lang === 'ka') return 'ხმას ვთიშავ.';
+      return 'Muting audio.';
+    }
+    if (type === 'unmute') {
+      if (lang === 'ru') return 'Включаю звук.';
+      if (lang === 'ka') return 'ხმას ვრთავ.';
+      return 'Unmuting audio.';
+    }
+    if (type === 'lock_screen') {
+      if (lang === 'ru') return 'Блокирую экран.';
+      if (lang === 'ka') return 'ეკრანს ვკეტავ.';
+      return 'Locking the screen.';
     }
     if (type === 'open_app') {
       const target = clean(first?.args?.[0] || 'app');
@@ -169,10 +240,13 @@
     const browserOpen = !!systemState?.browserSession?.open || !!systemState?.cloudContext?.browser?.open;
     if (!browserOpen) return null;
     if (/^(?:go\s+)?back(?:\s+(?:page|tab))?$/.test(raw)) return { type: 'web_back', args: [] };
+    if (/^(?:go\s+)?forward(?:\s+(?:page|tab))?$/.test(raw)) return { type: 'web_forward', args: [] };
+    if (/^(?:close|exit|hide)(?:\s+(?:the\s+)?)?(?:browser|browser\s+session|web\s+session)$/.test(raw)) return { type: 'web_close', args: [] };
     if (/^(?:refresh|reload)(?:\s+(?:page|tab|browser))?$/.test(raw)) return { type: 'web_refresh', args: [] };
     if (/^(?:read|summarize|scan)(?:\s+(?:this|current|the))?(?:\s+(?:page|tab|site|website))?$/.test(raw)) return { type: 'web_read', args: [] };
     return null;
   }
+
   function parseOpenSite(text) {
     const raw = clean(text);
     const match = raw.match(/^(?:open|go\s+to|visit|browse\s+to)\s+(.+)$/i);
@@ -218,8 +292,43 @@
     if (/^(?:system\s+health|pc\s+health|health\s+check|check\s+system\s+health)$/.test(raw)) {
       return { type: 'system_health', args: [] };
     }
+    if (/^(?:open|show|bring\s+up)\s+(?:hex\s+)?settings$/.test(raw) || raw === 'settings') {
+      return { type: 'open_settings', args: [] };
+    }
+    if (/^(?:open|show|return\s+to|bring\s+back)\s+(?:the\s+)?(?:chat|main\s+chat|normal\s+interface|default\s+interface)$/.test(raw) || /^(?:show|open)\s+(?:the\s+)?interface$/.test(raw)) {
+      return { type: 'open_chat_surface', args: [] };
+    }
+    if (/^(?:open|show|return\s+to|bring\s+back|enter|activate)\s+(?:the\s+)?(?:voice\s+mode|agi\s+mode|hologram|ghost\s+deck)$/.test(raw) || raw === 'ghost deck') {
+      return { type: 'open_voice_surface', args: [] };
+    }
+    if (/^(?:close|exit|disable|turn\s+off|switch\s+off|shut\s+down|stop|deactivate)\s+(?:the\s+)?(?:voice\s+mode|voice\s+surface|agi\s+mode|hologram|ghost\s+deck|command\s+deck)$/.test(raw) || /^(?:voice\s+mode|voice\s+surface|agi\s+mode|hologram|ghost\s+deck|command\s+deck)\s+(?:off|offline|down)$/.test(raw) || /^(?:return\s+to\s+cockpit|back\s+to\s+cockpit|normal\s+interface)$/.test(raw) || /^(?:hide|close)\s+(?:the\s+)?interface$/.test(raw)) {
+      return { type: 'close_voice_surface', args: [] };
+    }
+    if (/^(?:show|get|read)\s+(?:the\s+)?clipboard$/.test(raw) || raw === 'what is in clipboard') {
+      return { type: 'get_clipboard', args: [] };
+    }
+    const volumeMatch = raw.match(/^(?:set\s+(?:the\s+)?volume\s+(?:to\s+)?|volume\s+)(\d{1,3})%?$/);
+    if (volumeMatch) {
+      const level = Math.max(0, Math.min(100, parseInt(volumeMatch[1], 10) || 50));
+      return { type: 'set_volume', args: [String(level)] };
+    }
+    if (raw === 'mute' || /^mute\s+(?:audio|sound|volume)$/.test(raw)) return { type: 'mute', args: [] };
+    if (raw === 'unmute' || /^unmute\s+(?:audio|sound|volume)$/.test(raw)) return { type: 'unmute', args: [] };
+    if (/^lock\s+(?:the\s+)?(?:screen|pc|computer|workstation)$/.test(raw) || raw === 'lock') {
+      return { type: 'lock_screen', args: [] };
+    }
+    if (/^(?:show|list|scan|what(?:'s|\s+is))\s+(?:running\s+)?(?:processes|tasks)(?:\s+running)?$/.test(raw) || raw === 'what is running') {
+      return { type: 'list_processes', args: [] };
+    }
+    if (/^(?:list|show|scan)\s+(?:my\s+)?(?:games|game\s+library)$/.test(raw)) {
+      return { type: 'list_games', args: [] };
+    }
+    if (/^(?:list|show|scan)\s+(?:my\s+)?(?:apps|applications|programs|software)$/.test(raw)) {
+      return { type: 'list_software', args: [] };
+    }
     return null;
   }
+
   function preferredDesktopKind(text) {
     const raw = lower(text);
     if (/\b(game|steam|epic)\b/.test(raw)) return 'game';
@@ -326,7 +435,7 @@
     const collected = collectSafeActions({ userMsg, systemState, actionPlan });
     if (!collected) return null;
     const { candidates, plan } = collected;
-    const browserActions = candidates.filter((action) => action.type === 'web_search' || action.type === 'web_find_click' || action.type === 'web_read' || action.type === 'web_back' || action.type === 'web_refresh' || action.type === 'open_url');
+    const browserActions = candidates.filter((action) => action.type === 'web_search' || action.type === 'web_find_click' || action.type === 'web_read' || action.type === 'web_back' || action.type === 'web_forward' || action.type === 'web_refresh' || action.type === 'web_close' || action.type === 'open_url');
     if (!browserActions.length) return null;
     const directActions = browserActions.map((action) => ({
       ...action,
@@ -348,7 +457,7 @@
     const collected = collectSafeActions({ userMsg, systemState, actionPlan });
     if (!collected) return null;
     const { candidates, plan } = collected;
-    const safeLocalTypes = new Set(['open_folder', 'screenshot', 'sys_info', 'disk_usage', 'battery', 'get_ip', 'system_health', 'open_app', 'launch_game', 'open_file']);
+    const safeLocalTypes = new Set(['open_folder', 'screenshot', 'sys_info', 'disk_usage', 'battery', 'get_ip', 'system_health', 'open_settings', 'open_chat_surface', 'open_voice_surface', 'close_voice_surface', 'list_processes', 'list_games', 'list_software', 'get_clipboard', 'set_volume', 'mute', 'unmute', 'lock_screen', 'open_app', 'launch_game', 'open_file']);
     const localActions = candidates.filter((action) => safeLocalTypes.has(action.type));
     if (!localActions.length) return null;
     const directActions = localActions.map((action) => ({

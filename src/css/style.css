@@ -125,7 +125,7 @@ body {
 
 /* Base global overrides */
 * {
-  cursor: none;
+  cursor: auto;
 }
 
 /* ── Noise Overlay ────────────────────────────────────────────── */
@@ -4514,4 +4514,34 @@ body.voice-agi-speaking .voice-agi-state,
 #voice-agi-surface.voice-agi-speaking .voice-agi-state {
   color: #dffcff;
   text-shadow: 0 0 20px color-mix(in srgb, var(--agi-primary) 70%, transparent);
+}
+
+/* VOICE AGI POINTER SAFETY ------------------------------------------------ */
+#voice-agi-surface,
+#voice-agi-surface * {
+  pointer-events: none !important;
+}
+
+html.voice-agi-mode #topbar,
+body.voice-agi-mode #topbar,
+#app.voice-agi-mode #topbar,
+html.voice-agi-mode #topbar *,
+body.voice-agi-mode #topbar *,
+#app.voice-agi-mode #topbar * {
+  pointer-events: auto !important;
+}
+
+/* DEFAULT CURSOR OVERRIDE -------------------------------------------------- */
+html,
+body,
+*,
+*::before,
+*::after {
+  cursor: auto !important;
+}
+
+.pulsar-cursor,
+.cyber-cursor {
+  display: none !important;
+  animation: none !important;
 }

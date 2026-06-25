@@ -14,6 +14,8 @@ const _ns = {
     commandCount: 0,
     actionCount: 0,
     lastVitals: { cpu: 0, ram: 0, disk: 0 },
+    pluginCount: null,
+    pluginCheckedAt: 0,
 };
 
 // ── Module Grid Updates ───────────────────────────────────────
@@ -86,15 +88,23 @@ function nsUpdateModules() {
     const plugCell = document.getElementById('hex-plugins');
     const plugVal = document.getElementById('hex-val-plugins');
     if (plugCell && plugVal) {
-        try {
-            window.hexAPI.plugins.list().then(res => {
-                const list = res.plugins || [];
-                const count = Array.isArray(list) ? list.length : 0;
-                plugVal.textContent = nsT('plugins_loaded_count', { count });
-                if (count > 0) { plugCell.classList.add('active'); plugCell.classList.remove('offline'); }
-                else { plugCell.classList.add('offline'); plugCell.classList.remove('active'); }
-            }).catch(() => { plugVal.textContent = '0'; });
-        } catch (_) { plugVal.textContent = '0'; }
+        const applyPluginCount = (count) => {
+            plugVal.textContent = nsT('plugins_loaded_count', { count });
+            if (count > 0) { plugCell.classList.add('active'); plugCell.classList.remove('offline'); }
+            else { plugCell.classList.add('offline'); plugCell.classList.remove('active'); }
+        };
+        if (_ns.pluginCount !== null) applyPluginCount(_ns.pluginCount);
+        const now = Date.now();
+        if (now - _ns.pluginCheckedAt > 60000 && window.hexPerformancePolicy?.allowHiddenPanelRefresh?.()) {
+            _ns.pluginCheckedAt = now;
+            try {
+                window.hexAPI.plugins.list().then(res => {
+                    const list = res.plugins || [];
+                    _ns.pluginCount = Array.isArray(list) ? list.length : 0;
+                    applyPluginCount(_ns.pluginCount);
+                }).catch(() => { if (_ns.pluginCount === null) plugVal.textContent = '0'; });
+            } catch (_) { if (_ns.pluginCount === null) plugVal.textContent = '0'; }
+        }
     }
 
     const sysCell = document.getElementById('hex-system');
@@ -422,10 +432,10 @@ function nsUpdateSessionStats() {
 window.nsTrackCommand = function () { _ns.commandCount++; };
 window.nsTrackAction = function () { _ns.actionCount++; };
 
-function nsRefreshAll() {
-    if (window.isVoiceAgiActive?.()) return;
+function nsRefreshAll(force = false) {
+    if (!force && window.hexPerformancePolicy && !window.hexPerformancePolicy.allowHiddenPanelRefresh?.({ stats: _ns.lastVitals })) return;
     const nsPanel = document.getElementById('panel-left');
-    if (nsPanel && nsPanel.offsetParent === null) return;
+    if (!force && nsPanel && nsPanel.offsetParent === null) return;
 
     nsUpdateModules();
     nsUpdateCoherence();
@@ -437,9 +447,27 @@ function nsRefreshAll() {
     nsUpdateDaemons();
 }
 
+function nsScheduleNextRefresh() {
+    clearTimeout(window._nsRefreshInterval);
+    const delay = window.hexPerformancePolicy?.uiRefreshIntervalMs?.({ stats: _ns.lastVitals }) || 10000;
+    window._nsRefreshInterval = setTimeout(() => {
+        nsRefreshAll(false);
+        nsScheduleNextRefresh();
+    }, delay);
+}
+
+function nsStartRefreshLoop() {
+    if (window._nsRefreshInterval) return;
+    const delay = Math.min(window.hexPerformancePolicy?.uiRefreshIntervalMs?.({ stats: _ns.lastVitals }) || 10000, 5000);
+    window._nsRefreshInterval = setTimeout(() => {
+        nsRefreshAll(false);
+        nsScheduleNextRefresh();
+    }, delay);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(nsRefreshAll, 2000);
-    setInterval(nsRefreshAll, 10000);
+    setTimeout(() => nsRefreshAll(true), 2000);
+    nsStartRefreshLoop();
 
     const _origPoll = window._systemPollUpdate;
     window._systemPollUpdate = function (data) {
@@ -468,6 +496,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 window.neuralSurface = {
     refresh: nsRefreshAll,
+    start: nsStartRefreshLoop,
     trackCommand: window.nsTrackCommand,
     trackAction: window.nsTrackAction,
 };
