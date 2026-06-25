@@ -91,52 +91,51 @@
       </div>
     </section>
 
-    <section class="panel wide">
-      <div class="panel-kicker">ARCHITECTURE</div>
-      <div class="route-grid">
-        <article class="route-card">
-          <h2>Local Client</h2>
-          <ul>
-            <li>Electron UI</li>
-            <li>Voice I/O</li>
-            <li>Desktop actions</li>
-            <li>Browser automation</li>
-          </ul>
-        </article>
-        <article class="route-card active">
-          <h2>Cloudflare Server Core</h2>
-          <ul>
-            <li>Profiles + IDs</li>
-            <li>Conversation history</li>
-            <li>Memory retrieval</li>
-            <li>Session continuity</li>
-          </ul>
-        </article>
-        <article class="route-card cardinal">
-          <h2>AI Routing Layer</h2>
-          <ul>
-            <li>AI Gateway</li>
-            <li>Fallback providers</li>
-            <li>Usage logging</li>
-            <li>Rate-limit control</li>
-          </ul>
-        </article>
+    <section class="panel wide observatory-panel">
+      <div class="panel-headline">
+        <div>
+          <div class="panel-kicker">CONTEXT OBSERVATORY</div>
+          <h2>What Desktop HEX receives before thinking.</h2>
+        </div>
+        <div class="query-bar">
+          <input id="context-query" type="text" value="dashboard refresh" aria-label="Context packet query">
+          <button type="button" id="refresh-context" class="forge-btn compact">Refresh Packet</button>
+        </div>
+      </div>
+      <div class="observatory-grid">
+        <div class="obs-card large">
+          <div class="obs-label">Packet Overview</div>
+          <div id="context-overview" class="stack"></div>
+        </div>
+        <div class="obs-card">
+          <div class="obs-label">Freshness Tiers</div>
+          <div id="freshness-grid" class="freshness-grid"></div>
+        </div>
+        <div class="obs-card large">
+          <div class="obs-label">Priority References</div>
+          <div id="priority-references" class="reference-grid"></div>
+        </div>
+        <div class="obs-card">
+          <div class="obs-label">Retrieval Reasons</div>
+          <div id="retrieval-reasons" class="reason-list"></div>
+        </div>
       </div>
     </section>
 
-    <section class="panel wide">
-      <div class="panel-kicker">API PREVIEW</div>
-      <pre class="api-box"><code>GET  /api/health
-GET  /api/bootstrap
-GET  /api/profiles
-POST /api/profiles/resolve
-POST /api/profiles
-GET  /api/profiles/:id
-GET  /api/profiles/:id/continuity
-POST /api/sessions
-POST /api/sessions/:id/messages
-GET  /api/live-session/:profileId
-POST /api/live-session/:profileId</code></pre>
+    <section class="panel wide insight-grid-panel">
+      <div class="insight-column">
+        <div class="panel-kicker">DEVICE INVENTORY</div>
+        <div id="inventory-box" class="inventory-grid"></div>
+      </div>
+      <div class="insight-column">
+        <div class="panel-kicker">ACTION TIMELINE</div>
+        <div id="action-timeline" class="timeline-grid"></div>
+      </div>
+      <div class="insight-column hunter-column">
+        <div class="panel-kicker">HUNTER PROVIDERS</div>
+        <button type="button" id="refresh-hunter" class="forge-btn compact">Refresh Hunter</button>
+        <div id="hunter-box" class="hunter-box"></div>
+      </div>
     </section>
 
     <section class="panel wide split-panel">

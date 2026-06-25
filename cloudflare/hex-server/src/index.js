@@ -215,15 +215,15 @@ async function handleApi(request, env, url) {
         profiles: true,
         sessions: true,
         memory: true,
-        aiGateway: true,
+        contextPacketV2: true,
+        retrievalPriority: true,
+        deviceInventory: true,
+        activityTimeline: true,
+        hunterCapabilities: isHunterApiConfigured(env),
         queues: true
       },
       metrics,
-      nextSteps: [
-        'Create D1, KV, Queue, and R2 resources and replace placeholder IDs in wrangler.jsonc',
-        'Connect Electron HEX client to /api/profiles and /api/sessions',
-        'Move memory assembly and session continuity to this backend'
-      ]
+      serverRole: 'cloud-continuity-and-retrieval-core'
     });
   }
 
