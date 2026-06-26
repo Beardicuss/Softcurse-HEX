@@ -21,6 +21,11 @@ window.buildHexCompactSystemPrompt = function buildHexCompactSystemPrompt(state,
   const cloudActionStatusCounts = cloudContext.retrieval?.actionStatusCounts || {};
   const cloudContextUse = cloudContext.retrieval?.contextUse || {};
   const cloudContextUseLine = 'active ' + ((cloudContextUse.active || []).join('/') || 'none') + ' | background ' + ((cloudContextUse.background || []).join('/') || 'none') + ' | missing ' + ((cloudContextUse.missing || []).join('/') || 'none');
+  const cloudPriorityView = cloudContext.desktopPriorityView || window.hexCloudContextRehydrator?.getPriorityView?.(cloudContext) || null;
+  const formatPriorityRefs = (items) => (items || [])
+    .slice(0, 5)
+    .map((item) => `${item.index || '?'}:${item.label || item.value || item} [${item.purpose || item.kind || 'ref'} ${item.contextFresh ? 'fresh' : 'background'}]`)
+    .filter(Boolean);
   const cloudTasks = (cloudContext.unresolvedTasks || []).slice(0, 4).map((item) => item.text).filter(Boolean);
   const cloudActions = (cloudContext.actionTimeline || []).slice(0, 4).map((item) => item.kind + ': ' + item.text).filter(Boolean);
   const cloudCommitments = (cloudContext.dialogue?.commitments || []).slice(0, 3).map((item) => item.text).filter(Boolean);
@@ -97,6 +102,8 @@ window.buildHexCompactSystemPrompt = function buildHexCompactSystemPrompt(state,
     'Cloud action outcomes: success ' + (cloudActionStatusCounts.success || 0) + ', failure ' + (cloudActionStatusCounts.failure || 0) + ', pending ' + (cloudActionStatusCounts.pending || 0),
     'Cloud retrieval why: ' + (cloudRetrievalReasons.join(' | ') || 'none'),
     'Cloud context use: ' + cloudContextUseLine,
+    'Cloud priority active: ' + (formatPriorityRefs(cloudPriorityView?.active).join(' | ') || 'none'),
+    'Cloud priority background: ' + (formatPriorityRefs(cloudPriorityView?.background).join(' | ') || 'none'),
     'Cloud desktop refs: ' + (formatCloudRefs(cloudContext.references?.desktop || cloudSummary.desktopReferences).join(' | ') || 'none'),
     'Unresolved tasks: ' + (cloudTasks.join(' | ') || 'none'),
     'Recent actions: ' + (cloudActions.join(' | ') || 'none'),

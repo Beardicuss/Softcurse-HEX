@@ -269,8 +269,9 @@ async function dispatchVoiceCommand(text, source = 'voice') {
     return false;
   } finally {
     setTimeout(() => {
-      const speaking = document.getElementById('voice-agi-surface')?.classList.contains('voice-agi-speaking');
-      if (window.hexVoice?.isListening && !speaking) updateMicUI(true, 'standby');
+      const surface = document.getElementById('voice-agi-surface');
+      const speaking = surface?.classList.contains('voice-agi-speaking');
+      if (window.hexVoice?.isListening && !speaking) updateMicUI(true, window.hexVoice?._isAwakeHeld?.() ? 'awake' : 'standby');
     }, 250);
   }
 }
@@ -302,13 +303,32 @@ window.dispatchVoiceCommand = dispatchVoiceCommand;
       clearTimeout(voiceCommandListenTimer);
       voiceCommandListenTimer = null;
     }
+    if (window.hexVoice?.isListening) updateMicUI(true, window.hexVoice?._isAwakeHeld?.() ? 'awake' : 'standby');
+  };
+  window.hexVoice.onAwakeStart = (_reason, ms) => {
+    if (voiceCommandListenTimer) clearTimeout(voiceCommandListenTimer);
+    voiceCommandListenTimer = setTimeout(() => {
+      voiceCommandListenTimer = null;
+      if (window.hexVoice?.isListening) updateMicUI(true, 'standby');
+    }, Number(ms) || 60000);
+    if (window.hexVoice?.isListening) updateMicUI(true, 'awake');
+  };
+  window.hexVoice.onAwakeEnd = () => {
+    if (voiceCommandListenTimer) {
+      clearTimeout(voiceCommandListenTimer);
+      voiceCommandListenTimer = null;
+    }
+    if (window.hexVoice?.isListening) updateMicUI(true, 'standby');
+  };
+  window.hexVoice.onRest = () => {
+    addLog('VOICE', 'Presence resting. Wake word required again.');
     if (window.hexVoice?.isListening) updateMicUI(true, 'standby');
   };
   window.hexVoice.onSpeakStart = () => {
     if (window.hexVoice?.isListening) window.setVoiceAgiState?.('speaking');
   };
   window.hexVoice.onSpeakEnd = () => {
-    if (window.hexVoice?.isListening) window.setVoiceAgiState?.('standby');
+    if (window.hexVoice?.isListening) window.setVoiceAgiState?.(window.hexVoice?._isAwakeHeld?.() ? 'awake' : 'standby');
   };
   window.hexVoice.onStateChange = (listening) => updateMicUI(listening, listening ? 'standby' : 'off');
   window.hexVoice.setLanguage(lang);
@@ -523,7 +543,7 @@ function setVoiceAgiSurface(listening, mode = 'standby') {
   const hintEl = document.getElementById('voice-agi-hint');
   const shouldShow = !!listening && !voiceSurfaceOverride;
   const roots = [document.documentElement, document.body, app, surface].filter(Boolean);
-  const states = ['voice-agi-standby', 'voice-agi-listening', 'voice-agi-processing', 'voice-agi-action', 'voice-agi-speaking'];
+  const states = ['voice-agi-standby', 'voice-agi-awake', 'voice-agi-listening', 'voice-agi-processing', 'voice-agi-action', 'voice-agi-speaking'];
   for (const root of roots) {
     root.classList.toggle('voice-agi-mode', shouldShow);
     for (const state of states) root.classList.remove(state);
@@ -543,6 +563,7 @@ function setVoiceAgiSurface(listening, mode = 'standby') {
   if (!shouldShow) return;
   const labels = {
     standby: 'STANDBY',
+    awake: 'AWAKE',
     listening: 'LISTENING',
     processing: 'PROCESSING',
     action: 'EXECUTING',
@@ -554,6 +575,7 @@ function setVoiceAgiSurface(listening, mode = 'standby') {
 }
 
 function getVoiceAgiHints(mode = 'standby') {
+  if (mode === 'awake') return ['Awake for follow-ups. You can speak without the wake word for 60 seconds.', 'Say take a break, rest for now, or disappear to return to quiet standby.', 'Follow-up channel is open: ask naturally, or say open chat/show interface.'];
   if (mode === 'speaking') return ['HEX is responding. Say show interface if you want the full cockpit.', 'Voice output active. Say voice mode off to stop listening after this.', 'Tip: show interface keeps microphone online while revealing the full UI.'];
   const wakeWord = window.hexVoice?.wakeWord || config?.voice?.wakeWord || 'hex';
   const pressure = window.hexPerformancePolicy?.isSystemUnderPressure?.(window.sysStats) ? 'System load is high. Prefer short commands until vitals stabilize.' : null;
@@ -598,7 +620,8 @@ function ensureVoiceAgiHintCycle(mode = 'standby') {
   voiceAgiHintTimer = setInterval(() => {
     const surface = document.getElementById('voice-agi-surface');
     if (!surface?.classList.contains('voice-agi-visible')) return;
-    const activeMode = surface.classList.contains('voice-agi-listening') ? 'listening'
+    const activeMode = surface.classList.contains('voice-agi-awake') ? 'awake'
+      : surface.classList.contains('voice-agi-listening') ? 'listening'
       : surface.classList.contains('voice-agi-speaking') ? 'speaking'
         : surface.classList.contains('voice-agi-processing') ? 'processing'
           : surface.classList.contains('voice-agi-action') ? 'action'

@@ -2,6 +2,7 @@
 
 window.hexCloudContextRehydrator = (() => {
   let lastContinuityState = null;
+  let lastPriorityView = null;
 
   function normalizeLabel(value) {
     return String(value || '').trim();
@@ -52,6 +53,74 @@ window.hexCloudContextRehydrator = (() => {
 
   function weightFor(packet, purpose, weight) {
     return packetFreshness(packet, purpose).stale ? Math.max(0.2, weight * 0.45) : weight;
+  }
+
+  function purposeForReference(item = {}) {
+    const kind = String(item?.kind || '').toLowerCase();
+    const reason = String(item?.retrievalReason || item?.reason || item?.meta?.retrievalReason || '').toLowerCase();
+    const source = String(item?.meta?.source || item?.source || '').toLowerCase();
+    if (kind === 'browser' || /browser|youtube|page|video|link|tab/.test(reason + ' ' + source)) return 'browser';
+    if (/action|click|open|launch|navigate/.test(reason + ' ' + source)) return 'action';
+    if (/app|file|folder|game|window|process|recent/.test(kind)) return 'inventory';
+    return 'session';
+  }
+
+  function normalizePriorityItem(item, index, packet = {}, bucket = 'priority') {
+    const label = normalizeLabel(item?.label || item?.value || item?.path || item);
+    if (!label) return null;
+    const purpose = purposeForReference(item);
+    const freshness = packetFreshness(packet, purpose);
+    const rawConfidence = Number(item?.confidence ?? item?.meta?.confidence ?? 0.55);
+    const confidence = Number.isFinite(rawConfidence) ? Math.max(0, Math.min(1, rawConfidence)) : 0.55;
+    const score = confidence
+      + (freshness.fresh ? 0.22 : 0)
+      - (freshness.stale ? 0.28 : 0)
+      + (purpose === 'browser' ? 0.08 : 0)
+      + (bucket === 'priority' ? 0.06 : 0);
+    return {
+      index: index + 1,
+      kind: item?.kind || parseKind(label, 'recent'),
+      label,
+      path: item?.path || null,
+      value: item?.value || item?.path || label,
+      purpose,
+      bucket,
+      confidence: Number(confidence.toFixed(2)),
+      score: Number(score.toFixed(3)),
+      contextFresh: freshness.fresh,
+      contextStale: freshness.stale,
+      contextFreshnessReason: freshness.reason,
+      contextAgeSeconds: freshness.ageSeconds,
+      retrievalReason: item?.retrievalReason || item?.reason || item?.meta?.retrievalReason || null
+    };
+  }
+
+  function buildPriorityView(packet = {}) {
+    const refs = packet?.references || {};
+    const raw = [
+      ...(Array.isArray(refs.priority) ? refs.priority.map((item) => ({ item, bucket: 'priority' })) : []),
+      ...(Array.isArray(refs.browser) ? refs.browser.map((item) => ({ item, bucket: 'browser' })) : []),
+      ...(Array.isArray(refs.desktop) ? refs.desktop.map((item) => ({ item, bucket: 'desktop' })) : [])
+    ];
+    const deduped = new Map();
+    raw.forEach(({ item, bucket }, index) => {
+      const normalized = normalizePriorityItem(item, index, packet, bucket);
+      if (!normalized) return;
+      const key = [normalized.kind, normalized.path || '', normalized.value || '', normalized.label].join('::').toLowerCase();
+      const previous = deduped.get(key);
+      if (!previous || normalized.score > previous.score) deduped.set(key, normalized);
+    });
+    const ranked = [...deduped.values()].sort((a, b) => (b.score - a.score) || (b.confidence - a.confidence));
+    const active = ranked.filter((item) => item.contextFresh).slice(0, 8).map((item, index) => ({ ...item, index: index + 1 }));
+    const background = ranked.filter((item) => !item.contextFresh).slice(0, 8).map((item, index) => ({ ...item, index: index + 1 }));
+    return {
+      schema: 'hex.desktop-priority-view.v1',
+      active,
+      background,
+      guidance: active.length
+        ? 'Prefer active references for follow-up routing; use background references only as memory.'
+        : 'No fresh server references; use local/live desktop state first and stale server references only as background memory.'
+    };
   }
   function fromStrings(list, fallbackKind = 'recent', source = 'cloud-reference') {
     return (Array.isArray(list) ? list : [])
@@ -168,6 +237,8 @@ window.hexCloudContextRehydrator = (() => {
   function applyPacket(packet = null) {
     if (!packet || typeof packet !== 'object') return false;
     lastContinuityState = packet.continuityState && typeof packet.continuityState === 'object' ? { ...packet.continuityState } : null;
+    lastPriorityView = buildPriorityView(packet);
+    packet.desktopPriorityView = lastPriorityView;
     rehydrateDesktopContext(packet.desktopContext || {}, packet);
     rehydrateReferences(packet.references || {}, packet);
     rehydrateMemories(packet.relevantMemories || packet.memories || [], packet);
@@ -183,8 +254,18 @@ window.hexCloudContextRehydrator = (() => {
     return lastContinuityState ? { ...lastContinuityState } : null;
   }
 
+  function getPriorityView(packet = null) {
+    if (packet && typeof packet === 'object') return buildPriorityView(packet);
+    return lastPriorityView ? {
+      ...lastPriorityView,
+      active: [...(lastPriorityView.active || [])],
+      background: [...(lastPriorityView.background || [])]
+    } : null;
+  }
+
   return {
     applyPacket,
-    getLastContinuityState
+    getLastContinuityState,
+    getPriorityView
   };
 })();

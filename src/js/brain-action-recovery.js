@@ -260,6 +260,69 @@
     return null;
   }
 
+
+  function getPriorityView(systemState = {}) {
+    return systemState?.cloudContext?.desktopPriorityView || window.hexCloudContextRehydrator?.getPriorityView?.(systemState?.cloudContext) || null;
+  }
+
+  function activeBrowserPriority(systemState = {}) {
+    const view = getPriorityView(systemState);
+    return (view?.active || []).find((item) => String(item?.purpose || item?.kind || '').toLowerCase() === 'browser') || null;
+  }
+
+
+  function activeDesktopPriority(systemState = {}) {
+    const view = getPriorityView(systemState);
+    return (view?.active || []).find((item) => {
+      const kind = String(item?.kind || '').toLowerCase();
+      const purpose = String(item?.purpose || '').toLowerCase();
+      if (purpose === 'browser' || kind === 'browser') return false;
+      return ['app', 'game', 'file', 'folder'].includes(kind);
+    }) || null;
+  }
+
+  function actionForPriorityDesktopTarget(item = {}) {
+    const kind = String(item?.kind || '').toLowerCase();
+    const label = clean(item?.label || item?.value || item?.path || '');
+    const path = clean(item?.path || item?.value || label);
+    if (!label && !path) return null;
+    const meta = {
+      resolvedLabel: label || path,
+      resolvedKind: kind || 'item',
+      resolvedSource: 'cloud-priority-view',
+      resolvedPath: item?.path || null,
+      priorityPurpose: item?.purpose || 'inventory'
+    };
+    if (kind === 'game') return { type: 'launch_game', args: [label || path], meta };
+    if (kind === 'app') return { type: 'open_app', args: [label || path], meta };
+    if (kind === 'folder') return { type: 'open_folder', args: [path || label], meta };
+    if (kind === 'file') return { type: 'open_file', args: [path || label], meta };
+    return null;
+  }
+
+  function parsePriorityDesktopFollowUp(text, systemState = {}) {
+    const raw = clean(text);
+    const active = activeDesktopPriority(systemState);
+    if (!active) return null;
+    const targetOnly = /^(?:that|this|it|that one|this one|same one)$/i.test(raw);
+    const actionMatch = raw.match(/^(?:open|launch|run|play|show|select|choose)\s+(?:that|this|it|that one|this one|same one)$/i)
+      || raw.match(/^(?:open|launch|run|play|show)\s+(?:the\s+)?(?:same|current|selected)\s+(?:app|game|file|folder|item)$/i);
+    if (!targetOnly && !actionMatch) return null;
+    return actionForPriorityDesktopTarget(active);
+  }
+  function parsePriorityBrowserFollowUp(text, systemState = {}) {
+    const raw = clean(text);
+    const lowered = lower(raw);
+    const active = activeBrowserPriority(systemState);
+    const browserOpen = !!systemState?.browserSession?.open || !!systemState?.cloudContext?.browser?.open || !!active;
+    if (!browserOpen || !active) return null;
+    if (/^(?:continue|go on|resume)(?:\s+(?:there|that|it|the page))?$/.test(lowered)) return { type: 'web_read', args: [] };
+    const targetOnly = /^(?:that|this|it|that one|this one|same one)$/i.test(raw);
+    const actionMatch = raw.match(/^(?:open|click|play|select|choose)\s+(?:that|this|it|that one|this one|same one)$/i);
+    if (!targetOnly && !actionMatch) return null;
+    const label = clean(active.label || active.value || active.path || 'that');
+    return { type: 'web_find_click', args: [label], meta: { resolvedLabel: label, resolvedSource: 'cloud-priority-view', priorityPurpose: active.purpose || 'browser' } };
+  }
   function parseBrowserFollowUp(text, systemState = {}) {
     const raw = clean(text);
     const browserOpen = !!systemState?.browserSession?.open || !!systemState?.cloudContext?.browser?.open;
@@ -398,9 +461,11 @@
     const plan = actionPlan || systemState?.brainPreflightPlan || window.hexBrainActionPlanner?.classify?.(text, systemState) || null;
     if (!text || isUnsafe(text)) return null;
     const browserControl = parseBrowserControl(text, systemState);
+    const priorityBrowserFollowUp = parsePriorityBrowserFollowUp(text, systemState);
+    const priorityDesktopFollowUp = parsePriorityDesktopFollowUp(text, systemState);
     const domain = String(plan?.domain || '').toLowerCase();
     const urgency = String(plan?.urgency || '').toLowerCase();
-    const isAction = !!browserControl || domain.includes('action') || domain.includes('follow-up') || urgency === 'high';
+    const isAction = !!browserControl || !!priorityBrowserFollowUp || !!priorityDesktopFollowUp || domain.includes('action') || domain.includes('follow-up') || urgency === 'high';
     if (!isAction) return null;
 
     const candidates = [
@@ -408,9 +473,11 @@
       parseSearchOnSite(text),
       parsePlayOnSite(text),
       browserControl,
+      priorityBrowserFollowUp,
       parseBrowserFollowUp(text, systemState),
       parseOpenSite(text),
       parseLocalUtilityAction(text),
+      priorityDesktopFollowUp,
       parseResolvedDesktopAction(text, systemState),
       parseDesktopAction(text)
     ].filter(Boolean).map((action) => withRecoveryMeta(action, plan));

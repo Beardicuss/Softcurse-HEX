@@ -8,6 +8,11 @@ window.buildHexSystemStateBlock = function buildHexSystemStateBlock(state, ctx) 
   const cloudActionStatusCounts = state.cloudContext?.retrieval?.actionStatusCounts || {};
   const cloudContextUse = state.cloudContext?.retrieval?.contextUse || {};
   const cloudContextUseLine = 'active ' + ((cloudContextUse.active || []).join('/') || 'none') + ' | background ' + ((cloudContextUse.background || []).join('/') || 'none') + ' | missing ' + ((cloudContextUse.missing || []).join('/') || 'none');
+  const cloudPriorityView = state.cloudContext?.desktopPriorityView || window.hexCloudContextRehydrator?.getPriorityView?.(state.cloudContext) || null;
+  const formatPriorityRefs = (items) => (items || [])
+    .slice(0, 5)
+    .map((item) => `${item.index || '?'}:${item.label || item.value || item} [${item.purpose || item.kind || 'ref'} ${item.contextFresh ? 'fresh' : 'background'}]`)
+    .filter(Boolean);
   const cloudRetrievalReasons = [
     ...((state.cloudContext?.retrieval?.reasons?.memories || []).slice(0, 3).map((item) => 'memory ' + (item.kind || 'item') + ': ' + item.reason)),
     ...((state.cloudContext?.retrieval?.reasons?.turns || []).slice(0, 2).map((item) => 'turn ' + (item.role || 'user') + ': ' + item.reason))
@@ -53,6 +58,8 @@ window.buildHexSystemStateBlock = function buildHexSystemStateBlock(state, ctx) 
     '  Cloud action outcomes: success ' + (cloudActionStatusCounts.success || 0) + ', failure ' + (cloudActionStatusCounts.failure || 0) + ', pending ' + (cloudActionStatusCounts.pending || 0),
     '  Cloud why: ' + (cloudRetrievalReasons.join(' | ') || 'none'),
     '  Cloud context use: ' + cloudContextUseLine,
+    '  Cloud priority active: ' + (formatPriorityRefs(cloudPriorityView?.active).join(' | ') || 'none'),
+    '  Cloud priority background: ' + (formatPriorityRefs(cloudPriorityView?.background).join(' | ') || 'none'),
     '  Cloud refs: ' + ((state.cloudContext?.references?.desktop || []).map((item) => item?.label || item?.value || item).join(' | ') || 'none'),
     '  Pending tasks: ' + ((state.cloudContext?.unresolvedTasks || []).map((item) => item.text).join(' | ') || 'none'),
     '  Action timeline: ' + ((state.cloudContext?.actionTimeline || []).map((item) => item.kind + ': ' + item.text).join(' | ') || 'none'),
@@ -80,6 +87,11 @@ window.buildHexContinuityBlock = function buildHexContinuityBlock(state, userMsg
   const cloudActionStatusCounts = state.cloudContext?.retrieval?.actionStatusCounts || {};
   const cloudContextUse = state.cloudContext?.retrieval?.contextUse || {};
   const cloudContextUseLine = 'active ' + ((cloudContextUse.active || []).join('/') || 'none') + ' | background ' + ((cloudContextUse.background || []).join('/') || 'none') + ' | missing ' + ((cloudContextUse.missing || []).join('/') || 'none');
+  const cloudPriorityView = state.cloudContext?.desktopPriorityView || window.hexCloudContextRehydrator?.getPriorityView?.(state.cloudContext) || null;
+  const formatPriorityRefs = (items) => (items || [])
+    .slice(0, 5)
+    .map((item) => `${item.index || '?'}:${item.label || item.value || item} [${item.purpose || item.kind || 'ref'} ${item.contextFresh ? 'fresh' : 'background'}]`)
+    .filter(Boolean);
   const cloudRetrievalReasons = [
     ...((state.cloudContext?.retrieval?.reasons?.memories || []).slice(0, 3).map((item) => 'memory ' + (item.kind || 'item') + ': ' + item.reason)),
     ...((state.cloudContext?.retrieval?.reasons?.turns || []).slice(0, 2).map((item) => 'turn ' + (item.role || 'user') + ': ' + item.reason))
@@ -112,6 +124,8 @@ window.buildHexContinuityBlock = function buildHexContinuityBlock(state, userMsg
     '  Cloud action outcomes : success ' + (cloudActionStatusCounts.success || 0) + ', failure ' + (cloudActionStatusCounts.failure || 0) + ', pending ' + (cloudActionStatusCounts.pending || 0),
     '  Cloud retrieval why  : ' + (cloudRetrievalReasons.join(' | ') || 'none'),
     '  Cloud context use    : ' + cloudContextUseLine,
+    '  Cloud priority active : ' + (formatPriorityRefs(cloudPriorityView?.active).join(' | ') || 'none'),
+    '  Cloud priority background: ' + (formatPriorityRefs(cloudPriorityView?.background).join(' | ') || 'none'),
     '  Cloud turn hits      : ' + ((state.cloudContext?.relevantTurns || []).map((item) => (String(item.role || 'user').toUpperCase() + ': ' + String(item.content || '').substring(0, 100))).join(' | ') || 'none'),
     '  Cloud desktop refs   : ' + ((state.cloudContext?.references?.desktop || []).map((item) => item?.label || item?.value || item).join(' | ') || 'none'),
     '  HEX commitments     : ' + ((state.cloudContext?.dialogue?.commitments || []).map((item) => item.text).join(' | ') || 'none'),

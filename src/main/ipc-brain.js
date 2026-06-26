@@ -195,6 +195,14 @@ module.exports = function registerBrainIPC({ ipcMain, app }) {
         usableNegative: 0,
         intents: {},
         languages: {},
+        priority: {
+          known: 0,
+          missing: 0,
+          freshBrowser: 0,
+          freshAction: 0,
+          backgroundOnly: 0,
+          staleOrMissing: 0
+        },
       };
       if (!stats.exists) return { success: true, stats };
       const file = fs.statSync(FINETUNE_PATH);
@@ -213,6 +221,14 @@ module.exports = function registerBrainIPC({ ipcMain, app }) {
             if (row.quality?.usableForSft) stats.usableSft++;
             if (row.quality?.usableForPreference) stats.usablePreference++;
             if (row.quality?.usableAsNegative) stats.usableNegative++;
+            const priority = row.quality?.context?.priority || null;
+            const hasPriority = priority?.known === true || row.context?.priorityReferences;
+            if (hasPriority) stats.priority.known++;
+            else stats.priority.missing++;
+            if (priority?.freshBrowserReference === true) stats.priority.freshBrowser++;
+            if (priority?.freshActionReference === true) stats.priority.freshAction++;
+            if (priority?.onlyBackgroundReferences === true) stats.priority.backgroundOnly++;
+            if (!hasPriority || priority?.onlyBackgroundReferences === true || row.quality?.context?.serverPacketStale === true) stats.priority.staleOrMissing++;
             if (row.trainingIntent) stats.intents[row.trainingIntent] = (stats.intents[row.trainingIntent] || 0) + 1;
             if (row.language) stats.languages[row.language] = (stats.languages[row.language] || 0) + 1;
             if (row.createdAt && (!stats.lastCreatedAt || row.createdAt > stats.lastCreatedAt)) stats.lastCreatedAt = row.createdAt;

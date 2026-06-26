@@ -15,6 +15,30 @@
     return new Date().toISOString();
   }
 
+  function compactPriorityItem(item = {}) {
+    return {
+      label: clean(item.label || item.value || item.title, 80),
+      kind: clean(item.kind || item.type, 30),
+      purpose: clean(item.purpose || item.surface || item.contextPurpose, 40),
+      score: Number.isFinite(Number(item.score)) ? Number(item.score) : null,
+      confidence: Number.isFinite(Number(item.confidence)) ? Number(item.confidence) : null,
+      freshnessReason: clean(item.freshnessReason || item.retrievalReason || item.reason, 80),
+      ageSeconds: Number.isFinite(Number(item.ageSeconds)) ? Number(item.ageSeconds) : null
+    };
+  }
+
+  function compactPriority(priority = {}) {
+    const active = Array.isArray(priority.active) ? priority.active.slice(0, 5).map(compactPriorityItem) : [];
+    const background = Array.isArray(priority.background) ? priority.background.slice(0, 5).map(compactPriorityItem) : [];
+    if (!active.length && !background.length && !priority.guidance) return null;
+    return {
+      activeCount: active.length,
+      backgroundCount: background.length,
+      topActive: active[0] || null,
+      topBackground: background[0] || null,
+      guidance: clean(priority.guidance, 180)
+    };
+  }
   function compactEvent(event = {}) {
     return {
       id: 'bt_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7),
@@ -31,6 +55,7 @@
       serverPacket: event.serverPacket === true,
       serverMemoryHits: Number(event.serverMemoryHits || 0),
       sources: Array.isArray(event.sources) ? event.sources.slice(0, 8).map((item) => clean(item, 40)) : [],
+      priority: compactPriority(event.priority || event.priorityView || event.server?.priorityView || null),
       details: event.details && typeof event.details === 'object' ? event.details : null
     };
   }

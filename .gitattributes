@@ -1,0 +1,22 @@
+# Keep source files stable across Windows/macOS/Linux.
+* text=auto eol=lf
+
+# Binary assets must never be line-ending normalized.
+*.ico binary
+*.icns binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.wav binary
+*.ogg binary
+*.mp3 binary
+*.mp4 binary
+*.gguf binary
+*.onnx binary
+*.asar binary
+*.exe binary
+*.dll binary
+*.blockmap binary
+*.zip binary

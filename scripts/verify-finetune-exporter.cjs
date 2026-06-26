@@ -44,7 +44,18 @@ const quality = {
     cloudContinuityPresent: true,
     cloudFreshnessKnown: true,
     serverPacketStale: false,
-    serverPacketFresh: true
+    serverPacketFresh: true,
+    priority: {
+      known: true,
+      source: 'brain-route',
+      activeCount: 1,
+      backgroundCount: 1,
+      topActiveKind: 'browser',
+      topActivePurpose: 'browser',
+      freshBrowserReference: true,
+      freshActionReference: false,
+      onlyBackgroundReferences: false
+    }
   }
 };
 const rows = [
@@ -53,7 +64,26 @@ const rows = [
     signal: 'good',
     trainingIntent: 'dialogue-style',
     language: 'en',
-    assistant: 'I am with you, Dante.'
+    assistant: 'I am with you, Dante.',
+    context: {
+      priorityReferences: {
+        schema: 'hex.feedback-priority-context.v1',
+        source: 'brain-route',
+        activeCount: 1,
+        backgroundCount: 1,
+        topActive: { label: 'Eminem - Lose Yourself', kind: 'browser', purpose: 'browser' },
+        active: [{ label: 'Eminem - Lose Yourself', kind: 'browser', purpose: 'browser' }],
+        background: [{ label: 'VS Code', kind: 'app', purpose: 'inventory' }]
+      }
+    },
+    quality
+  },
+  {
+    type: 'hex_evolution_feedback',
+    signal: 'wrong',
+    trainingIntent: 'action-routing-correction',
+    language: 'en',
+    assistant: 'I opened the wrong thing.'
   },
   {
     type: 'hex_training_chat',
@@ -61,7 +91,18 @@ const rows = [
     signal: 'good',
     trainingIntent: 'dialogue-style',
     language: 'en',
-    context: { route: { mode: 'dialogue' } },
+    context: {
+      route: { mode: 'dialogue' },
+      priorityReferences: {
+        schema: 'hex.feedback-priority-context.v1',
+        source: 'brain-route',
+        activeCount: 1,
+        backgroundCount: 1,
+        topActive: { label: 'Eminem - Lose Yourself', kind: 'browser', purpose: 'browser' },
+        active: [{ label: 'Eminem - Lose Yourself', kind: 'browser', purpose: 'browser' }],
+        background: [{ label: 'VS Code', kind: 'app', purpose: 'inventory' }]
+      }
+    },
     quality,
     messages: [
       { role: 'user', content: 'hello hex' },
@@ -84,7 +125,18 @@ const rows = [
     sourceFeedbackId: 'fb_2',
     trainingIntent: 'action-routing-correction',
     language: 'en',
-    context: { route: { actionSurface: 'browser' } },
+    context: {
+      route: { actionSurface: 'browser' },
+      priorityReferences: {
+        schema: 'hex.feedback-priority-context.v1',
+        source: 'brain-route',
+        activeCount: 1,
+        backgroundCount: 1,
+        topActive: { label: 'Eminem - Lose Yourself', kind: 'browser', purpose: 'browser' },
+        active: [{ label: 'Eminem - Lose Yourself', kind: 'browser', purpose: 'browser' }],
+        background: [{ label: 'VS Code', kind: 'app', purpose: 'inventory' }]
+      }
+    },
     quality,
     prompt: 'open third video',
     chosen: 'I will use the current browser results and open the third video.',
@@ -121,10 +173,16 @@ registerBrainIPC({
 });
 
 const result = handlers.get('finetune:export-clean')();
+const statsResult = handlers.get('finetune:stats')();
+assert.equal(statsResult.success, true);
+assert.equal(statsResult.stats.priority.known, 1);
+assert.equal(statsResult.stats.priority.missing, 1);
+assert.equal(statsResult.stats.priority.freshBrowser, 1);
+assert.equal(statsResult.stats.priority.staleOrMissing, 1);
 assert.equal(result.success, true);
 assert.equal(result.schema, 'hex.clean-dataset-manifest.v1');
 assert.equal(result.rawPath, finetunePath);
-assert.equal(result.counts.rawRows, 5);
+assert.equal(result.counts.rawRows, 6);
 assert.equal(result.counts.sft, 1);
 assert.equal(result.counts.preferences, 1);
 assert.equal(result.intents['dialogue-style'], 1);
@@ -140,11 +198,15 @@ assert.deepEqual(sftLines[0].messages[0], { role: 'user', content: 'hello hex' }
 assert.equal(sftLines[0].metadata.trainingIntent, 'dialogue-style');
 assert.equal(sftLines[0].metadata.quality.route.confidenceBand, 'high');
 assert.equal(sftLines[0].metadata.quality.action.expectedActionTypes[0], 'web_find_click');
+assert.equal(sftLines[0].metadata.quality.context.priority.freshBrowserReference, true);
+assert.equal(sftLines[0].metadata.context.priorityReferences.topActive.kind, 'browser');
 assert.equal(prefLines.length, 1);
 assert.equal(prefLines[0].prompt, 'open third video');
 assert.equal(prefLines[0].metadata.context.route.actionSurface, 'browser');
 assert.equal(prefLines[0].metadata.quality.usableForPreference, true);
 assert.equal(prefLines[0].metadata.quality.context.browserOpen, true);
+assert.equal(prefLines[0].metadata.quality.context.priority.topActiveKind, 'browser');
+assert.equal(prefLines[0].metadata.context.priorityReferences.topActive.label, 'Eminem - Lose Yourself');
 assert.equal(manifest.counts.preferences, 1);
 
 fs.rmSync(tmp, { recursive: true, force: true });

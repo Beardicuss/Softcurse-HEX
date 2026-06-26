@@ -95,6 +95,46 @@ require(path.join(__dirname, '..', 'src', 'js', 'brain-router.js'));
   assert.equal(directCloseBrowser.actions[0].type, 'web_close');
   assert.equal(directCloseBrowser.hints.providerRequired, false);
 
+
+  const priorityBrowserFollowUp = await window.hexBrainRouter.route({
+    userMsg: 'that one',
+    lang: 'en',
+    systemState: {
+      cloudContext: {
+        schema: 'hex.context-packet.v2',
+        desktopPriorityView: {
+          schema: 'hex.desktop-priority-view.v1',
+          active: [{ kind: 'browser', purpose: 'browser', label: 'Eminem - Lose Yourself', contextFresh: true }],
+          background: []
+        }
+      }
+    }
+  });
+
+  assert.equal(priorityBrowserFollowUp.mode, 'direct-browser-action');
+  assert.equal(priorityBrowserFollowUp.actions[0].type, 'web_find_click');
+  assert.deepEqual(priorityBrowserFollowUp.actions[0].args, ['Eminem - Lose Yourself']);
+  assert.equal(priorityBrowserFollowUp.hints.providerRequired, false);
+
+  const priorityDesktopFollowUp = await window.hexBrainRouter.route({
+    userMsg: 'open that one',
+    lang: 'en',
+    systemState: {
+      cloudContext: {
+        schema: 'hex.context-packet.v2',
+        desktopPriorityView: {
+          schema: 'hex.desktop-priority-view.v1',
+          active: [{ kind: 'file', purpose: 'inventory', label: 'notes.txt', path: 'C:/Users/DanTe/notes.txt', contextFresh: true }],
+          background: []
+        }
+      }
+    }
+  });
+
+  assert.equal(priorityDesktopFollowUp.mode, 'direct-local-action');
+  assert.equal(priorityDesktopFollowUp.actions[0].type, 'open_file');
+  assert.deepEqual(priorityDesktopFollowUp.actions[0].args, ['C:/Users/DanTe/notes.txt']);
+  assert.equal(priorityDesktopFollowUp.hints.providerRequired, false);
   const directSettings = await window.hexBrainRouter.route({
     userMsg: 'open settings',
     lang: 'en',

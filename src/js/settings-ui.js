@@ -76,6 +76,24 @@ function refreshBrainTelemetryTab() {
     details.style.fontSize = '12px';
     card.appendChild(details);
 
+    if (event.priority) {
+      const priorityBits = [
+        'priority active=' + (event.priority.activeCount || 0),
+        'background=' + (event.priority.backgroundCount || 0)
+      ];
+      if (event.priority.topActive?.label) {
+        priorityBits.push('top=' + event.priority.topActive.label + ' [' + (event.priority.topActive.kind || 'ref') + ']');
+      } else if (event.priority.topBackground?.label) {
+        priorityBits.push('bg=' + event.priority.topBackground.label + ' [' + (event.priority.topBackground.kind || 'ref') + ']');
+      }
+      const priority = window.hexRenderUtils.createEl('div', { text: priorityBits.join('  |  ') });
+      priority.style.color = event.priority.activeCount ? 'var(--cyan)' : 'var(--orange)';
+      priority.style.fontFamily = 'var(--font-m)';
+      priority.style.fontSize = '12px';
+      priority.style.wordBreak = 'break-word';
+      card.appendChild(priority);
+    }
+
     if (event.sources?.length) {
       const sources = window.hexRenderUtils.createEl('div', { text: 'sources: ' + event.sources.join(', ') });
       sources.style.color = 'var(--accent)';
@@ -88,13 +106,158 @@ function refreshBrainTelemetryTab() {
 }
 window.refreshBrainTelemetryTab = refreshBrainTelemetryTab;
 
+function formatPriorityAge(seconds) {
+  const value = Number(seconds);
+  if (!Number.isFinite(value)) return 'age n/a';
+  if (value < 60) return Math.round(value) + 's old';
+  if (value < 3600) return Math.round(value / 60) + 'm old';
+  return Math.round(value / 3600) + 'h old';
+}
+
+function renderPriorityBucket(list, title, items, tone) {
+  const shell = window.hexRenderUtils.createEl('div');
+  shell.style.border = '1px solid ' + (tone === 'active' ? 'rgba(0,255,220,0.28)' : 'rgba(255,180,70,0.24)');
+  shell.style.background = tone === 'active' ? 'rgba(0,255,220,0.045)' : 'rgba(255,180,70,0.035)';
+  shell.style.padding = '10px';
+  shell.style.display = 'grid';
+  shell.style.gap = '8px';
+
+  const head = window.hexRenderUtils.createEl('div', { text: title + ' (' + items.length + ')' });
+  head.style.color = tone === 'active' ? 'var(--cyan)' : 'var(--orange)';
+  head.style.fontFamily = 'var(--font-d)';
+  head.style.letterSpacing = '0.09em';
+  shell.appendChild(head);
+
+  if (!items.length) {
+    const empty = window.hexRenderUtils.createEl('div', { text: tone === 'active' ? 'No fresh active references.' : 'No background references.' });
+    empty.style.color = 'var(--muted)';
+    empty.style.fontSize = '12px';
+    shell.appendChild(empty);
+    list.appendChild(shell);
+    return;
+  }
+
+  items.slice(0, 8).forEach((item) => {
+    const card = window.hexRenderUtils.createEl('div');
+    card.style.border = '1px solid rgba(120,255,245,0.14)';
+    card.style.background = 'rgba(0,0,0,0.20)';
+    card.style.padding = '8px';
+    card.style.display = 'grid';
+    card.style.gap = '4px';
+
+    const label = window.hexRenderUtils.createEl('strong', { text: (item.index || '?') + '. ' + (item.label || item.value || 'unknown') });
+    label.style.color = 'var(--text)';
+    label.style.fontFamily = 'var(--font-d)';
+    label.style.wordBreak = 'break-word';
+    card.appendChild(label);
+
+    const meta = [
+      'kind=' + (item.kind || 'ref'),
+      'purpose=' + (item.purpose || 'unknown'),
+      'score=' + (item.score ?? 'n/a'),
+      formatPriorityAge(item.contextAgeSeconds)
+    ].join('  |  ');
+    const metaEl = window.hexRenderUtils.createEl('div', { text: meta });
+    metaEl.style.color = 'var(--muted)';
+    metaEl.style.fontFamily = 'var(--font-m)';
+    metaEl.style.fontSize = '11px';
+    metaEl.style.wordBreak = 'break-word';
+    card.appendChild(metaEl);
+
+    const reason = window.hexRenderUtils.createEl('div', { text: 'freshness: ' + (item.contextFreshnessReason || 'unknown') + (item.retrievalReason ? ' · ' + item.retrievalReason : '') });
+    reason.style.color = tone === 'active' ? 'var(--cyan)' : 'var(--orange)';
+    reason.style.fontSize = '11px';
+    reason.style.wordBreak = 'break-word';
+    card.appendChild(reason);
+    shell.appendChild(card);
+  });
+
+  list.appendChild(shell);
+}
+
+function refreshBrainPriorityReferences() {
+  const summary = document.getElementById('brain-priority-summary');
+  const list = document.getElementById('brain-priority-list');
+  if (!summary || !list) return;
+  clearNode(list);
+  const packet = window.hexCloudSync?._contextPacketCache?.packet || null;
+  const view = packet?.desktopPriorityView || window.hexCloudContextRehydrator?.getPriorityView?.(packet) || window.hexCloudContextRehydrator?.getPriorityView?.() || null;
+  if (!view) {
+    summary.style.color = 'var(--orange)';
+    summary.textContent = 'No context packet cached yet. Send a message or refresh cloud continuity first.';
+    return;
+  }
+  const active = Array.isArray(view.active) ? view.active : [];
+  const background = Array.isArray(view.background) ? view.background : [];
+  summary.style.color = active.length ? 'var(--cyan)' : 'var(--orange)';
+  summary.textContent = 'Active refs: ' + active.length + ' · Background refs: ' + background.length + ' · ' + (view.guidance || 'Priority view ready.');
+  renderPriorityBucket(list, 'ACTIVE FOLLOW-UP TARGETS', active, 'active');
+  renderPriorityBucket(list, 'BACKGROUND MEMORY', background, 'background');
+}
+window.refreshBrainPriorityReferences = refreshBrainPriorityReferences;
+function buildBrainDatasetGuidance(stats = {}) {
+  const priority = stats.priority || {};
+  const good = Number(stats.good || 0);
+  const fix = Number(stats.fix || 0);
+  const preferencePairs = Number(stats.preferencePairs || 0);
+  const evolutionRecords = Number(stats.evolutionRecords || 0);
+  const actionCorrections = Number(stats.intents?.['action-routing-correction'] || 0);
+  const freshBrowser = Number(priority.freshBrowser || 0);
+  const staleOrMissing = Number(priority.staleOrMissing || 0);
+  const knownPriority = Number(priority.known || 0);
+  const missingPriority = Number(priority.missing || 0);
+
+  if (!stats.exists || evolutionRecords === 0) {
+    return {
+      level: 'empty',
+      text: 'Next target: collect your first GOOD / WRONG / FIX signals from normal chat and browser follow-ups.'
+    };
+  }
+  if (knownPriority > 0 && staleOrMissing > knownPriority) {
+    return {
+      level: 'warn',
+      text: 'Next target: priority context is missing or stale too often. Use FIX on follow-up mistakes right after browser/file actions so HEX captures the active target.'
+    };
+  }
+  if (missingPriority > Math.max(3, Math.floor(evolutionRecords * 0.4))) {
+    return {
+      level: 'warn',
+      text: 'Next target: collect feedback from routed turns, not only greetings. Ask browser/file follow-ups, then mark GOOD/FIX so priority context is included.'
+    };
+  }
+  if (freshBrowser < 5 || actionCorrections < 5) {
+    return {
+      level: 'focus',
+      text: 'Next target: collect more browser follow-up corrections. Try YouTube/search flows, then use FIX when "open third video" or "that one" routes wrong.'
+    };
+  }
+  if (good < 20) {
+    return {
+      level: 'focus',
+      text: 'Next target: collect more GOOD examples for voice/style. Mark replies you actually like so local training learns HEX tone.'
+    };
+  }
+  if (fix < 10 || preferencePairs < 10) {
+    return {
+      level: 'focus',
+      text: 'Next target: collect more FIX corrections. These create chosen-vs-rejected pairs, the most useful records for future preference training.'
+    };
+  }
+  return {
+    level: 'ready',
+    text: 'Training readiness looks healthy: style, corrections, preferences, and priority context are all represented. Export clean datasets when you want to prepare local training.'
+  };
+}
+window.buildBrainDatasetGuidance = buildBrainDatasetGuidance;
 async function refreshBrainDatasetInspector() {
   const summary = document.getElementById('brain-dataset-summary');
+  const guidanceEl = document.getElementById('brain-dataset-guidance');
   const grid = document.getElementById('brain-dataset-grid');
   const pathEl = document.getElementById('brain-dataset-path');
   if (!summary || !grid || !pathEl) return;
   clearNode(grid);
   summary.textContent = 'Scanning local evolution dataset...';
+  if (guidanceEl) guidanceEl.textContent = '';
   pathEl.textContent = '';
 
   const result = await window.hexAPI?.getFinetuneStats?.();
@@ -117,13 +280,23 @@ async function refreshBrainDatasetInspector() {
     ? readiness + ' · ' + (stats.evolutionRecords || 0) + ' feedback records · ' + (stats.lines || 0) + ' JSONL lines'
     : 'No local evolution dataset yet. Use GOOD / WRONG / FIX on HEX replies to start collecting.';
 
+  const guidance = buildBrainDatasetGuidance(stats);
+  if (guidanceEl) {
+    guidanceEl.textContent = guidance.text;
+    guidanceEl.style.color = guidance.level === 'ready' ? 'var(--cyan)' : (guidance.level === 'warn' ? 'var(--orange)' : 'var(--accent)');
+  }
+
+  const priority = stats.priority || {};
   const cells = [
     ['GOOD', stats.good || 0, 'positive style/answer samples'],
     ['FIX', stats.fix || 0, 'corrected answers'],
     ['WRONG', stats.wrong || 0, 'negative signals'],
     ['CHAT', stats.chatSamples || 0, 'chat training samples'],
     ['PREF', stats.preferencePairs || 0, 'chosen vs rejected pairs'],
-    ['SIZE', Math.round(Number(stats.bytes || 0) / 1024) + ' KB', 'local JSONL size']
+    ['SIZE', Math.round(Number(stats.bytes || 0) / 1024) + ' KB', 'local JSONL size'],
+    ['CTX OK', priority.known || 0, 'feedback rows with priority context'],
+    ['BROWSER', priority.freshBrowser || 0, 'fresh browser/session refs captured'],
+    ['STALE/MISS', priority.staleOrMissing || 0, 'missing, stale, or background-only context']
   ];
 
   cells.forEach(([label, value, hint]) => {
@@ -787,6 +960,7 @@ async function openSettings(targetTab = 'tab-general') {
   updatePersonaBadge();
   refreshPersonaList();
   refreshBrainTelemetryTab();
+  refreshBrainPriorityReferences();
   await refreshBrainDatasetInspector();
   await loadLiveArsenal();
   await autoSyncProvider();
@@ -1586,6 +1760,7 @@ async function autoSyncProvider() {
 
 window.addEventListener('click', (event) => {
   if (event.target.closest('#brain-telemetry-refresh')) { refreshBrainTelemetryTab(); return; }
+  if (event.target.closest('#brain-priority-refresh')) { refreshBrainPriorityReferences(); return; }
   if (event.target.closest('#brain-dataset-refresh')) { refreshBrainDatasetInspector(); return; }
   if (event.target.closest('#brain-dataset-export')) { exportBrainDataset(); return; }
   const providerRow = event.target.closest('[data-live-provider]');

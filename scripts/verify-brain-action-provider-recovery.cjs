@@ -97,6 +97,38 @@ assert.equal(browserFollowUp.actions[0].type, 'web_find_click');
 assert.equal(browserFollowUp.actions[0].meta.surface, 'browser');
 assert.deepEqual([...browserFollowUp.actions[0].args], ['third video']);
 
+
+const priorityThatOne = sandbox.window.hexBrainActionRecovery.actionsForObviousBrowserCommand({
+  userMsg: 'that one',
+  lang: 'en',
+  systemState: {
+    cloudContext: {
+      desktopPriorityView: {
+        schema: 'hex.desktop-priority-view.v1',
+        active: [{ kind: 'browser', purpose: 'browser', label: 'Eminem - Lose Yourself', contextFresh: true }],
+        background: []
+      }
+    }
+  }
+});
+assert.equal(priorityThatOne.actions[0].type, 'web_find_click');
+assert.deepEqual([...priorityThatOne.actions[0].args], ['Eminem - Lose Yourself']);
+assert.equal(priorityThatOne.actions[0].meta.resolvedSource, 'cloud-priority-view');
+
+const priorityContinue = sandbox.window.hexBrainActionRecovery.actionsForObviousBrowserCommand({
+  userMsg: 'continue',
+  lang: 'en',
+  systemState: {
+    cloudContext: {
+      desktopPriorityView: {
+        schema: 'hex.desktop-priority-view.v1',
+        active: [{ kind: 'browser', purpose: 'browser', label: 'Eminem - Lose Yourself', contextFresh: true }],
+        background: []
+      }
+    }
+  }
+});
+assert.equal(priorityContinue.actions[0].type, 'web_read');
 const folderOpen = sandbox.window.hexBrainActionRecovery.actionsForProviderFailure({
   userMsg: 'open downloads folder',
   lang: 'en',
@@ -105,6 +137,39 @@ const folderOpen = sandbox.window.hexBrainActionRecovery.actionsForProviderFailu
 assert.equal(folderOpen.actions[0].type, 'open_folder');
 assert.deepEqual([...folderOpen.actions[0].args], ['downloads']);
 
+
+const priorityDesktopApp = sandbox.window.hexBrainActionRecovery.actionsForObviousLocalCommand({
+  userMsg: 'open that one',
+  lang: 'en',
+  systemState: {
+    cloudContext: {
+      desktopPriorityView: {
+        schema: 'hex.desktop-priority-view.v1',
+        active: [{ kind: 'app', purpose: 'inventory', label: 'Visual Studio Code', contextFresh: true }],
+        background: []
+      }
+    }
+  }
+});
+assert.equal(priorityDesktopApp.actions[0].type, 'open_app');
+assert.deepEqual([...priorityDesktopApp.actions[0].args], ['Visual Studio Code']);
+assert.equal(priorityDesktopApp.actions[0].meta.resolvedSource, 'cloud-priority-view');
+
+const priorityDesktopFile = sandbox.window.hexBrainActionRecovery.actionsForObviousLocalCommand({
+  userMsg: 'open same file',
+  lang: 'en',
+  systemState: {
+    cloudContext: {
+      desktopPriorityView: {
+        schema: 'hex.desktop-priority-view.v1',
+        active: [{ kind: 'file', purpose: 'inventory', label: 'notes.txt', path: 'C:/Users/DanTe/notes.txt', contextFresh: true }],
+        background: []
+      }
+    }
+  }
+});
+assert.equal(priorityDesktopFile.actions[0].type, 'open_file');
+assert.deepEqual([...priorityDesktopFile.actions[0].args], ['C:/Users/DanTe/notes.txt']);
 const unsafe = sandbox.window.hexBrainActionRecovery.actionsForProviderFailure({
   userMsg: 'delete downloads folder',
   lang: 'en',

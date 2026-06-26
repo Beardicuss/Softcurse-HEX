@@ -228,6 +228,7 @@
     const actionPlan = extra.actionPlan || systemState?.brainPreflightPlan || window.hexBrainActionPlanner?.classify?.(extra.userMsg || '', systemState) || null;
     const cloudMemories = extractCloudMemories(packet);
     const memoryCount = cloudMemories.length;
+    const priorityView = packet ? (packet.desktopPriorityView || window.hexCloudContextRehydrator?.getPriorityView?.(packet) || null) : null;
     const confidence = extra.confidence || inferConfidence(route, packet, memoryCount);
     const sources = [];
     if (packet) sources.push('hex-server-context');
@@ -262,7 +263,13 @@
         browserTitle: packet.browser?.title || null,
         continuityState: packet.continuityState || null,
         memoryPreview: cloudMemories.slice(0, 3),
-        desktop: summarizeDesktopPacket(packet)
+        desktop: summarizeDesktopPacket(packet),
+        priorityView: priorityView ? {
+          schema: priorityView.schema || null,
+          active: (priorityView.active || []).slice(0, 5),
+          background: (priorityView.background || []).slice(0, 5),
+          guidance: priorityView.guidance || null
+        } : null
       } : null,
       local: {
         memoryReady: !!window.hexMemory,

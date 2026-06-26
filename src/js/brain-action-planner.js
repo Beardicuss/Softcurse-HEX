@@ -15,7 +15,9 @@
   function classify(userMsg, systemState = {}) {
     const raw = clean(userMsg);
     const t = lower(raw);
-    const browserOpen = !!systemState?.browserSession?.open || !!systemState?.cloudContext?.browser?.open;
+    const priorityView = systemState?.cloudContext?.desktopPriorityView || window.hexCloudContextRehydrator?.getPriorityView?.(systemState?.cloudContext) || null;
+    const hasFreshBrowserPriority = (priorityView?.active || []).some((item) => String(item?.purpose || item?.kind || '').toLowerCase() === 'browser');
+    const browserOpen = !!systemState?.browserSession?.open || !!systemState?.cloudContext?.browser?.open || hasFreshBrowserPriority;
     const hasResolvedRef = !!(systemState?.sessionContext?.resolvedReference || systemState?.sessionContext?.lastResolvedReference);
     const hasDesktopContext = !!systemState?.desktopContext || !!systemState?.cloudContext?.desktopContext;
     const reasons = [];
@@ -36,7 +38,7 @@
       domain = 'memory-read';
       suggestedSurface = 'memory';
       reasons.push('memory-question');
-    } else if (browserOpen && has(/\b(open|click|play|select|read|go back|back|forward|refresh|third|second|first|video|result|link|button|page)\b/i, t)) {
+    } else if (browserOpen && has(/\b(open|click|play|select|choose|read|go back|back|forward|refresh|third|second|first|video|result|link|button|page|that one|this one|same one|that|this|it)\b/i, t)) {
       domain = 'browser-action';
       suggestedSurface = 'browser';
       urgency = 'high';

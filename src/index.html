@@ -656,13 +656,23 @@
         <div id="brain-telemetry-list" style="display:grid;gap:8px;max-height:320px;overflow-y:auto;border:1px solid var(--accent);background:var(--surface2);padding:8px;"></div>
 
         <div style="display:flex;justify-content:space-between;align-items:center;margin:20px 0 12px;gap:10px;">
+          <div class="settings-section-label" style="margin:0;">◆ PRIORITY REFERENCE FRESHNESS</div>
+          <button type="button" id="brain-priority-refresh" class="btn btn-secondary" style="font-size:13px;padding:4px 10px;">↻ REFRESH</button>
+        </div>
+        <div class="form-hint" style="margin-bottom:10px;line-height:1.5;">
+          Shows which server/browser/desktop references HEX treats as active follow-up targets versus background memory.
+        </div>
+        <div id="brain-priority-summary" class="form-hint" style="margin-bottom:8px;color:var(--cyan);">No priority packet inspected yet.</div>
+        <div id="brain-priority-list" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;max-height:300px;overflow-y:auto;border:1px solid var(--accent);background:var(--surface2);padding:8px;"></div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:20px 0 12px;gap:10px;">
           <div class="settings-section-label" style="margin:0;">◆ LOCAL EVOLUTION DATASET</div>
           <div style="display:flex;gap:8px;align-items:center;"><button type="button" id="brain-dataset-refresh" class="btn btn-secondary" style="font-size:13px;padding:4px 10px;">↻ SCAN</button><button type="button" id="brain-dataset-export" class="btn btn-secondary" style="font-size:13px;padding:4px 10px;">EXPORT CLEAN</button></div>
         </div>
         <div class="form-hint" style="margin-bottom:10px;line-height:1.5;">
           Shows the local JSONL records created by GOOD / WRONG / FIX. This does not train a model yet; it tells us whether HEX has enough clean feedback to evolve later.
         </div>
-        <div id="brain-dataset-summary" class="form-hint" style="margin-bottom:8px;color:var(--cyan);">Dataset not scanned yet.</div>
+        <div id="brain-dataset-summary" class="form-hint" style="margin-bottom:8px;color:var(--cyan);">Dataset not scanned yet.</div><div id="brain-dataset-guidance" class="form-hint" style="margin-bottom:10px;color:var(--accent);line-height:1.45;">Next target will appear after scan.</div>
         <div id="brain-dataset-grid" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:8px;"></div>
         <div id="brain-dataset-path" class="form-hint" style="font-family:var(--font-m);word-break:break-all;color:var(--muted);"></div><div id="brain-dataset-export-status" class="form-hint" style="font-family:var(--font-m);word-break:break-all;color:var(--cyan);margin-top:6px;"></div>
       </div>
@@ -1201,7 +1211,7 @@
   <script src="js/render-utils.js"></script>
   <script src="js/system.js"></script>
   <script src="js/performance-policy.js"></script>
-  <script src="js/voice.js?v=voice-command-20260625f"></script>
+  <script src="js/voice.js?v=voice-presence-20260625a"></script>
   <script src="js/context-state.js"></script>
   <script src="js/candidate-store.js"></script>
   <script src="js/candidate-publishers.js"></script>
@@ -1243,7 +1253,7 @@
   <script src="js/memory.js"></script>
   <script src="js/hex-learn.js"></script>
   <script src="js/memory-ui.js"></script>
-  <script src="js/commands.js?v=voice-command-20260625f"></script>
+  <script src="js/commands.js?v=voice-presence-20260625a"></script>
   <script src="js/personality-ui.js"></script>
   <script src="js/settings-ui.js"></script>
   <script src="js/v2-ui.js"></script>
@@ -1265,7 +1275,7 @@
   <script src="js/actions-device.js"></script>
   <script src="js/actions-ops.js"></script>
   <script src="js/actions-services.js"></script>
-  <script src="js/actions-assistant.js?v=voice-command-20260625f"></script>
+  <script src="js/actions-assistant.js?v=voice-presence-20260625a"></script>
   <script src="js/actions-smart.js"></script>
   <script src="js/actions-butler.js"></script>
   <script src="js/actions.js"></script>
@@ -1273,8 +1283,8 @@
   <script src="js/sleep.js"></script>
   <script src="js/onboarding.js"></script>
   <script src="js/cloud-sync.js"></script>
-  <script src="js/renderer-send.js?v=voice-command-20260625f"></script>
-  <script src="js/renderer.js?v=voice-command-20260625f"></script>
+  <script src="js/renderer-send.js?v=voice-presence-20260625a"></script>
+  <script src="js/renderer.js?v=voice-presence-20260625a"></script>
   <script src="js/event-wiring.js"></script>
   <!-- ── Window Drag Hooks ──────────── -->
   <script>

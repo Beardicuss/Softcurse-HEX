@@ -88,6 +88,11 @@ assert.ok(browserIngest, 'browser references should be ingested into PC entity m
 assert.equal(browserIngest.items[0].meta.retrievalReason, 'matched: video');
 assert.equal(browserIngest.items[0].meta.contextFresh, true);
 
+const priorityView = window.hexCloudContextRehydrator.getPriorityView();
+assert.equal(priorityView.schema, 'hex.desktop-priority-view.v1');
+assert.ok(priorityView.active.some((item) => item.kind === 'browser' && item.contextFresh), 'fresh browser references should be active');
+assert.ok(priorityView.active[0].score >= priorityView.active.at(-1).score, 'active priority references should be score-ranked');
+
 
 merged.length = 0;
 ingested.length = 0;
@@ -113,6 +118,9 @@ assert.ok(staleApp, 'stale app category should still be available as background 
 assert.equal(staleApp.items[0].meta.contextStale, true);
 const staleAppIngest = ingested.find((entry) => entry.kind === 'app' && entry.items.some((item) => item.label === 'Chrome'));
 assert.ok(staleAppIngest.weight < 1.3, 'stale inventory should ingest with reduced weight');
+const stalePriorityView = window.hexCloudContextRehydrator.getPriorityView();
+assert.equal(stalePriorityView.active.length, 0, 'stale packet references must not stay active');
+assert.ok(stalePriorityView.background.some((item) => item.label === 'Metallica video'), 'stale browser reference should remain as background memory');
 console.log('Cloud context rehydrator contract OK:', {
   merged: merged.length,
   ingested: ingested.length,

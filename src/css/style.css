@@ -4575,3 +4575,19 @@ body,
 #voice-agi-surface .voice-agi-exit {
   pointer-events: auto !important;
 }
+
+/* VOICE AGI AWAKE STATE ---------------------------------------------------- */
+html.voice-agi-awake #voice-agi-canvas,
+body.voice-agi-awake #voice-agi-canvas,
+#app.voice-agi-awake #voice-agi-canvas,
+#voice-agi-surface.voice-agi-awake #voice-agi-canvas {
+  filter: drop-shadow(0 0 38px color-mix(in srgb, var(--agi-primary) 36%, transparent)) saturate(1.12);
+}
+
+html.voice-agi-awake .voice-agi-state,
+body.voice-agi-awake .voice-agi-state,
+#app.voice-agi-awake .voice-agi-state,
+#voice-agi-surface.voice-agi-awake .voice-agi-state {
+  color: color-mix(in srgb, var(--agi-primary) 82%, #ffffff);
+  text-shadow: 0 0 18px color-mix(in srgb, var(--agi-primary) 56%, transparent);
+}
