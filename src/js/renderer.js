@@ -294,7 +294,7 @@ window.dispatchVoiceCommand = dispatchVoiceCommand;
     if (voiceCommandListenTimer) clearTimeout(voiceCommandListenTimer);
     voiceCommandListenTimer = setTimeout(() => {
       voiceCommandListenTimer = null;
-      if (window.hexVoice?.isListening) updateMicUI(true, 'standby');
+      if (window.hexVoice?.isListening) updateMicUI(true, window.hexVoice?._isAwakeHeld?.() ? 'awake' : 'standby');
     }, 6500);
   };
   window.hexVoice.onWakeTimeout = () => {
@@ -306,12 +306,15 @@ window.dispatchVoiceCommand = dispatchVoiceCommand;
     if (window.hexVoice?.isListening) updateMicUI(true, window.hexVoice?._isAwakeHeld?.() ? 'awake' : 'standby');
   };
   window.hexVoice.onAwakeStart = (_reason, ms) => {
-    if (voiceCommandListenTimer) clearTimeout(voiceCommandListenTimer);
-    voiceCommandListenTimer = setTimeout(() => {
-      voiceCommandListenTimer = null;
-      if (window.hexVoice?.isListening) updateMicUI(true, 'standby');
-    }, Number(ms) || 60000);
-    if (window.hexVoice?.isListening) updateMicUI(true, 'awake');
+    const statusEl = document.getElementById('mic-status');
+    const isCommandWindowVisible = statusEl?.classList.contains('active');
+    if (!voiceCommandListenTimer) {
+      voiceCommandListenTimer = setTimeout(() => {
+        voiceCommandListenTimer = null;
+        if (window.hexVoice?.isListening) updateMicUI(true, 'standby');
+      }, Number(ms) || 60000);
+    }
+    if (window.hexVoice?.isListening && !isCommandWindowVisible) updateMicUI(true, 'awake');
   };
   window.hexVoice.onAwakeEnd = () => {
     if (voiceCommandListenTimer) {

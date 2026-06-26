@@ -133,7 +133,8 @@ async function tryDirectCommand(text) {
   const tryMixedReference = async () => {
     if (!window.hexReferenceResolver?.resolveMixedReference) return null;
     if (!window.hexReferenceResolver?.isDesktopReferenceCommand?.(raw)) return null;
-    const browserOpen = !!window.hexContextState?.getBrowserSessionState?.()?.open;
+    const browserState = window.hexContextState?.getBrowserSessionState?.() || {};
+    const browserOpen = !!browserState.open;
     const resolved = window.hexReferenceResolver.resolveMixedReference(raw, browserOpen);
     if (!resolved) return null;
     if (resolved.surface === 'browser' || resolved.source === 'browser') {
@@ -176,7 +177,8 @@ async function tryDirectCommand(text) {
               : /\bfolder\b/.test(target) ? 'folder'
                 : /\bfile\b/.test(target) ? 'file'
                   : null;
-      const browserOpen = !!window.hexContextState?.getBrowserSessionState?.()?.open;
+      const browserState = window.hexContextState?.getBrowserSessionState?.() || {};
+      const browserOpen = !!browserState.open;
       const resolved = window.hexReferenceResolver?.resolveMixedReference?.(target, browserOpen)
         || window.hexReferenceResolver?.resolveDesktopReference?.(target, preferredKind);
       const handled = resolved?.surface === 'browser' || resolved?.source === 'browser'

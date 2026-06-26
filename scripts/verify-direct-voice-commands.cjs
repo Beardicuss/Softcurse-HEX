@@ -62,6 +62,12 @@ const run = async () => {
   assert.equal(state.actions.at(-1).type, 'open_url');
   assert.equal(state.actions.at(-1).args[0], 'https://youtube.com');
 
+  context.window.hexContextState.getBrowserSessionState = () => null;
+  context.window.hexReferenceResolver.isDesktopReferenceCommand = () => true;
+  context.window.hexReferenceResolver.resolveMixedReference = () => null;
+  context.window.hexReferenceResolver.resolveDesktopReference = () => null;
+  result = await context.tryDirectCommand('open third file');
+  assert.equal(typeof result.handled, 'boolean', 'null browser session should not crash reference routing');
   result = await context.tryDirectCommand('Turn of voice mode.');
   assert.equal(result.handled, true, 'common STT turn-off typo should be handled');
   assert.equal(state.voiceClosed, 1, 'voice surface should close');
