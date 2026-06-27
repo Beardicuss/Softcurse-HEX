@@ -97,6 +97,32 @@ window.hexMemoryExtraction = {
     if (hour >= 6 && hour <= 9) memory.addNode('habit', 'Often active in the morning', 0.4, { implicit: true });
   },
 
+  extractActionCorrectionFact(text = '') {
+    const raw = String(text || '').trim();
+    const pathMatch = raw.match(/["'“”]?([A-Za-z]:\\[^"'“”\n\r]+?\.(?:xspf|m3u8?|pls|wpl|mp3|mp4|mkv|avi|mov|wav|flac|ogg|pdf|docx?|xlsx?|pptx?|txt|md|png|jpe?g|webp|gif))["'“”]?/i);
+    if (!pathMatch) return null;
+    const correctedPath = pathMatch[1].trim().replace(/[.,;!?]+$/g, '');
+    const extension = (correctedPath.match(/\.([^.\\/]+)$/) || [])[1]?.toLowerCase() || '';
+    const basename = correctedPath.split(/[\\/]/).pop().replace(/\.[^.]+$/i, '').trim();
+    const beforePath = raw.slice(0, pathMatch.index || 0);
+    const aliasMatch = beforePath.match(/(?:i\s+said|meant|mean|should\s+(?:open|play)|open|play)\s+(?:the\s+)?(?:playlist\s+)?["'“”]?([\w ._-]{2,80})["'“”]?\s*(?:-|—|:|,|$)/i)
+      || beforePath.match(/(?:playlist|file)\s+["'“”]?([\w ._-]{2,80})["'“”]?\s*(?:-|—|:|,|$)/i);
+    const alias = (aliasMatch?.[1] || basename)
+      .trim()
+      .replace(/^(?:the\s+)?(?:open|play|launch|start|playlist|file)\s+/i, '')
+      .replace(/[\s\-—:,.]+$/g, '')
+      .replace(/["'“”]+/g, '')
+      .trim();
+    if (!alias || !correctedPath) return null;
+    const kind = /^(xspf|m3u8?|pls|wpl)$/i.test(extension) ? 'playlist_alias' : 'file_alias';
+    return {
+      kind,
+      alias,
+      path: correctedPath,
+      fact: `${kind}:${alias.toLowerCase()}=${correctedPath}`
+    };
+  },
+
   recordActionOutcome(memory, actionTag, success, detail = '') {
     const type = 'action_outcome';
     if (success) {
@@ -120,6 +146,11 @@ window.hexMemoryExtraction = {
       memory._log('Archived wrong node after correction: ' + badNode.content.substring(0, 60));
     }
     memory.addNode('preference', correction.substring(0, 200), 0.9);
+    const actionFact = this.extractActionCorrectionFact(correction);
+    if (actionFact) {
+      memory.addNode(actionFact.kind, actionFact.fact, 0.97, { alias: actionFact.alias, path: actionFact.path, source: 'user_correction' });
+      memory._log('Learned action correction: ' + actionFact.fact.substring(0, 90));
+    }
     memory._log('Learned from correction: ' + correction.substring(0, 60));
   },
 

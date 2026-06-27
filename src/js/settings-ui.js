@@ -94,6 +94,64 @@ function refreshBrainTelemetryTab() {
       card.appendChild(priority);
     }
 
+    if (event.packetHealth) {
+      const healthBits = [
+        'packet=' + String(event.packetHealth.level || 'unknown').toUpperCase(),
+        'ready=' + (event.packetHealth.ready ? 'yes' : 'no')
+      ];
+      if (event.packetHealth.issues?.length) {
+        healthBits.push('issues=' + event.packetHealth.issues.join(','));
+      }
+      if (event.packetHealth.references) {
+        healthBits.push('refs=' + (event.packetHealth.references.active || 0) + '/' + (event.packetHealth.references.background || 0));
+      }
+      const health = window.hexRenderUtils.createEl('div', { text: healthBits.join('  |  ') });
+      health.style.color = event.packetHealth.ready ? 'var(--cyan)' : 'var(--orange)';
+      health.style.fontFamily = 'var(--font-m)';
+      health.style.fontSize = '12px';
+      health.style.wordBreak = 'break-word';
+      card.appendChild(health);
+      if (event.packetHealth.routingGuidance) {
+        const guidance = event.packetHealth.routingGuidance;
+        const guidanceBits = [
+          'routing=' + (guidance.recoveryPolicy || 'unknown'),
+          'browser=' + (guidance.browserFollowUpPolicy || 'unknown')
+        ];
+        if (guidance.clarificationTriggers?.length) guidanceBits.push('clarify=' + guidance.clarificationTriggers.join(','));
+        if (guidance.backgroundOnlySurfaces?.length) guidanceBits.push('background=' + guidance.backgroundOnlySurfaces.join(','));
+        const guide = window.hexRenderUtils.createEl('div', { text: guidanceBits.join('  |  ') });
+        guide.style.color = guidance.backgroundOnlySurfaces?.length || guidance.clarificationTriggers?.length ? 'var(--orange)' : 'var(--cyan)';
+        guide.style.fontFamily = 'var(--font-m)';
+        guide.style.fontSize = '12px';
+        guide.style.wordBreak = 'break-word';
+        card.appendChild(guide);
+      }
+    }
+
+
+    if (event.localLiveContext) {
+      const live = event.localLiveContext;
+      const browser = live.browser || {};
+      const candidateBits = Object.entries(live.candidates || {})
+        .filter(([, item]) => item && item.count)
+        .slice(0, 4)
+        .map(([kind, item]) => kind + '=' + item.count + (item.fresh ? ':fresh' : ':stale'));
+      const liveBits = [
+        'live browser=' + (browser.open ? 'open' : 'closed'),
+        'browser candidates=' + (browser.candidateCount || 0) + (browser.candidatesFresh ? ':fresh' : ':stale')
+      ];
+      if (browser.title) liveBits.push('page=' + browser.title);
+      if (candidateBits.length) liveBits.push('local=' + candidateBits.join(','));
+      if (live.bestTarget?.label) liveBits.push('browserBest=' + live.bestTarget.label + ' [' + (live.bestTarget.surface || live.bestTarget.kind || 'ref') + (live.bestTarget.fresh ? ':fresh' : ':stale') + ']');
+      if (live.desktopBestTarget?.label) liveBits.push('desktopBest=' + live.desktopBestTarget.label + ' [' + (live.desktopBestTarget.kind || 'ref') + (live.desktopBestTarget.fresh ? ':fresh' : ':stale') + ']');
+      if (live.lastResolvedReference?.label) liveBits.push('last=' + live.lastResolvedReference.label + ' [' + (live.lastResolvedReference.surface || live.lastResolvedReference.kind || 'ref') + ']');
+      const liveEl = window.hexRenderUtils.createEl('div', { text: liveBits.join('  |  ') });
+      liveEl.style.color = browser.open && browser.candidatesFresh ? 'var(--cyan)' : 'var(--muted)';
+      liveEl.style.fontFamily = 'var(--font-m)';
+      liveEl.style.fontSize = '12px';
+      liveEl.style.wordBreak = 'break-word';
+      card.appendChild(liveEl);
+    }
     if (event.sources?.length) {
       const sources = window.hexRenderUtils.createEl('div', { text: 'sources: ' + event.sources.join(', ') });
       sources.style.color = 'var(--accent)';
@@ -189,14 +247,29 @@ function refreshBrainPriorityReferences() {
   }
   const active = Array.isArray(view.active) ? view.active : [];
   const background = Array.isArray(view.background) ? view.background : [];
-  summary.style.color = active.length ? 'var(--cyan)' : 'var(--orange)';
-  summary.textContent = 'Active refs: ' + active.length + ' · Background refs: ' + background.length + ' · ' + (view.guidance || 'Priority view ready.');
+  const packetHealth = packet?.contextPacketHealth || window.hexCloudContextRehydrator?.getPacketHealth?.(packet) || window.hexCloudContextRehydrator?.getPacketHealth?.() || null;
+  const liveContext = window.hexContextState?.getLiveContextFreshness?.() || null;
+  const liveBrowser = liveContext?.browser || null;
+  const healthLevel = String(packetHealth?.level || 'unknown').toUpperCase();
+  const healthReady = packetHealth?.ready === true;
+  const healthIssues = Array.isArray(packetHealth?.issues) && packetHealth.issues.length ? ' · Issues: ' + packetHealth.issues.slice(0, 3).join(', ') : '';
+  const liveDesktop = liveContext?.desktopBestTarget || null;
+  const liveText = liveBrowser
+    ? ' · Live browser: ' + (liveBrowser.open ? 'open' : 'closed') + ' · Browser refs: ' + (liveBrowser.candidateCount || 0) + (liveBrowser.candidatesFresh ? ' fresh' : ' stale')
+    : '';
+  const desktopText = liveDesktop?.label
+    ? ' · Desktop target: ' + liveDesktop.label + ' [' + (liveDesktop.kind || 'ref') + (liveDesktop.fresh ? ' fresh' : ' stale') + ']'
+    : '';
+  summary.style.color = (healthReady && active.length) || liveBrowser?.candidatesFresh || liveDesktop?.fresh ? 'var(--cyan)' : 'var(--orange)';
+  summary.textContent = 'Packet: ' + healthLevel + ' · Active refs: ' + active.length + ' · Background refs: ' + background.length + liveText + desktopText + healthIssues + ' · ' + (view.guidance || 'Priority view ready.');
   renderPriorityBucket(list, 'ACTIVE FOLLOW-UP TARGETS', active, 'active');
   renderPriorityBucket(list, 'BACKGROUND MEMORY', background, 'background');
 }
 window.refreshBrainPriorityReferences = refreshBrainPriorityReferences;
 function buildBrainDatasetGuidance(stats = {}) {
   const priority = stats.priority || {};
+  const localLive = stats.localLive || {};
+  const recovery = stats.recovery || {};
   const good = Number(stats.good || 0);
   const fix = Number(stats.fix || 0);
   const preferencePairs = Number(stats.preferencePairs || 0);
@@ -206,11 +279,28 @@ function buildBrainDatasetGuidance(stats = {}) {
   const staleOrMissing = Number(priority.staleOrMissing || 0);
   const knownPriority = Number(priority.known || 0);
   const missingPriority = Number(priority.missing || 0);
+  const liveKnown = Number(localLive.known || 0);
+  const liveFreshBrowser = Number(localLive.freshBrowser || 0);
+  const liveFreshDesktop = Number(localLive.freshDesktopBestTargets || 0);
+  const liveNoTargets = Number(localLive.noLiveTargets || 0);
+  const staleRefusals = Number(recovery.staleReferenceRefusals || 0);
 
   if (!stats.exists || evolutionRecords === 0) {
     return {
       level: 'empty',
       text: 'Next target: collect your first GOOD / WRONG / FIX signals from normal chat and browser follow-ups.'
+    };
+  }
+  if (staleRefusals > 0 && fix < 5) {
+    return {
+      level: 'focus',
+      text: 'Next target: mark GOOD when HEX correctly refuses stale references, and FIX when it should have resolved a live target.'
+    };
+  }
+  if (liveKnown > 0 && liveNoTargets > Math.max(2, Math.floor(liveKnown * 0.5))) {
+    return {
+      level: 'warn',
+      text: 'Next target: live context is present but often has no fresh target. Mark feedback immediately after browser/file/app actions.'
     };
   }
   if (knownPriority > 0 && staleOrMissing > knownPriority) {
@@ -225,10 +315,16 @@ function buildBrainDatasetGuidance(stats = {}) {
       text: 'Next target: collect feedback from routed turns, not only greetings. Ask browser/file follow-ups, then mark GOOD/FIX so priority context is included.'
     };
   }
-  if (freshBrowser < 5 || actionCorrections < 5) {
+  if (liveFreshBrowser < 5 || freshBrowser < 5 || actionCorrections < 5) {
     return {
       level: 'focus',
-      text: 'Next target: collect more browser follow-up corrections. Try YouTube/search flows, then use FIX when "open third video" or "that one" routes wrong.'
+      text: 'Next target: collect more browser follow-up corrections with fresh live targets. Try YouTube/search flows, then use FIX when "open third video" or "that one" routes wrong.'
+    };
+  }
+  if (liveFreshDesktop < 3) {
+    return {
+      level: 'focus',
+      text: 'Next target: collect more desktop follow-up corrections with a fresh app/file/game/window target. After listing apps, files, games, or windows, use GOOD/FIX on commands like "open it", "run that", or "focus that one".'
     };
   }
   if (good < 20) {
@@ -287,6 +383,10 @@ async function refreshBrainDatasetInspector() {
   }
 
   const priority = stats.priority || {};
+  const localLive = stats.localLive || {};
+  const recovery = stats.recovery || {};
+  const healthCategories = stats.trainingDataHealth?.categories || {};
+  const categoryCell = (item) => item ? ((item.ready ? 'READY' : (item.current || 0) + '/' + (item.target || 0))) : 'n/a';
   const cells = [
     ['GOOD', stats.good || 0, 'positive style/answer samples'],
     ['FIX', stats.fix || 0, 'corrected answers'],
@@ -296,7 +396,17 @@ async function refreshBrainDatasetInspector() {
     ['SIZE', Math.round(Number(stats.bytes || 0) / 1024) + ' KB', 'local JSONL size'],
     ['CTX OK', priority.known || 0, 'feedback rows with priority context'],
     ['BROWSER', priority.freshBrowser || 0, 'fresh browser/session refs captured'],
-    ['STALE/MISS', priority.staleOrMissing || 0, 'missing, stale, or background-only context']
+    ['STALE/MISS', priority.staleOrMissing || 0, 'missing, stale, or background-only context'],
+    ['LIVE CTX', localLive.known || 0, 'feedback rows with local/live freshness'],
+    ['LIVE BROWSER', localLive.freshBrowser || 0, 'fresh live browser candidates'],
+    ['DESKTOP TGT', localLive.freshDesktopBestTargets || 0, 'fresh app/file/game/window targets'],
+    ['NO TARGET', localLive.noLiveTargets || 0, 'live context present but no fresh target'],
+    ['RECOVERY', recovery.known || 0, 'user-facing recovery/context-gap messages'],
+    ['REFUSAL', recovery.staleReferenceRefusals || 0, 'correct stale-reference refusals'],
+    ['STYLE RDY', categoryCell(healthCategories.dialogueStyle), 'dialogue style readiness'],
+    ['BROWSER RDY', categoryCell(healthCategories.browserFollowUps), 'browser follow-up readiness'],
+    ['DESKTOP RDY', categoryCell(healthCategories.desktopFollowUps), 'desktop follow-up readiness'],
+    ['PREF RDY', categoryCell(healthCategories.preferenceTraining), 'preference pair readiness']
   ];
 
   cells.forEach(([label, value, hint]) => {
@@ -340,8 +450,13 @@ async function exportBrainDataset() {
     return;
   }
   if (status) {
-    status.style.color = 'var(--cyan)';
-    status.textContent = 'Exported SFT ' + (result.counts?.sft || 0) + ' rows -> ' + result.sftPath + ' | PREF ' + (result.counts?.preferences || 0) + ' rows -> ' + result.preferencePath;
+    const health = result.trainingDataHealth || null;
+    const topGap = Array.isArray(health?.gaps) && health.gaps.length ? health.gaps[0] : null;
+    const healthText = health
+      ? ' | HEALTH ' + String(health.level || 'unknown').toUpperCase() + ': ' + (topGap?.text || health.text || 'ready')
+      : '';
+    status.style.color = health?.ready ? 'var(--cyan)' : 'var(--orange)';
+    status.textContent = 'Exported SFT ' + (result.counts?.sft || 0) + ' rows -> ' + result.sftPath + ' | PREF ' + (result.counts?.preferences || 0) + ' rows -> ' + result.preferencePath + healthText;
   }
   refreshBrainDatasetInspector();
 }

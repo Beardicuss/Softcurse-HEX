@@ -24,7 +24,9 @@ window.hexContextState = (() => {
     activeTopics: [],
     referenceCandidates: [],
     browserSnapshot: { open: false, url: null, title: null },
+    browserSnapshotUpdatedAt: null,
     browserCandidates: [],
+    browserCandidatesUpdatedAt: null,
     lastResolvedReference: null
   };
 
@@ -63,6 +65,8 @@ window.hexContextState = (() => {
           title: parsed.browserSnapshot.title || null
         }
         : { open: false, url: null, title: null };
+      state.browserSnapshotUpdatedAt = Number(parsed.browserSnapshotUpdatedAt || 0) || null;
+      state.browserCandidatesUpdatedAt = Number(parsed.browserCandidatesUpdatedAt || 0) || null;
       state.browserCandidates = Array.isArray(parsed.browserCandidates) ? parsed.browserCandidates.slice(0, 16) : [];
       state.lastResolvedReference = parsed.lastResolvedReference && typeof parsed.lastResolvedReference === 'object'
         ? { ...parsed.lastResolvedReference }
@@ -219,6 +223,7 @@ window.hexContextState = (() => {
         url: browserStatus?.url || null,
         title: browserStatus?.title || null
       };
+      state.browserSnapshotUpdatedAt = now;
       if (browserStatus?.open) state.activeSurface = 'browser';
       persist();
       return;
@@ -237,6 +242,7 @@ window.hexContextState = (() => {
       url: browserStatus?.url || null,
       title: browserStatus?.title || null
     };
+    state.browserSnapshotUpdatedAt = now;
     if (!followUp || !state.primaryGoal) state.primaryGoal = normalizedText;
 
     state.recentUserMessages = trimTail([...state.recentUserMessages, normalizedText], MAX_RECENT_MESSAGES);
@@ -321,6 +327,7 @@ window.hexContextState = (() => {
         url: browser.url || null,
         title: browser.title || null
       };
+      state.browserSnapshotUpdatedAt = Date.now();
     }
     pushReferenceCandidates([
       remote.primaryGoal || '',
@@ -339,6 +346,7 @@ window.hexContextState = (() => {
           url: status.url || null,
           title: status.title || null
         };
+        state.browserSnapshotUpdatedAt = Date.now();
         persist();
         return { ...state.browserSnapshot };
       }
@@ -364,6 +372,8 @@ window.hexContextState = (() => {
       activeTopics: [...state.activeTopics],
       referenceCandidates: [...state.referenceCandidates],
       browserSnapshot: { ...state.browserSnapshot },
+      browserSnapshotUpdatedAt: state.browserSnapshotUpdatedAt,
+      browserCandidatesUpdatedAt: state.browserCandidatesUpdatedAt,
       browserCandidates: Array.isArray(state.browserCandidates) ? state.browserCandidates.map((item) => ({ ...item })) : [],
       lastResolvedReference: state.lastResolvedReference ? { ...state.lastResolvedReference } : null
     };
@@ -377,20 +387,24 @@ window.hexContextState = (() => {
         text: String(item?.text || item?.label || '').trim(),
         url: item?.url || null,
         kind: String(item?.kind || 'item').trim(),
-        source: String(item?.source || 'browser').trim()
+        source: String(item?.source || 'browser').trim(),
+        capturedAt: Number(item?.capturedAt || item?.meta?.capturedAt || Date.now())
       }))
       .filter((item) => item.label || item.text)
       .slice(0, 16);
   }
 
   function updateBrowserCandidates(candidates, browserStatus = null) {
-    state.browserCandidates = normalizeCandidates(candidates);
+    const now = Date.now();
+    state.browserCandidates = normalizeCandidates(candidates).map((item) => ({ ...item, capturedAt: item.capturedAt || now }));
+    state.browserCandidatesUpdatedAt = now;
     if (browserStatus) {
       state.browserSnapshot = {
         open: !!browserStatus.open,
         url: browserStatus.url || null,
         title: browserStatus.title || null
       };
+      state.browserSnapshotUpdatedAt = now;
     }
     state.referenceCandidates = uniqueTrimmed([
       ...state.browserCandidates.map((item) => item.label || item.text),
@@ -400,6 +414,74 @@ window.hexContextState = (() => {
     persist();
   }
 
+
+  function getLiveContextFreshness() {
+    const now = Date.now();
+    const browserSnapshotAgeMs = state.browserSnapshotUpdatedAt ? now - state.browserSnapshotUpdatedAt : null;
+    const browserCandidatesAgeMs = state.browserCandidatesUpdatedAt ? now - state.browserCandidatesUpdatedAt : null;
+    const browserCandidatesFresh = !!state.browserCandidatesUpdatedAt && browserCandidatesAgeMs <= 5 * 60 * 1000;
+    const candidateFreshness = window.hexCandidateStore?.freshnessSnapshot?.() || {};
+    const firstBrowserCandidate = state.browserCandidates[0] || null;
+    const liveBrowserTarget = state.lastResolvedReference || firstBrowserCandidate || null;
+    const bestTarget = liveBrowserTarget ? {
+      label: String(liveBrowserTarget.label || liveBrowserTarget.text || liveBrowserTarget.value || '').trim(),
+      kind: String(liveBrowserTarget.kind || 'browser').trim(),
+      surface: String(liveBrowserTarget.surface || 'browser').trim(),
+      source: String(liveBrowserTarget.source || (state.lastResolvedReference ? 'last-resolved-reference' : 'browser-candidates')).trim(),
+      fresh: !!state.browserSnapshot?.open && browserCandidatesFresh,
+      ageMs: browserCandidatesAgeMs,
+      index: Number.isFinite(Number(liveBrowserTarget.index)) ? Number(liveBrowserTarget.index) : null
+    } : null;
+    const desktopKinds = ['recent', 'app', 'game', 'file', 'folder', 'window'];
+    const desktopBestTarget = desktopKinds
+      .map((kind) => {
+        const freshness = candidateFreshness[kind] || {};
+        if (freshness.fresh !== true) return null;
+        const item = window.hexCandidateStore?.get?.(kind)?.[0] || null;
+        if (!item) return null;
+        const resolvedKind = item.kind || (kind === 'recent' ? 'item' : kind);
+        return {
+          label: String(item.label || item.value || item.path || '').trim(),
+          kind: String(resolvedKind || 'item').trim(),
+          surface: 'desktop',
+          source: String(item.meta?.source || item.source || kind + '-candidates').trim(),
+          fresh: true,
+          ageMs: freshness.ageMs,
+          index: Number.isFinite(Number(item.index)) ? Number(item.index) : null,
+          path: item.path || null,
+          value: item.value || item.path || item.label || null
+        };
+      })
+      .filter((item) => item?.label)
+      .sort((a, b) => Number(a.ageMs || 0) - Number(b.ageMs || 0))[0] || null;
+    return {
+      browser: {
+        open: !!state.browserSnapshot?.open,
+        url: state.browserSnapshot?.url || null,
+        title: state.browserSnapshot?.title || null,
+        snapshotUpdatedAt: state.browserSnapshotUpdatedAt,
+        snapshotAgeMs: browserSnapshotAgeMs,
+        candidatesUpdatedAt: state.browserCandidatesUpdatedAt,
+        candidatesAgeMs: browserCandidatesAgeMs,
+        candidatesFresh: browserCandidatesFresh,
+        candidateCount: state.browserCandidates.length,
+        bestTarget
+      },
+      bestTarget,
+      desktopBestTarget,
+      candidates: candidateFreshness,
+      referenceCandidateCount: state.referenceCandidates.length,
+      lastResolvedReference: state.lastResolvedReference ? { ...state.lastResolvedReference } : null
+    };
+  }
+
+  function shouldRefreshBrowserCandidates(text = '', maxAgeMs = 45 * 1000) {
+    if (!state.browserSnapshot?.open) return false;
+    const lower = String(text || '').toLowerCase();
+    const browserIntent = /\b(open|click|play|select|choose|read|continue|resume|that|this|it|first|second|third|fourth|fifth|last|next|previous|video|result|link|button|page|tab|youtube|google|browser)\b/.test(lower);
+    const ageMs = state.browserCandidatesUpdatedAt ? Date.now() - state.browserCandidatesUpdatedAt : Infinity;
+    return !state.browserCandidates.length || (browserIntent && ageMs > maxAgeMs);
+  }
   function ordinalIndexFromText(text) {
     const lower = String(text || '').toLowerCase();
     const patterns = [
@@ -496,6 +578,8 @@ window.hexContextState = (() => {
     updateForAssistant,
     updateForSystemData,
     updateBrowserCandidates,
+    shouldRefreshBrowserCandidates,
+    getLiveContextFreshness,
     resolveReference,
     hydrateRemote,
     getBrowserSessionState,

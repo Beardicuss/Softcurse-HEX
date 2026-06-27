@@ -12,7 +12,8 @@ window.hexCandidateStore = (() => {
     recent: []
   };
 
-  function normalize(kind, items) {
+  function normalize(kind, items, source = '') {
+    const now = Date.now();
     return (Array.isArray(items) ? items : [])
       .map((item, idx) => ({
         kind,
@@ -20,21 +21,21 @@ window.hexCandidateStore = (() => {
         label: String(item?.label || item?.name || item?.title || item?.path || '').trim(),
         path: item?.path || null,
         value: item?.value || item?.path || item?.name || item?.title || null,
-        meta: item?.meta || {}
+        meta: { ...(item?.meta || {}), seenAt: Number(item?.meta?.seenAt || item?.seenAt || now), source: item?.meta?.source || item?.source || source || item?.meta?.source || kind + '-candidate' }
       }))
       .filter((item) => item.label)
       .slice(0, MAX_ITEMS);
   }
 
-  function set(kind, items) {
+  function set(kind, items, source = '') {
     if (!buckets[kind]) return [];
-    buckets[kind] = normalize(kind, items);
+    buckets[kind] = normalize(kind, items, source || kind + '-set');
     return buckets[kind];
   }
 
-  function merge(kind, items) {
+  function merge(kind, items, source = '') {
     if (!buckets[kind]) return [];
-    const incoming = normalize(kind, items);
+    const incoming = normalize(kind, items, source || kind + '-merge');
     const seen = new Set();
     buckets[kind] = [...incoming, ...buckets[kind]]
       .filter((item) => {
@@ -52,6 +53,26 @@ window.hexCandidateStore = (() => {
     return Array.isArray(buckets[kind]) ? buckets[kind].map((item) => ({ ...item })) : [];
   }
 
+
+  function freshness(kind, maxAgeMs = 5 * 60 * 1000) {
+    const items = get(kind);
+    const newest = items.reduce((max, item) => Math.max(max, Number(item?.meta?.seenAt || 0)), 0);
+    const ageMs = newest ? Date.now() - newest : null;
+    return {
+      kind,
+      count: items.length,
+      newestAt: newest || null,
+      ageMs,
+      fresh: newest > 0 && ageMs <= maxAgeMs
+    };
+  }
+
+  function freshnessSnapshot(maxAgeMs = 5 * 60 * 1000) {
+    return Object.keys(buckets).reduce((out, kind) => {
+      out[kind] = freshness(kind, maxAgeMs);
+      return out;
+    }, {});
+  }
   function snapshot() {
     return {
       file: get('file'),
@@ -64,5 +85,5 @@ window.hexCandidateStore = (() => {
     };
   }
 
-  return { set, merge, get, snapshot };
+  return { set, merge, get, snapshot, freshness, freshnessSnapshot };
 })();

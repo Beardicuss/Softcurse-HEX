@@ -55,6 +55,31 @@ const quality = {
       freshBrowserReference: true,
       freshActionReference: false,
       onlyBackgroundReferences: false
+    },
+    localLive: {
+      known: true,
+      browserOpen: true,
+      browserCandidateCount: 4,
+      freshBrowserCandidates: true,
+      referenceCandidateCount: 6,
+      freshLocalCandidateKinds: ['app'],
+      staleLocalCandidateKinds: ['file'],
+      hasFreshLocalTargets: true,
+      hasOnlyStaleLocalTargets: false,
+      bestTargetSurface: 'browser',
+      desktopBestTargetKind: 'app',
+      desktopBestTargetSource: 'app-candidates',
+      freshDesktopBestTarget: true,
+      lastResolvedSurface: 'browser'
+    },
+    recovery: {
+      known: true,
+      userFacing: true,
+      refusedToGuess: true,
+      staleReferenceRefusal: true,
+      actionRecoveryMessage: false,
+      classification: 'stale-reference-refusal',
+      reason: 'no-fresh-browser-target'
     }
   }
 };
@@ -74,6 +99,24 @@ const rows = [
         topActive: { label: 'Eminem - Lose Yourself', kind: 'browser', purpose: 'browser' },
         active: [{ label: 'Eminem - Lose Yourself', kind: 'browser', purpose: 'browser' }],
         background: [{ label: 'VS Code', kind: 'app', purpose: 'inventory' }]
+      },
+      localLiveContext: {
+        schema: 'hex.feedback-local-live-context.v1',
+        browser: { open: true, title: 'Eminem - YouTube', candidateCount: 4, candidatesFresh: true },
+        bestTarget: { label: 'Eminem - Lose Yourself', kind: 'video', surface: 'browser', source: 'live-browser-candidates', fresh: true },
+        desktopBestTarget: { label: 'VS Code', kind: 'app', surface: 'desktop', source: 'app-candidates', fresh: true, path: 'C:/Apps/Code.exe' },
+        candidates: { app: { count: 1, fresh: true }, file: { count: 1, fresh: false } },
+        referenceCandidateCount: 6
+      },
+      recoveryMessage: {
+        schema: 'hex.feedback-recovery-message.v1',
+        text: 'I do not have a fresh target for that one.',
+        mode: 'context-gap-local',
+        reason: 'no-fresh-browser-target',
+        classification: 'stale-reference-refusal',
+        refusedToGuess: true,
+        actionsSuggested: 0,
+        userFacing: true
       }
     },
     quality
@@ -101,6 +144,24 @@ const rows = [
         topActive: { label: 'Eminem - Lose Yourself', kind: 'browser', purpose: 'browser' },
         active: [{ label: 'Eminem - Lose Yourself', kind: 'browser', purpose: 'browser' }],
         background: [{ label: 'VS Code', kind: 'app', purpose: 'inventory' }]
+      },
+      localLiveContext: {
+        schema: 'hex.feedback-local-live-context.v1',
+        browser: { open: true, title: 'Eminem - YouTube', candidateCount: 4, candidatesFresh: true },
+        bestTarget: { label: 'Eminem - Lose Yourself', kind: 'video', surface: 'browser', source: 'live-browser-candidates', fresh: true },
+        desktopBestTarget: { label: 'VS Code', kind: 'app', surface: 'desktop', source: 'app-candidates', fresh: true, path: 'C:/Apps/Code.exe' },
+        candidates: { app: { count: 1, fresh: true }, file: { count: 1, fresh: false } },
+        referenceCandidateCount: 6
+      },
+      recoveryMessage: {
+        schema: 'hex.feedback-recovery-message.v1',
+        text: 'I do not have a fresh target for that one.',
+        mode: 'context-gap-local',
+        reason: 'no-fresh-browser-target',
+        classification: 'stale-reference-refusal',
+        refusedToGuess: true,
+        actionsSuggested: 0,
+        userFacing: true
       }
     },
     quality,
@@ -135,6 +196,24 @@ const rows = [
         topActive: { label: 'Eminem - Lose Yourself', kind: 'browser', purpose: 'browser' },
         active: [{ label: 'Eminem - Lose Yourself', kind: 'browser', purpose: 'browser' }],
         background: [{ label: 'VS Code', kind: 'app', purpose: 'inventory' }]
+      },
+      localLiveContext: {
+        schema: 'hex.feedback-local-live-context.v1',
+        browser: { open: true, title: 'Eminem - YouTube', candidateCount: 4, candidatesFresh: true },
+        bestTarget: { label: 'Eminem - Lose Yourself', kind: 'video', surface: 'browser', source: 'live-browser-candidates', fresh: true },
+        desktopBestTarget: { label: 'VS Code', kind: 'app', surface: 'desktop', source: 'app-candidates', fresh: true, path: 'C:/Apps/Code.exe' },
+        candidates: { app: { count: 1, fresh: true }, file: { count: 1, fresh: false } },
+        referenceCandidateCount: 6
+      },
+      recoveryMessage: {
+        schema: 'hex.feedback-recovery-message.v1',
+        text: 'I do not have a fresh target for that one.',
+        mode: 'context-gap-local',
+        reason: 'no-fresh-browser-target',
+        classification: 'stale-reference-refusal',
+        refusedToGuess: true,
+        actionsSuggested: 0,
+        userFacing: true
       }
     },
     quality,
@@ -199,15 +278,43 @@ assert.equal(sftLines[0].metadata.trainingIntent, 'dialogue-style');
 assert.equal(sftLines[0].metadata.quality.route.confidenceBand, 'high');
 assert.equal(sftLines[0].metadata.quality.action.expectedActionTypes[0], 'web_find_click');
 assert.equal(sftLines[0].metadata.quality.context.priority.freshBrowserReference, true);
+assert.equal(sftLines[0].metadata.quality.context.localLive.freshBrowserCandidates, true);
+assert.equal(sftLines[0].metadata.quality.context.localLive.freshDesktopBestTarget, true);
+assert.equal(sftLines[0].metadata.quality.context.localLive.desktopBestTargetKind, 'app');
+assert.equal(sftLines[0].metadata.quality.recovery.staleReferenceRefusal, true);
+assert.equal(sftLines[0].metadata.context.recoveryMessage.reason, 'no-fresh-browser-target');
+assert.equal(sftLines[0].metadata.context.localLiveContext.browser.candidateCount, 4);
+assert.equal(sftLines[0].metadata.context.localLiveContext.desktopBestTarget.source, 'app-candidates');
 assert.equal(sftLines[0].metadata.context.priorityReferences.topActive.kind, 'browser');
 assert.equal(prefLines.length, 1);
 assert.equal(prefLines[0].prompt, 'open third video');
 assert.equal(prefLines[0].metadata.context.route.actionSurface, 'browser');
 assert.equal(prefLines[0].metadata.quality.usableForPreference, true);
 assert.equal(prefLines[0].metadata.quality.context.browserOpen, true);
+assert.equal(prefLines[0].metadata.quality.context.localLive.lastResolvedSurface, 'browser');
 assert.equal(prefLines[0].metadata.quality.context.priority.topActiveKind, 'browser');
 assert.equal(prefLines[0].metadata.context.priorityReferences.topActive.label, 'Eminem - Lose Yourself');
 assert.equal(manifest.counts.preferences, 1);
+assert.equal(manifest.trainingDataHealth.schema, 'hex.training-data-health.v1');
+assert.equal(manifest.trainingDataHealth.metrics.feedbackRecords, 2);
+assert.equal(manifest.trainingDataHealth.metrics.good, 1);
+assert.equal(manifest.trainingDataHealth.metrics.wrong, 1);
+assert.equal(manifest.trainingDataHealth.metrics.freshBrowserPriority, 1);
+assert.equal(manifest.trainingDataHealth.metrics.staleOrMissingPriority, 1);
+assert.equal(manifest.trainingDataHealth.metrics.liveContextKnown, 1);
+assert.equal(manifest.trainingDataHealth.metrics.freshLiveBrowserCandidates, 1);
+assert.equal(manifest.trainingDataHealth.metrics.freshDesktopBestTargets, 1);
+assert.equal(manifest.trainingDataHealth.metrics.recoveryMessages, 1);
+assert.equal(manifest.trainingDataHealth.metrics.staleReferenceRefusals, 1);
+assert.equal(manifest.trainingDataHealth.categories.dialogueStyle.key, 'dialogue-style');
+assert.equal(manifest.trainingDataHealth.categories.browserFollowUps.current, 1);
+assert.equal(manifest.trainingDataHealth.categories.desktopFollowUps.current, 1);
+assert.equal(manifest.trainingDataHealth.categories.preferenceTraining.current, 1);
+assert.equal(statsResult.stats.trainingDataHealth.categories.desktopFollowUps.current, 1);
+assert.equal(typeof manifest.trainingDataHealth.text, 'string');
+assert.ok(Array.isArray(manifest.trainingDataHealth.gaps));
+assert.ok(manifest.trainingDataHealth.gaps.some((gap) => gap.kind === 'good-style-samples'));
+assert.ok(manifest.trainingDataHealth.gaps.some((gap) => gap.kind === 'desktop-follow-up-targets'));
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log('Fine-tune clean dataset exporter contract OK:', result.counts);

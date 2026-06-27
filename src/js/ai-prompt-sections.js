@@ -1,13 +1,21 @@
 'use strict';
 
+const normalizeHexPromptContextUse = (value) => ({
+  active: Array.isArray(value?.active) ? value.active : [],
+  background: Array.isArray(value?.background) ? value.background : [],
+  missing: Array.isArray(value?.missing) ? value.missing : []
+});
+
 window.buildHexSystemStateBlock = function buildHexSystemStateBlock(state, ctx) {
   const cloudSelectedCounts = state.cloudContext?.retrieval?.selectedCounts || {};
   const cloudState = state.cloudContext?.continuityState || {};
   const cloudFreshness = cloudState.freshness || {};
   const fmtAge = (value) => Number.isFinite(Number(value)) ? (Math.round(Number(value) / 60) + 'm') : 'n/a';
   const cloudActionStatusCounts = state.cloudContext?.retrieval?.actionStatusCounts || {};
-  const cloudContextUse = state.cloudContext?.retrieval?.contextUse || {};
+  const cloudContextUse = normalizeHexPromptContextUse(state.cloudContext?.retrieval?.contextUse);
   const cloudContextUseLine = 'active ' + ((cloudContextUse.active || []).join('/') || 'none') + ' | background ' + ((cloudContextUse.background || []).join('/') || 'none') + ' | missing ' + ((cloudContextUse.missing || []).join('/') || 'none');
+  const cloudRoutingGuidance = state.cloudContext?.retrieval?.routingGuidance || state.brainRoute?.serverPacketHealth?.routingGuidance || null;
+  const cloudRoutingLine = cloudRoutingGuidance ? ('policy ' + (cloudRoutingGuidance.recoveryPolicy || 'unknown') + ' | browser ' + (cloudRoutingGuidance.browserFollowUpPolicy || 'unknown') + ' | clarify ' + ((cloudRoutingGuidance.clarificationTriggers || []).join('/') || 'none')) : 'none';
   const cloudPriorityView = state.cloudContext?.desktopPriorityView || window.hexCloudContextRehydrator?.getPriorityView?.(state.cloudContext) || null;
   const formatPriorityRefs = (items) => (items || [])
     .slice(0, 5)
@@ -58,6 +66,7 @@ window.buildHexSystemStateBlock = function buildHexSystemStateBlock(state, ctx) 
     '  Cloud action outcomes: success ' + (cloudActionStatusCounts.success || 0) + ', failure ' + (cloudActionStatusCounts.failure || 0) + ', pending ' + (cloudActionStatusCounts.pending || 0),
     '  Cloud why: ' + (cloudRetrievalReasons.join(' | ') || 'none'),
     '  Cloud context use: ' + cloudContextUseLine,
+    '  Cloud routing guidance: ' + cloudRoutingLine,
     '  Cloud priority active: ' + (formatPriorityRefs(cloudPriorityView?.active).join(' | ') || 'none'),
     '  Cloud priority background: ' + (formatPriorityRefs(cloudPriorityView?.background).join(' | ') || 'none'),
     '  Cloud refs: ' + ((state.cloudContext?.references?.desktop || []).map((item) => item?.label || item?.value || item).join(' | ') || 'none'),
@@ -85,8 +94,10 @@ window.buildHexContinuityBlock = function buildHexContinuityBlock(state, userMsg
   const cloudFreshness = cloudState.freshness || {};
   const fmtAge = (value) => Number.isFinite(Number(value)) ? (Math.round(Number(value) / 60) + 'm') : 'n/a';
   const cloudActionStatusCounts = state.cloudContext?.retrieval?.actionStatusCounts || {};
-  const cloudContextUse = state.cloudContext?.retrieval?.contextUse || {};
+  const cloudContextUse = normalizeHexPromptContextUse(state.cloudContext?.retrieval?.contextUse);
   const cloudContextUseLine = 'active ' + ((cloudContextUse.active || []).join('/') || 'none') + ' | background ' + ((cloudContextUse.background || []).join('/') || 'none') + ' | missing ' + ((cloudContextUse.missing || []).join('/') || 'none');
+  const cloudRoutingGuidance = state.cloudContext?.retrieval?.routingGuidance || state.brainRoute?.serverPacketHealth?.routingGuidance || null;
+  const cloudRoutingLine = cloudRoutingGuidance ? ('policy ' + (cloudRoutingGuidance.recoveryPolicy || 'unknown') + ' | browser ' + (cloudRoutingGuidance.browserFollowUpPolicy || 'unknown') + ' | clarify ' + ((cloudRoutingGuidance.clarificationTriggers || []).join('/') || 'none')) : 'none';
   const cloudPriorityView = state.cloudContext?.desktopPriorityView || window.hexCloudContextRehydrator?.getPriorityView?.(state.cloudContext) || null;
   const formatPriorityRefs = (items) => (items || [])
     .slice(0, 5)
@@ -124,6 +135,7 @@ window.buildHexContinuityBlock = function buildHexContinuityBlock(state, userMsg
     '  Cloud action outcomes : success ' + (cloudActionStatusCounts.success || 0) + ', failure ' + (cloudActionStatusCounts.failure || 0) + ', pending ' + (cloudActionStatusCounts.pending || 0),
     '  Cloud retrieval why  : ' + (cloudRetrievalReasons.join(' | ') || 'none'),
     '  Cloud context use    : ' + cloudContextUseLine,
+    '  Cloud routing guidance: ' + cloudRoutingLine,
     '  Cloud priority active : ' + (formatPriorityRefs(cloudPriorityView?.active).join(' | ') || 'none'),
     '  Cloud priority background: ' + (formatPriorityRefs(cloudPriorityView?.background).join(' | ') || 'none'),
     '  Cloud turn hits      : ' + ((state.cloudContext?.relevantTurns || []).map((item) => (String(item.role || 'user').toUpperCase() + ': ' + String(item.content || '').substring(0, 100))).join(' | ') || 'none'),

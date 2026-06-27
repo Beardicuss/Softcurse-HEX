@@ -1,8 +1,8 @@
 'use strict';
 
 window.hexCandidatePublishers = (() => {
-  function set(kind, items) {
-    const result = window.hexCandidateStore?.set(kind, items) || [];
+  function set(kind, items, source = '') {
+    const result = window.hexCandidateStore?.set(kind, items, source || kind + '-publisher') || [];
     window.hexRecentPromoter?.touchMany?.(kind, result, 1);
     window.hexPcAwareness?.syncFromCandidates?.();
     window.hexPcEntityMemory?.ingestSnapshot?.(window.hexCandidateStore?.snapshot?.() || {});
@@ -23,7 +23,7 @@ window.hexCandidatePublishers = (() => {
       }) === index)
       .slice(0, 10)
       .map((entry, index) => ({ ...entry, index: index + 1 }));
-    const result = set('recent', merged);
+    const result = set('recent', merged, 'recent-action');
     window.hexPcEntityMemory?.ingest?.(result, 'recent', 1.5);
     return result;
   }
@@ -34,8 +34,8 @@ window.hexCandidatePublishers = (() => {
       label: file.name || file.path,
       path: file.path,
       value: file.path,
-      meta: { size: file.size || 0 }
-    })));
+      meta: { size: file.size || 0, source: file.source || 'file-search' }
+    })), 'file-search');
   }
 
   function publishApps(apps) {
@@ -44,8 +44,8 @@ window.hexCandidatePublishers = (() => {
       label: app.DisplayName || app.name || app.label || '',
       path: app.path || null,
       value: app.DisplayName || app.name || app.label || '',
-      meta: { version: app.DisplayVersion || app.version || null }
-    })));
+      meta: { version: app.DisplayVersion || app.version || null, source: app.source || 'app-scan' }
+    })), 'app-scan');
   }
 
   function publishGames(games) {
@@ -54,8 +54,8 @@ window.hexCandidatePublishers = (() => {
       label: game.name || game.label || '',
       path: game.path || null,
       value: game.name || game.label || '',
-      meta: game
-    })));
+      meta: { ...game, source: game.source || 'game-scan' }
+    })), 'game-scan');
   }
   function publishFolders(folders) {
     return set('folder', (folders || []).map((folder, index) => ({
@@ -63,8 +63,8 @@ window.hexCandidatePublishers = (() => {
       label: folder.name || folder.label || folder.path || '',
       path: folder.path || folder.value || null,
       value: folder.path || folder.value || folder.name || folder.label || '',
-      meta: folder.meta || { targetType: 'folder' }
-    })));
+      meta: { ...(folder.meta || { targetType: 'folder' }), source: folder.meta?.source || folder.source || 'folder-scan' }
+    })), 'folder-scan');
   }
 
   function publishWindows(windows) {
@@ -74,9 +74,10 @@ window.hexCandidatePublishers = (() => {
       value: win.MainWindowTitle || win.title || '',
       meta: {
         processName: win.ProcessName || win.processName || '',
-        pid: win.Id || win.pid || null
+        pid: win.Id || win.pid || null,
+        source: 'window-refresh'
       }
-    })));
+    })), 'window-refresh');
   }
 
   function publishProcesses(processes) {
@@ -87,9 +88,10 @@ window.hexCandidatePublishers = (() => {
       meta: {
         pid: proc.pid || proc.Id || null,
         cpu: proc.cpu || null,
-        mem: proc.mem || null
+        mem: proc.mem || null,
+        source: 'process-refresh'
       }
-    })));
+    })), 'process-refresh');
   }
 
   return {

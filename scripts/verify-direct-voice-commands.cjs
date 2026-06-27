@@ -53,6 +53,10 @@ const run = async () => {
   assert.equal(result.handled, true, 'assistant identity question should be local');
   assert.match(state.messages.at(-1), /H\.E\.X\./);
 
+  result = await context.tryDirectCommand("what's your name?");
+  assert.equal(result.handled, true, 'assistant name question should be local');
+  assert.match(state.messages.at(-1), /H\.E\.X\./);
+
   result = await context.tryDirectCommand('close settings.');
   assert.equal(result.handled, true, 'close settings should stay local');
   assert.equal(state.settingsClosed, 1, 'settings surface should close');
@@ -61,6 +65,11 @@ const run = async () => {
   assert.equal(result.handled, true, 'open youtube with punctuation should be handled');
   assert.equal(state.actions.at(-1).type, 'open_url');
   assert.equal(state.actions.at(-1).args[0], 'https://youtube.com');
+
+  result = await context.tryDirectCommand('hey buddy, open playlist "insight"');
+  assert.equal(result.handled, true, 'greeting-prefixed playlist open should be handled locally');
+  assert.equal(state.actions.at(-1).type, 'open_playlist');
+  assert.equal(state.actions.at(-1).args[0], 'insight');
 
   context.window.hexContextState.getBrowserSessionState = () => null;
   context.window.hexReferenceResolver.isDesktopReferenceCommand = () => true;

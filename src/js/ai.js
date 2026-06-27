@@ -130,7 +130,9 @@ class HexAI {
         serverPacket: brainRoute.hints.serverPacket,
         serverMemoryHits: brainRoute.hints.serverMemoryHits,
         sources: brainRoute.hints.sources || [],
-        priority: brainRoute.hints.server?.priorityView || null
+        priority: brainRoute.hints.server?.priorityView || null,
+        packetHealth: brainRoute.hints.serverPacketHealth || brainRoute.hints.server?.packetHealth || null,
+        localLiveContext: systemState.localLiveContext || window.hexContextState?.getLiveContextFreshness?.() || null
       });
     }
     if (brainRoute?.mode && brainRoute.mode !== 'provider' && brainRoute.mode !== 'server-context-provider') {

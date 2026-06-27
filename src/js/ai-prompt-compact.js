@@ -1,6 +1,11 @@
 'use strict';
 
 window.buildHexCompactSystemPrompt = function buildHexCompactSystemPrompt(state, lang, userMsg) {
+  const normalizeContextUse = (value) => ({
+    active: Array.isArray(value?.active) ? value.active : [],
+    background: Array.isArray(value?.background) ? value.background : [],
+    missing: Array.isArray(value?.missing) ? value.missing : []
+  });
   const ctx = window.buildHexPromptContext(state, lang, userMsg);
   const browser = state.browserSession || {};
   const session = state.sessionContext || {};
@@ -19,9 +24,14 @@ window.buildHexCompactSystemPrompt = function buildHexCompactSystemPrompt(state,
   ].filter(Boolean).slice(0, 5);
   const cloudSelectedCounts = cloudContext.retrieval?.selectedCounts || {};
   const cloudActionStatusCounts = cloudContext.retrieval?.actionStatusCounts || {};
-  const cloudContextUse = cloudContext.retrieval?.contextUse || {};
+  const cloudContextUse = normalizeContextUse(cloudContext.retrieval?.contextUse);
   const cloudContextUseLine = 'active ' + ((cloudContextUse.active || []).join('/') || 'none') + ' | background ' + ((cloudContextUse.background || []).join('/') || 'none') + ' | missing ' + ((cloudContextUse.missing || []).join('/') || 'none');
+  const cloudRoutingGuidance = cloudContext.retrieval?.routingGuidance || state.brainRoute?.serverPacketHealth?.routingGuidance || null;
+  const cloudRoutingLine = cloudRoutingGuidance ? ('policy ' + (cloudRoutingGuidance.recoveryPolicy || 'unknown') + ' | browser ' + (cloudRoutingGuidance.browserFollowUpPolicy || 'unknown') + ' | clarify ' + ((cloudRoutingGuidance.clarificationTriggers || []).join('/') || 'none')) : 'none';
   const cloudPriorityView = cloudContext.desktopPriorityView || window.hexCloudContextRehydrator?.getPriorityView?.(cloudContext) || null;
+  const localLive = state.localLiveContext || {};
+  const localLiveBrowser = localLive.browser || {};
+  const localLiveLastRef = localLive.lastResolvedReference || null;
   const formatPriorityRefs = (items) => (items || [])
     .slice(0, 5)
     .map((item) => `${item.index || '?'}:${item.label || item.value || item} [${item.purpose || item.kind || 'ref'} ${item.contextFresh ? 'fresh' : 'background'}]`)
@@ -81,6 +91,7 @@ window.buildHexCompactSystemPrompt = function buildHexCompactSystemPrompt(state,
     'Browser: ' + (browser.open ? 'OPEN' : 'CLOSED'),
     'Browser page: ' + (browser.open ? ((browser.title || 'Untitled') + ' | ' + (browser.url || '--')) : '--'),
     'Browser candidates: ' + (browserCandidates.map((item) => `${item.index}. ${item.label || item.text}`).join(' | ') || 'none'),
+    'Live browser target health: open ' + (localLiveBrowser.open ? 'YES' : 'NO') + ' | candidates ' + (localLiveBrowser.candidateCount || 0) + ' | fresh ' + (localLiveBrowser.candidatesFresh ? 'YES' : 'NO') + ' | last target ' + (localLiveLastRef ? (localLiveLastRef.label || localLiveLastRef.text || localLiveLastRef.value || localLiveLastRef.title || 'available') : 'none'),
     'Recent desktop target: ' + recentDesktopTarget,
     'Desktop windows: ' + ((desktop.windowCandidates || []).join(' | ') || 'none'),
     'Desktop processes: ' + ((desktop.processCandidates || []).join(' | ') || 'none'),
@@ -102,6 +113,7 @@ window.buildHexCompactSystemPrompt = function buildHexCompactSystemPrompt(state,
     'Cloud action outcomes: success ' + (cloudActionStatusCounts.success || 0) + ', failure ' + (cloudActionStatusCounts.failure || 0) + ', pending ' + (cloudActionStatusCounts.pending || 0),
     'Cloud retrieval why: ' + (cloudRetrievalReasons.join(' | ') || 'none'),
     'Cloud context use: ' + cloudContextUseLine,
+    'Cloud routing guidance: ' + cloudRoutingLine,
     'Cloud priority active: ' + (formatPriorityRefs(cloudPriorityView?.active).join(' | ') || 'none'),
     'Cloud priority background: ' + (formatPriorityRefs(cloudPriorityView?.background).join(' | ') || 'none'),
     'Cloud desktop refs: ' + (formatCloudRefs(cloudContext.references?.desktop || cloudSummary.desktopReferences).join(' | ') || 'none'),
@@ -132,6 +144,8 @@ window.buildHexCompactSystemPrompt = function buildHexCompactSystemPrompt(state,
     'Continuity rules:',
     '- Treat short, referential, ordinal, or corrective messages as follow-ups unless the user clearly changes topic.',
     '- If Browser is OPEN, commands like "open the third video", "click that", "play the first result", "read this page", or "go back" refer to the CURRENT browser session first.',
+    '- If Live browser target health says candidates are fresh or a last target is available, act on that live target first. Ask for clarification only when the target is genuinely missing or stale.',
+    '- If the brain route/recovery label says no-fresh-browser-target or no-active-browser-session, ask a short clarification instead of guessing.',
     '- If recent desktop targets, windows, processes, apps, files, or games are listed in the snapshot, referential desktop commands should use that active desktop context first.',
     '- Resolve pronouns and ordinals against Reference candidates, Recent entities, Active topics, recent desktop targets, and the latest browser/app/file/window/process context before assuming a new request.',
     '- Never behave as if each new user message starts a fresh chat.',

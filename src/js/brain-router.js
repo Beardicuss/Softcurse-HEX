@@ -163,8 +163,45 @@
     return { fresh, stale: !fresh, reason: fresh ? purpose + '-fresh' : purpose + '-stale', ageSeconds };
   }
 
+  function packetHealth(packet) {
+    return packet?.contextPacketHealth || window.hexCloudContextRehydrator?.getPacketHealth?.(packet) || null;
+  }
+
+  function routingGuidance(packet = null) {
+    return packet?.retrieval?.routingGuidance || packetHealth(packet)?.routingGuidance || null;
+  }
+
+  function routingGuidanceAllows(packet = null, purpose = 'session') {
+    const guidance = routingGuidance(packet);
+    if (!guidance || typeof guidance !== 'object') return true;
+    const surface = String(purpose || 'session').toLowerCase();
+    const background = Array.isArray(guidance.backgroundOnlySurfaces) ? guidance.backgroundOnlySurfaces.map((item) => String(item || '').toLowerCase()) : [];
+    const missing = Array.isArray(guidance.missingSurfaces) ? guidance.missingSurfaces.map((item) => String(item || '').toLowerCase()) : [];
+    if (background.includes(surface) || missing.includes(surface)) return false;
+    if (surface === 'browser' && String(guidance.browserFollowUpPolicy || '').toLowerCase() === 'require-fresh-live-browser-target-before-clicking') return false;
+    return true;
+  }
+
+  function packetHealthUsable(packet, purpose = 'session') {
+    const health = packetHealth(packet);
+    if (!routingGuidanceAllows(packet, purpose)) return false;
+    if (!health) return true;
+    const level = String(health.level || '').toLowerCase();
+    if (!level || level === 'ready') return true;
+    if (level === 'partial') {
+      const surface = String(purpose || '').toLowerCase();
+      const issues = Array.isArray(health.issues) ? health.issues.map((item) => String(item || '').toLowerCase()) : [];
+      if (surface === 'browser' && issues.some((item) => item.includes('browser'))) return false;
+      if (surface === 'inventory' && issues.some((item) => item.includes('inventory'))) return false;
+      if (surface === 'action' && issues.some((item) => item.includes('action'))) return false;
+      if (surface === 'session' && issues.some((item) => item.includes('session') || item.includes('all-context-stale'))) return false;
+      return true;
+    }
+    return !/^(stale|degraded|invalid)$/.test(level);
+  }
+
   function cloudForPurpose(packet, purpose) {
-    return packetFreshness(packet, purpose).fresh ? packet : null;
+    return packetFreshness(packet, purpose).fresh && packetHealthUsable(packet, purpose) ? packet : null;
   }
 
   function inferConfidence(route, packet, memoryCount) {
@@ -184,8 +221,11 @@
     return route === 'provider' || route === 'server-context-provider';
   }
 
-  function recommendedNext(route, packet) {
-    const freshness = packetFreshness(packet, route === 'browser-answer' ? 'browser' : route === 'inventory-answer' ? 'inventory' : 'session');
+  function recommendedNext(route, packet, purposeOverride = '') {
+    const purpose = purposeOverride || (route === 'browser-answer' ? 'browser' : route === 'inventory-answer' ? 'inventory' : 'session');
+    const freshness = packetFreshness(packet, purpose);
+    if (providerRequired(route) && packet && !routingGuidanceAllows(packet, purpose)) return 'follow-routing-guidance-prefer-live-local';
+    if (providerRequired(route) && packet && !packetHealthUsable(packet, purpose)) return 'prefer-local-or-live-browser-context';
     if (providerRequired(route)) return packet ? (freshness.stale ? 'reason-with-server-background-memory' : 'reason-with-server-context') : 'try-provider-or-local-fallback';
     if (route === 'memory-answer') return 'answer-from-memory-only';
     if (route === 'continuity-answer') return 'continue-current-task-from-server-state';
@@ -229,7 +269,20 @@
     const cloudMemories = extractCloudMemories(packet);
     const memoryCount = cloudMemories.length;
     const priorityView = packet ? (packet.desktopPriorityView || window.hexCloudContextRehydrator?.getPriorityView?.(packet) || null) : null;
-    const confidence = extra.confidence || inferConfidence(route, packet, memoryCount);
+    const packetHealth = packet ? window.hexBrainRouterPacketHealth?.(packet) || packet.contextPacketHealth || window.hexCloudContextRehydrator?.getPacketHealth?.(packet) || null : null;
+    const packetHealthLevel = String(packetHealth?.level || '').toLowerCase();
+    const packetHealthPenalty = packetHealthLevel === 'partial' ? -0.05 : /^(stale|degraded|invalid)$/.test(packetHealthLevel) ? -0.16 : 0;
+    const baseConfidence = extra.confidence ?? inferConfidence(route, packet, memoryCount);
+    const confidence = Math.max(0, Math.min(1, Number(baseConfidence || 0) + packetHealthPenalty));
+    const packetHealthSummary = packetHealth ? {
+      schema: packetHealth.schema || null,
+      level: packetHealth.level || null,
+      ready: packetHealth.ready === true,
+      issues: Array.isArray(packetHealth.issues) ? packetHealth.issues.slice(0, 8) : [],
+      references: packetHealth.references || null,
+      freshness: packetHealth.freshness || null,
+      routingGuidance: packetHealth.routingGuidance || packet?.retrieval?.routingGuidance || null
+    } : null;
     const sources = [];
     if (packet) sources.push('hex-server-context');
     if (memoryCount) sources.push('server-memory');
@@ -244,11 +297,12 @@
       confidence,
       serverPacket: !!packet,
       serverPacketFreshness: packetFreshness(packet, actionPlan?.suggestedSurface === 'browser' ? 'browser' : actionPlan?.suggestedSurface === 'desktop' ? 'inventory' : 'session'),
+      serverPacketHealth: packetHealthSummary,
       serverMemoryHits: memoryCount,
       localMemoryReady: !!window.hexMemory,
       providerLayer: 'unstable-external',
       providerRequired: providerRequired(route),
-      recommendedNext: recommendedNext(route, packet),
+      recommendedNext: recommendedNext(route, packet, extra.routePurpose || (actionPlan?.suggestedSurface === 'browser' ? 'browser' : actionPlan?.suggestedSurface === 'desktop' ? 'inventory' : '')),
       actionPlan,
       sources,
       server: packet ? {
@@ -264,17 +318,20 @@
         continuityState: packet.continuityState || null,
         memoryPreview: cloudMemories.slice(0, 3),
         desktop: summarizeDesktopPacket(packet),
+        packetHealth: packetHealthSummary,
+        routingGuidance: packet?.retrieval?.routingGuidance || packetHealthSummary?.routingGuidance || null,
         priorityView: priorityView ? {
           schema: priorityView.schema || null,
-          active: (priorityView.active || []).slice(0, 5),
-          background: (priorityView.background || []).slice(0, 5),
+          active: (priorityView?.active || []).slice(0, 5),
+          background: (priorityView?.background || []).slice(0, 5),
           guidance: priorityView.guidance || null
         } : null
       } : null,
       local: {
         memoryReady: !!window.hexMemory,
         brainCoreReady: !!window.hexBrainCore,
-        directCommandParserReady: typeof window.tryDirectCommand === 'function' || typeof tryDirectCommand === 'function'
+        directCommandParserReady: typeof window.tryDirectCommand === 'function' || typeof tryDirectCommand === 'function',
+        liveContext: systemState.localLiveContext || window.hexContextState?.getLiveContextFreshness?.() || null
       }
     };
   }
@@ -394,7 +451,9 @@
         actions: directBrowserAction.actions,
         hints: buildRouteHints('direct-browser-action', systemState, directBrowserAction.reason || 'direct-browser-action', { actionPlan: directBrowserAction.plan || actionPlan, userMsg, confidence: 0.92 })
       };
-    }    const directLocalAction = window.hexBrainActionRecovery?.actionsForObviousLocalCommand?.({ userMsg, systemState, lang, actionPlan });
+    }
+
+    const directLocalAction = window.hexBrainActionRecovery?.actionsForObviousLocalCommand?.({ userMsg, systemState, lang, actionPlan });
     if (directLocalAction?.actions?.length) {
       return {
         mode: 'direct-local-action',
@@ -402,6 +461,21 @@
         text: directLocalAction.text || '',
         actions: directLocalAction.actions,
         hints: buildRouteHints('direct-local-action', systemState, directLocalAction.reason || 'direct-local-action', { actionPlan: directLocalAction.plan || actionPlan, userMsg, confidence: 0.9 })
+      };
+    }
+
+    const missingBrowserTarget = window.hexBrainActionRecovery?.explainMissingBrowserTarget?.({ userMsg, systemState, lang });
+    if (missingBrowserTarget) {
+      return {
+        mode: 'context-gap-local',
+        reason: missingBrowserTarget.reason || 'no-fresh-live-target',
+        text: missingBrowserTarget.text || '',
+        actions: [],
+        hints: buildRouteHints('local-reflex', systemState, missingBrowserTarget.reason || 'no-fresh-live-target', {
+          actionPlan,
+          userMsg,
+          confidence: missingBrowserTarget.browserOpen ? 0.78 : 0.7
+        })
       };
     }
     if (isMemoryQuestion(userMsg)) {
@@ -459,23 +533,31 @@
         hints: buildRouteHints('local-reflex', systemState, 'simple-dialogue-local-first', { actionPlan, userMsg, confidence: 0.78 })
       };
     }
-    const routeMode = freshSessionPacket ? 'server-context-provider' : 'provider';
-    const routeReason = freshSessionPacket ? 'server-packet-attached' : (cloudPacket ? 'stale-server-packet-background' : 'needs-model-reasoning');
+    const fallbackPurpose = isBrowserQuestion(userMsg) || actionPlan?.suggestedSurface === 'browser'
+      ? 'browser'
+      : (isInventoryQuestion(userMsg) || actionPlan?.suggestedSurface === 'desktop' ? 'inventory' : 'session');
+    const fallbackServerUsable = freshSessionPacket && packetHealthUsable(cloudPacket, fallbackPurpose);
+    const routeMode = fallbackServerUsable ? 'server-context-provider' : 'provider';
+    const routeReason = fallbackServerUsable
+      ? 'server-packet-attached'
+      : (cloudPacket ? (!routingGuidanceAllows(cloudPacket, fallbackPurpose) ? 'routing-guidance-background' : 'stale-server-packet-background') : 'needs-model-reasoning');
     return {
       mode: routeMode,
       reason: routeReason,
       text: null,
       actions: [],
-      hints: buildRouteHints(routeMode, systemState, routeReason, { actionPlan, userMsg })
+      hints: buildRouteHints(routeMode, systemState, routeReason, { actionPlan, userMsg, routePurpose: fallbackPurpose })
     };
   }
+
+  window.hexBrainRouterPacketHealth = packetHealth;
 
   window.hexBrainRouter = {
     version: ROUTE_VERSION,
     route,
     extractCloudMemories,
     localProviderHealth,
-    packetFreshness
+    packetFreshness,
+    packetHealthUsable
   };
 })();
-

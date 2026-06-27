@@ -261,17 +261,120 @@
   }
 
 
+  function packetHealth(systemState = {}) {
+    const packet = systemState?.cloudContext || null;
+    return packet?.contextPacketHealth || window.hexBrainRouterPacketHealth?.(packet) || window.hexCloudContextRehydrator?.getPacketHealth?.(packet) || null;
+  }
+
+  function cloudPriorityUsable(systemState = {}, purpose = 'session') {
+    const health = packetHealth(systemState);
+    if (!health) return true;
+    const level = String(health.level || '').toLowerCase();
+    if (!level || level === 'ready') return true;
+    if (level === 'partial') {
+      const issues = Array.isArray(health.issues) ? health.issues.map((item) => String(item || '').toLowerCase()) : [];
+      if (purpose === 'browser' && issues.some((item) => item.includes('browser'))) return false;
+      if (purpose === 'inventory' && issues.some((item) => item.includes('inventory'))) return false;
+      return !issues.some((item) => item.includes('all-context-stale'));
+    }
+    return !/^(stale|degraded|invalid)$/.test(level);
+  }
+
   function getPriorityView(systemState = {}) {
     return systemState?.cloudContext?.desktopPriorityView || window.hexCloudContextRehydrator?.getPriorityView?.(systemState?.cloudContext) || null;
   }
 
   function activeBrowserPriority(systemState = {}) {
+    if (!cloudPriorityUsable(systemState, 'browser')) return null;
     const view = getPriorityView(systemState);
     return (view?.active || []).find((item) => String(item?.purpose || item?.kind || '').toLowerCase() === 'browser') || null;
+  }
+  function liveContext(systemState = {}) {
+    return systemState.localLiveContext || window.hexContextState?.getLiveContextFreshness?.() || null;
+  }
+
+  function browserTargetFrom(value = null, fallbackSource = 'local-live-context') {
+    if (!value || typeof value !== 'object') return null;
+    const surface = String(value.surface || value.source || value.kind || '').toLowerCase();
+    if (!/(browser|web|video|result|link)/.test(surface)) return null;
+    const label = clean(value.label || value.text || value.value || value.title || value.url || '');
+    if (!label) return null;
+    return {
+      label,
+      source: value.source || fallbackSource,
+      surface: value.surface || value.kind || 'browser',
+      fresh: value.fresh === true,
+      index: Number.isFinite(Number(value.index)) ? Number(value.index) : null
+    };
+  }
+
+  function bestLiveBrowserTarget(systemState = {}) {
+    const live = liveContext(systemState);
+    const browser = live?.browser || null;
+    if (browser?.open !== true) return null;
+    const best = browserTargetFrom(live?.bestTarget || browser?.bestTarget, 'local-live-best-target');
+    if (best && (best.fresh || browser.candidatesFresh === true)) return best;
+    const last = browserTargetFrom(live?.lastResolvedReference, 'local-live-context');
+    if (last) return last;
+    return best || null;
+  }
+
+  function hasFreshBrowserLiveTarget(systemState = {}) {
+    const live = liveContext(systemState);
+    const browser = live?.browser || null;
+    if (bestLiveBrowserTarget(systemState)) return true;
+    if (browser?.open === true && browser.candidatesFresh === true && Number(browser.candidateCount || 0) > 0) return true;
+    return false;
+  }
+
+  function liveBrowserReference(systemState = {}) {
+    return bestLiveBrowserTarget(systemState);
+  }
+
+  function isReferentialBrowserText(text = '') {
+    const raw = lower(text);
+    return /^(?:that|this|it|that one|this one|same one)$/.test(raw)
+      || /^(?:open|click|play|select|choose)\s+(?:that|this|it|that one|this one|same one)$/.test(raw)
+      || /^(?:open|click|play|select|choose)\s+(?:the\s+)?(?:same|current|selected)\s+(?:video|result|link|item)$/.test(raw);
+  }
+
+  function missingLiveTargetText(lang, reason, systemState = {}) {
+    const l = String(lang || 'en').toLowerCase();
+    const browserOpen = !!systemState?.browserSession?.open || !!systemState?.cloudContext?.browser?.open || !!liveContext(systemState)?.browser?.open;
+    if (l.startsWith('ru')) {
+      return browserOpen
+        ? 'Я понял, что это ссылка на текущий браузер, но у меня нет свежей цели для "это". Обнови страницу, скажи название результата, или дай команду вроде "open third video" после поиска.'
+        : 'Я понял ссылку, но активной браузерной сессии сейчас не вижу. Открой страницу или скажи, что искать.';
+    }
+    if (l.startsWith('ka')) {
+      return browserOpen
+        ? 'ვხვდები, რომ მიმდინარე ბრაუზერს გულისხმობ, მაგრამ "ეს"-ისთვის ახალი სამიზნე არ მაქვს. განაახლე გვერდი, მითხარი შედეგის სახელი, ან ძებნის შემდეგ თქვი "open third video".'
+        : 'მივხვდი მინიშნებას, მაგრამ აქტიურ ბრაუზერის სესიას ახლა ვერ ვხედავ. გახსენი გვერდი ან მითხარი რას მოვძებნო.';
+    }
+    return browserOpen
+      ? 'I know this refers to the current browser, but I do not have a fresh target for "that one". Refresh/read the page, name the result, or say something like "open third video" after a search.'
+      : 'I understand the reference, but I do not see an active browser session right now. Open a page or tell me what to search for.';
+  }
+
+  function explainMissingBrowserTarget({ userMsg = '', systemState = {}, lang = 'en' } = {}) {
+    const text = clean(userMsg);
+    if (!isReferentialBrowserText(text)) return null;
+    const active = activeBrowserPriority(systemState);
+    const local = window.resolveSessionReference?.(text, 'browser') || null;
+    if (active || local || hasFreshBrowserLiveTarget(systemState)) return null;
+    const browserOpen = !!systemState?.browserSession?.open || !!systemState?.cloudContext?.browser?.open || !!liveContext(systemState)?.browser?.open;
+    return {
+      reason: browserOpen ? 'no-fresh-browser-target' : 'no-active-browser-session',
+      text: missingLiveTargetText(lang, browserOpen ? 'no-fresh-browser-target' : 'no-active-browser-session', systemState),
+      actions: [],
+      localLiveContext: liveContext(systemState),
+      browserOpen
+    };
   }
 
 
   function activeDesktopPriority(systemState = {}) {
+    if (!cloudPriorityUsable(systemState, 'inventory')) return null;
     const view = getPriorityView(systemState);
     return (view?.active || []).find((item) => {
       const kind = String(item?.kind || '').toLowerCase();
@@ -281,7 +384,7 @@
     }) || null;
   }
 
-  function actionForPriorityDesktopTarget(item = {}) {
+  function actionForDesktopTarget(item = {}, source = 'desktop-memory') {
     const kind = String(item?.kind || '').toLowerCase();
     const label = clean(item?.label || item?.value || item?.path || '');
     const path = clean(item?.path || item?.value || label);
@@ -289,39 +392,64 @@
     const meta = {
       resolvedLabel: label || path,
       resolvedKind: kind || 'item',
-      resolvedSource: 'cloud-priority-view',
+      resolvedSource: item?.source || source,
       resolvedPath: item?.path || null,
-      priorityPurpose: item?.purpose || 'inventory'
+      priorityPurpose: item?.purpose || item?.surface || 'inventory'
     };
     if (kind === 'game') return { type: 'launch_game', args: [label || path], meta };
     if (kind === 'app') return { type: 'open_app', args: [label || path], meta };
     if (kind === 'folder') return { type: 'open_folder', args: [path || label], meta };
     if (kind === 'file') return { type: 'open_file', args: [path || label], meta };
+    if (kind === 'window') return { type: 'window', args: ['focus', label || path], meta };
+    return null;
+  }
+
+  function actionForPriorityDesktopTarget(item = {}) {
+    return actionForDesktopTarget({ ...item, source: 'cloud-priority-view' }, 'cloud-priority-view');
+  }
+
+  function bestLiveDesktopTarget(systemState = {}) {
+    const live = liveContext(systemState);
+    const best = live?.desktopBestTarget || live?.bestDesktopTarget || null;
+    if (best && best.fresh === true && String(best.surface || '').toLowerCase() !== 'browser') return best;
+    const top = live?.bestTarget || null;
+    if (top && top.fresh === true && String(top.surface || '').toLowerCase() === 'desktop') return top;
     return null;
   }
 
   function parsePriorityDesktopFollowUp(text, systemState = {}) {
     const raw = clean(text);
     const active = activeDesktopPriority(systemState);
-    if (!active) return null;
+    const liveTarget = bestLiveDesktopTarget(systemState);
+    if (!active && !liveTarget) return null;
     const targetOnly = /^(?:that|this|it|that one|this one|same one)$/i.test(raw);
-    const actionMatch = raw.match(/^(?:open|launch|run|play|show|select|choose)\s+(?:that|this|it|that one|this one|same one)$/i)
-      || raw.match(/^(?:open|launch|run|play|show)\s+(?:the\s+)?(?:same|current|selected)\s+(?:app|game|file|folder|item)$/i);
+    const actionMatch = raw.match(/^(?:open|launch|run|play|show|select|choose|focus)\s+(?:that|this|it|that one|this one|same one)$/i)
+      || raw.match(/^(?:open|launch|run|play|show|focus)\s+(?:the\s+)?(?:same|current|selected)\s+(?:app|game|file|folder|window|item)$/i);
     if (!targetOnly && !actionMatch) return null;
-    return actionForPriorityDesktopTarget(active);
+    return active ? actionForPriorityDesktopTarget(active) : actionForDesktopTarget(liveTarget, liveTarget.source || 'local-live-best-target');
   }
   function parsePriorityBrowserFollowUp(text, systemState = {}) {
     const raw = clean(text);
     const lowered = lower(raw);
     const active = activeBrowserPriority(systemState);
     const browserOpen = !!systemState?.browserSession?.open || !!systemState?.cloudContext?.browser?.open || !!active;
-    if (!browserOpen || !active) return null;
+    if (!browserOpen) return null;
     if (/^(?:continue|go on|resume)(?:\s+(?:there|that|it|the page))?$/.test(lowered)) return { type: 'web_read', args: [] };
     const targetOnly = /^(?:that|this|it|that one|this one|same one)$/i.test(raw);
     const actionMatch = raw.match(/^(?:open|click|play|select|choose)\s+(?:that|this|it|that one|this one|same one)$/i);
     if (!targetOnly && !actionMatch) return null;
-    const label = clean(active.label || active.value || active.path || 'that');
-    return { type: 'web_find_click', args: [label], meta: { resolvedLabel: label, resolvedSource: 'cloud-priority-view', priorityPurpose: active.purpose || 'browser' } };
+    if (active) {
+      const label = clean(active.label || active.value || active.path || 'that');
+      return { type: 'web_find_click', args: [label], meta: { resolvedLabel: label, resolvedSource: 'cloud-priority-view', priorityPurpose: active.purpose || 'browser' } };
+    }
+    const liveRef = liveBrowserReference(systemState);
+    if (liveRef) {
+      return { type: 'web_find_click', args: [liveRef.label], meta: { resolvedLabel: liveRef.label, resolvedSource: liveRef.source, priorityPurpose: liveRef.surface || 'browser' } };
+    }
+    const local = window.resolveSessionReference?.(raw, 'browser') || null;
+    if (!local) return null;
+    const label = clean(local.label || local.text || local.value || local.path || 'that');
+    return { type: 'web_find_click', args: [label], meta: { resolvedLabel: label, resolvedSource: local.source || 'live-browser-candidates', priorityPurpose: 'browser' } };
   }
   function parseBrowserFollowUp(text, systemState = {}) {
     const raw = clean(text);
@@ -417,6 +545,7 @@
     if (kind === 'app') return { type: 'open_app', args: [label || path], meta };
     if (kind === 'folder') return { type: 'open_folder', args: [path || label], meta };
     if (kind === 'file') return { type: 'open_file', args: [path || label], meta };
+    if (kind === 'window') return { type: 'window', args: ['focus', label || path], meta };
     return null;
   }
 
@@ -430,7 +559,9 @@
   }
   function parseDesktopAction(text) {
     const raw = clean(text);
-    let match = raw.match(/^(?:launch|play|start|run)\s+(.+)$/i);
+    let match = raw.match(/^(?:open|play|launch|start)\s+(?:my\s+)?(?:music\s+)?playlist\s+["'“”]?(.+?)["'“”]?$/i);
+    if (match) return { type: 'open_playlist', args: [clean(match[1]).replace(/\b(?:playlist|file)$/i, '').trim()] };
+    match = raw.match(/^(?:launch|play|start|run)\s+(.+)$/i);
     if (match) return { type: 'launch_game', args: [clean(match[1])] };
     match = raw.match(/^(?:open|run|launch)\s+(?:app|program|software)\s+(.+)$/i);
     if (match) return { type: 'open_app', args: [clean(match[1])] };
@@ -524,7 +655,7 @@
     const collected = collectSafeActions({ userMsg, systemState, actionPlan });
     if (!collected) return null;
     const { candidates, plan } = collected;
-    const safeLocalTypes = new Set(['open_folder', 'screenshot', 'sys_info', 'disk_usage', 'battery', 'get_ip', 'system_health', 'open_settings', 'open_chat_surface', 'open_voice_surface', 'close_voice_surface', 'list_processes', 'list_games', 'list_software', 'get_clipboard', 'set_volume', 'mute', 'unmute', 'lock_screen', 'open_app', 'launch_game', 'open_file']);
+    const safeLocalTypes = new Set(['open_folder', 'screenshot', 'sys_info', 'disk_usage', 'battery', 'get_ip', 'system_health', 'open_settings', 'open_chat_surface', 'open_voice_surface', 'close_voice_surface', 'list_processes', 'list_games', 'list_software', 'get_clipboard', 'set_volume', 'mute', 'unmute', 'lock_screen', 'open_app', 'launch_game', 'open_file', 'open_playlist', 'window']);
     const localActions = candidates.filter((action) => safeLocalTypes.has(action.type));
     if (!localActions.length) return null;
     const directActions = localActions.map((action) => ({
@@ -546,16 +677,7 @@
     version: VERSION,
     actionsForProviderFailure,
     actionsForObviousBrowserCommand,
+    explainMissingBrowserTarget,
     actionsForObviousLocalCommand
   };
 })();
-
-
-
-
-
-
-
-
-
-

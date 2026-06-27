@@ -3,6 +3,7 @@
 window.hexCloudContextRehydrator = (() => {
   let lastContinuityState = null;
   let lastPriorityView = null;
+  let lastPacketHealth = null;
 
   function normalizeLabel(value) {
     return String(value || '').trim();
@@ -92,6 +93,93 @@ window.hexCloudContextRehydrator = (() => {
       contextFreshnessReason: freshness.reason,
       contextAgeSeconds: freshness.ageSeconds,
       retrievalReason: item?.retrievalReason || item?.reason || item?.meta?.retrievalReason || null
+    };
+  }
+
+  function normalizePriorityView(view = null) {
+    if (!view || typeof view !== 'object') {
+      return {
+        schema: 'hex.desktop-priority-view.v1',
+        active: [],
+        background: [],
+        guidance: null
+      };
+    }
+    return {
+      schema: view.schema || 'hex.desktop-priority-view.v1',
+      active: Array.isArray(view.active) ? view.active : [],
+      background: Array.isArray(view.background) ? view.background : [],
+      guidance: view.guidance || null
+    };
+  }
+
+  function buildPacketHealth(packet = null, priorityView = null) {
+    if (!packet || typeof packet !== 'object') {
+      return {
+        schema: 'hex.context-packet-health.v1',
+        level: 'invalid',
+        ready: false,
+        packetSchema: null,
+        issues: ['packet-not-object'],
+        freshness: {},
+        references: { active: 0, background: 0, browser: 0, desktop: 0, priority: 0 }
+      };
+    }
+
+    const issues = [];
+    const refs = packet.references && typeof packet.references === 'object' ? packet.references : {};
+    const continuity = packet.continuityState && typeof packet.continuityState === 'object' ? packet.continuityState : null;
+    const freshness = continuity?.freshness && typeof continuity.freshness === 'object' ? continuity.freshness : {};
+    const priority = normalizePriorityView(priorityView || buildPriorityView(packet));
+    const count = (value) => Array.isArray(value) ? value.length : 0;
+
+    if (!packet.schema) issues.push('missing-packet-schema');
+    if (!continuity) issues.push('missing-continuity-state');
+    else if (!continuity.schema) issues.push('missing-continuity-schema');
+    if (continuity && !continuity.freshness) issues.push('missing-freshness');
+    if (!packet.retrieval?.schema) issues.push('missing-retrieval-schema');
+    if (!refs || (!count(refs.priority) && !count(refs.browser) && !count(refs.desktop))) issues.push('missing-references');
+
+    const session = packetFreshness(packet, 'session');
+    const browser = packetFreshness(packet, 'browser');
+    const inventory = packetFreshness(packet, 'inventory');
+    const action = packetFreshness(packet, 'action');
+    const allStale = [session, browser, inventory, action].every((item) => item.stale);
+    if (allStale) issues.push('all-context-stale');
+    if (!priority.active.length && priority.background.length) issues.push('priority-background-only');
+
+    const level = issues.includes('missing-continuity-state') || issues.includes('missing-references')
+      ? 'degraded'
+      : allStale
+        ? 'stale'
+        : issues.length
+          ? 'partial'
+          : 'ready';
+
+    return {
+      schema: 'hex.context-packet-health.v1',
+      level,
+      ready: level === 'ready' || level === 'partial',
+      packetSchema: packet.schema || null,
+      issues,
+      freshness: {
+        session: session.reason,
+        browser: browser.reason,
+        inventory: inventory.reason,
+        action: action.reason,
+        sessionSeconds: Number.isFinite(Number(freshness.sessionSeconds)) ? Number(freshness.sessionSeconds) : null,
+        inventorySeconds: Number.isFinite(Number(freshness.inventorySeconds)) ? Number(freshness.inventorySeconds) : null,
+        lastTurnSeconds: Number.isFinite(Number(freshness.lastTurnSeconds)) ? Number(freshness.lastTurnSeconds) : null,
+        lastActionSeconds: Number.isFinite(Number(freshness.lastActionSeconds)) ? Number(freshness.lastActionSeconds) : null
+      },
+      references: {
+        active: priority.active.length,
+        background: priority.background.length,
+        browser: count(refs.browser),
+        desktop: count(refs.desktop),
+        priority: count(refs.priority)
+      },
+      routingGuidance: packet.retrieval?.routingGuidance || null
     };
   }
 
@@ -235,10 +323,15 @@ window.hexCloudContextRehydrator = (() => {
   }
 
   function applyPacket(packet = null) {
-    if (!packet || typeof packet !== 'object') return false;
+    if (!packet || typeof packet !== 'object') {
+      lastPacketHealth = buildPacketHealth(packet, null);
+      return false;
+    }
     lastContinuityState = packet.continuityState && typeof packet.continuityState === 'object' ? { ...packet.continuityState } : null;
     lastPriorityView = buildPriorityView(packet);
+    lastPacketHealth = buildPacketHealth(packet, lastPriorityView);
     packet.desktopPriorityView = lastPriorityView;
+    packet.contextPacketHealth = lastPacketHealth;
     rehydrateDesktopContext(packet.desktopContext || {}, packet);
     rehydrateReferences(packet.references || {}, packet);
     rehydrateMemories(packet.relevantMemories || packet.memories || [], packet);
@@ -256,16 +349,29 @@ window.hexCloudContextRehydrator = (() => {
 
   function getPriorityView(packet = null) {
     if (packet && typeof packet === 'object') return buildPriorityView(packet);
-    return lastPriorityView ? {
-      ...lastPriorityView,
-      active: [...(lastPriorityView.active || [])],
-      background: [...(lastPriorityView.background || [])]
+    if (!lastPriorityView) return null;
+    const priority = normalizePriorityView(lastPriorityView);
+    return {
+      ...priority,
+      active: [...priority.active],
+      background: [...priority.background]
+    };
+  }
+
+  function getPacketHealth(packet = null) {
+    if (packet && typeof packet === 'object') return buildPacketHealth(packet, buildPriorityView(packet));
+    return lastPacketHealth ? {
+      ...lastPacketHealth,
+      issues: [...(lastPacketHealth.issues || [])],
+      freshness: { ...(lastPacketHealth.freshness || {}) },
+      references: { ...(lastPacketHealth.references || {}) }
     } : null;
   }
 
   return {
     applyPacket,
     getLastContinuityState,
-    getPriorityView
+    getPriorityView,
+    getPacketHealth
   };
 })();

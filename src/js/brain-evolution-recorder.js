@@ -70,13 +70,104 @@ window.hexBrainEvolution = (function () {
     }
     return null;
   }
+  function localLiveFromTelemetry(item = {}) {
+    const recent = window.hexBrainTelemetry?.recent?.(12) || [];
+    const user = cleanText(item.user, 220).toLowerCase();
+    const route = cleanText(item.brainRoute?.route || item.brainRoute?.mode || item.brainRoute?.hints?.route, 80).toLowerCase();
+    for (let i = recent.length - 1; i >= 0; i -= 1) {
+      const event = recent[i];
+      if (!event?.localLiveContext) continue;
+      const sameUser = !user || cleanText(event.user, 220).toLowerCase() === user;
+      const sameRoute = !route || cleanText(event.route, 80).toLowerCase() === route;
+      if (!sameUser && !sameRoute) continue;
+      return event.localLiveContext;
+    }
+    return null;
+  }
+
+  function compactLiveCandidate(item = {}) {
+    return {
+      count: Number.isFinite(Number(item.count)) ? Number(item.count) : 0,
+      fresh: item.fresh === true,
+      ageMs: Number.isFinite(Number(item.ageMs)) ? Number(item.ageMs) : null
+    };
+  }
+
+  function compactLiveTarget(item = null) {
+    if (!item || typeof item !== 'object') return null;
+    const label = cleanText(item.label || item.value || item.path, 120);
+    if (!label) return null;
+    return {
+      label,
+      kind: cleanText(item.kind, 40),
+      surface: cleanText(item.surface, 40),
+      source: cleanText(item.source, 80),
+      fresh: item.fresh === true,
+      ageMs: Number.isFinite(Number(item.ageMs)) ? Number(item.ageMs) : null,
+      index: Number.isFinite(Number(item.index)) ? Number(item.index) : null,
+      path: cleanText(item.path, 220) || null
+    };
+  }
+
+  function localLiveSnapshot(item = {}) {
+    const live = item.localLiveContext || item.liveContext || localLiveFromTelemetry(item) || window.hexContextState?.getLiveContextFreshness?.() || null;
+    if (!live || typeof live !== 'object') return null;
+    const candidates = live.candidates && typeof live.candidates === 'object'
+      ? ['recent', 'file', 'folder', 'app', 'game', 'window', 'process'].reduce((out, kind) => {
+        if (live.candidates[kind]) out[kind] = compactLiveCandidate(live.candidates[kind]);
+        return out;
+      }, {})
+      : {};
+    return {
+      schema: 'hex.feedback-local-live-context.v1',
+      source: item.localLiveContext || item.liveContext ? 'feedback-item' : (window.hexContextState?.getLiveContextFreshness ? 'live-context-state' : 'brain-telemetry'),
+      browser: live.browser && typeof live.browser === 'object' ? {
+        open: live.browser.open === true,
+        title: cleanText(live.browser.title, 120) || null,
+        url: cleanText(live.browser.url, 180) || null,
+        candidateCount: Number.isFinite(Number(live.browser.candidateCount)) ? Number(live.browser.candidateCount) : 0,
+        candidatesFresh: live.browser.candidatesFresh === true,
+        candidatesAgeMs: Number.isFinite(Number(live.browser.candidatesAgeMs)) ? Number(live.browser.candidatesAgeMs) : null,
+        snapshotAgeMs: Number.isFinite(Number(live.browser.snapshotAgeMs)) ? Number(live.browser.snapshotAgeMs) : null
+      } : null,
+      candidates,
+      bestTarget: compactLiveTarget(live.bestTarget || live.browser?.bestTarget || null),
+      desktopBestTarget: compactLiveTarget(live.desktopBestTarget || live.bestDesktopTarget || null),
+      referenceCandidateCount: Number.isFinite(Number(live.referenceCandidateCount)) ? Number(live.referenceCandidateCount) : 0,
+      lastResolvedReference: live.lastResolvedReference ? {
+        label: cleanText(live.lastResolvedReference.label || live.lastResolvedReference.value, 120),
+        kind: cleanText(live.lastResolvedReference.kind, 40),
+        surface: cleanText(live.lastResolvedReference.surface, 40),
+        source: cleanText(live.lastResolvedReference.source, 80)
+      } : null
+    };
+  }
+  function recoverySnapshot(item = {}) {
+    const recovery = item.recovery && typeof item.recovery === 'object' ? item.recovery : null;
+    const route = item.brainRoute || null;
+    const mode = cleanText(recovery?.mode || route?.mode || route?.route || route?.hints?.route, 80);
+    const reason = cleanText(recovery?.reason || route?.reason || route?.hints?.reason, 120);
+    const text = cleanText(recovery?.text || (/(context-gap|recovery|no-fresh|no-active|stale|missing)/i.test(mode + ' ' + reason) ? item.assistant : ''), 1600);
+    if (!text && !mode && !reason) return null;
+    const refused = recovery?.refusedToGuess === true || /(context-gap|no-fresh-browser-target|no-active-browser-session)/i.test(mode + ' ' + reason);
+    return {
+      schema: 'hex.feedback-recovery-message.v1',
+      text,
+      mode: mode || null,
+      reason: reason || null,
+      classification: cleanText(recovery?.classification, 80) || (refused ? 'stale-reference-refusal' : 'action-recovery-message'),
+      refusedToGuess: refused,
+      actionsSuggested: Number.isFinite(Number(recovery?.actionsSuggested)) ? Number(recovery.actionsSuggested) : (Array.isArray(item.actions) ? item.actions.length : 0),
+      userFacing: !!text
+    };
+  }
 
   function prioritySnapshot(item = {}) {
     const route = item.brainRoute || null;
     const view = route?.server?.priorityView || route?.hints?.server?.priorityView || route?.priorityView || null;
     const fallback = view ? null : priorityFromTelemetry(item);
     const priority = view || fallback;
-    if (!priority) return null;
+    if (!priority || typeof priority !== 'object') return null;
     const active = Array.isArray(priority.active) ? priority.active.slice(0, 8).map(compactPriorityItem) : [];
     const background = Array.isArray(priority.background) ? priority.background.slice(0, 8).map(compactPriorityItem) : [];
     const activeCount = Number(priority.activeCount ?? active.length) || active.length;
@@ -93,6 +184,10 @@ window.hexBrainEvolution = (function () {
       guidance: cleanText(priority.guidance, 240) || null
     };
   }
+  function extractActionCorrectionFact(text = '') {
+    return window.hexMemoryExtraction?.extractActionCorrectionFact?.(text) || null;
+  }
+
   function inferTags(signal, item, correction) {
     const text = [item?.user, item?.assistant, correction].filter(Boolean).join(' ').toLowerCase();
     const tags = ['feedback', signal];
@@ -128,6 +223,8 @@ window.hexBrainEvolution = (function () {
         freshnessTiers: cloudState.freshnessTiers || null
       } : null,
       priorityReferences: priority,
+      localLiveContext: localLiveSnapshot(item),
+      recoveryMessage: recoverySnapshot(item),
       localSession: {
         activeSurface: cleanText(window.hexContextState?.state?.activeSurface || window.sessionContext?.activeSurface || '', 40) || null,
         currentTask: cleanText(window.hexMemory?.working?.currentTask || window.hexBrainCore?.currentTask || '', 180) || null
@@ -197,7 +294,7 @@ window.hexBrainEvolution = (function () {
   }
 
   function priorityQuality(priority = null) {
-    if (!priority) {
+    if (!priority || typeof priority !== 'object') {
       return {
         known: false,
         source: null,
@@ -225,9 +322,40 @@ window.hexBrainEvolution = (function () {
     };
   }
 
+  function recoveryQuality(recovery = null) {
+    if (!recovery) {
+      return {
+        known: false,
+        userFacing: false,
+        refusedToGuess: false,
+        staleReferenceRefusal: false,
+        actionRecoveryMessage: false,
+        classification: null,
+        reason: null
+      };
+    }
+    return {
+      known: true,
+      userFacing: recovery.userFacing === true,
+      refusedToGuess: recovery.refusedToGuess === true,
+      staleReferenceRefusal: recovery.classification === 'stale-reference-refusal' || recovery.refusedToGuess === true,
+      actionRecoveryMessage: recovery.classification === 'action-recovery-message',
+      classification: recovery.classification || null,
+      reason: recovery.reason || null
+    };
+  }
+
   function contextQuality(context = {}) {
     const freshness = context.cloudContinuity?.freshness || null;
     const route = context.route || null;
+    const live = context.localLiveContext || null;
+    const liveCandidates = live?.candidates && typeof live.candidates === 'object' ? live.candidates : {};
+    const freshLocalCandidateKinds = Object.entries(liveCandidates)
+      .filter(([, value]) => value?.count > 0 && value.fresh === true)
+      .map(([kind]) => kind);
+    const staleLocalCandidateKinds = Object.entries(liveCandidates)
+      .filter(([, value]) => value?.count > 0 && value.fresh !== true)
+      .map(([kind]) => kind);
     return {
       language: context.language || 'en',
       voiceMode: context.system?.voiceMode === true,
@@ -238,7 +366,24 @@ window.hexBrainEvolution = (function () {
       cloudFreshnessKnown: !!freshness,
       serverPacketStale: route?.serverFreshness?.stale === true,
       serverPacketFresh: route?.serverFreshness?.fresh === true,
-      priority: priorityQuality(context.priorityReferences)
+      priority: priorityQuality(context.priorityReferences),
+      localLive: {
+        known: !!live,
+        browserOpen: live?.browser?.open === true,
+        browserCandidateCount: Number(live?.browser?.candidateCount || 0),
+        freshBrowserCandidates: live?.browser?.candidatesFresh === true && Number(live?.browser?.candidateCount || 0) > 0,
+        referenceCandidateCount: Number(live?.referenceCandidateCount || 0),
+        freshLocalCandidateKinds,
+        staleLocalCandidateKinds,
+        hasFreshLocalTargets: freshLocalCandidateKinds.length > 0,
+        hasOnlyStaleLocalTargets: !freshLocalCandidateKinds.length && staleLocalCandidateKinds.length > 0,
+        bestTargetSurface: live?.bestTarget?.surface || live?.bestTarget?.kind || null,
+        desktopBestTargetKind: live?.desktopBestTarget?.kind || null,
+        desktopBestTargetSource: live?.desktopBestTarget?.source || null,
+        freshDesktopBestTarget: live?.desktopBestTarget?.fresh === true,
+        lastResolvedSurface: live?.lastResolvedReference?.surface || live?.lastResolvedReference?.kind || null
+      },
+      recovery: recoveryQuality(context.recoveryMessage)
     };
   }
   function buildPreferencePair(signal, item, correction) {
@@ -297,6 +442,7 @@ window.hexBrainEvolution = (function () {
       user: cleanText(item.user, 4000),
       assistant: cleanText(item.assistant, 8000),
       correction: cleanText(correction, 8000),
+      actionCorrection: extractActionCorrectionFact(correction),
       route: item.brainRoute || null,
       routeSummary: context.route,
       context,
@@ -307,9 +453,10 @@ window.hexBrainEvolution = (function () {
         usableAsNegative: normalizedSignal === 'wrong' || normalizedSignal === 'fix',
         route: routeQuality(context.route),
         action: actionSummary(item, context.route),
-        context: contextQuality(context)
+        context: contextQuality(context),
+        recovery: recoveryQuality(context.recoveryMessage)
       },
-      tags: inferTags(normalizedSignal, item, correction),
+      tags: Array.from(new Set(inferTags(normalizedSignal, item, correction).concat(extractActionCorrectionFact(correction) ? ['exact-action-correction'] : []))),
       training: pair
     };
   }
@@ -355,7 +502,9 @@ window.hexBrainEvolution = (function () {
       confidence: record.signal === 'good' ? 0.9 : 0.75,
       user: record.user,
       sources: record.tags,
-      priority: record.context?.priorityReferences || null
+      priority: record.context?.priorityReferences || null,
+      localLiveContext: record.context?.localLiveContext || null,
+      details: { recoveryMessage: record.context?.recoveryMessage || null, recoveryQuality: record.quality?.recovery || null }
     });
 
     window.hexCloudSync?.runDetached?.('record feedback evolution', () => window.hexCloudSync.recordActivity({

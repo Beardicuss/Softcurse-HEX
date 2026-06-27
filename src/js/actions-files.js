@@ -3,6 +3,29 @@
 
 
 window.hexFileActionHandler = (() => {
+  function findLearnedAliasPath(kind, query = '') {
+    const q = String(query || '').trim().toLowerCase();
+    if (!q || !Array.isArray(window.hexMemory?.nodes)) return null;
+    const prefix = `${kind}_alias:`;
+    const exact = window.hexMemory.nodes.find((node) => {
+      const content = String(node?.content || '').trim();
+      if (!content.toLowerCase().startsWith(prefix)) return false;
+      const match = content.match(new RegExp(`^${kind}_alias:([^=]+)=(.+)$`, 'i'));
+      return match && match[1].trim().toLowerCase() === q && match[2].trim();
+    });
+    if (!exact) return null;
+    const match = String(exact.content || '').match(new RegExp(`^${kind}_alias:([^=]+)=(.+)$`, 'i'));
+    return match?.[2]?.trim() || null;
+  }
+
+  function findLearnedPlaylistPath(query = '') {
+    return findLearnedAliasPath('playlist', query);
+  }
+
+  function findLearnedFilePath(query = '') {
+    return findLearnedAliasPath('file', query);
+  }
+
   function publishFileCandidates(files) {
     return window.hexCandidatePublishers?.publishFiles(files) || [];
   }
@@ -116,31 +139,91 @@ window.hexFileActionHandler = (() => {
         return { handled: true };
       }
 
+      case 'open_playlist': {
+        const query = action.args.join(' ').trim().replace(/^["'“”‘’]+|["'“”‘’]+$/g, '');
+        if (!query) return { handled: true };
+        const learnedPath = findLearnedPlaylistPath(query);
+        if (learnedPath) {
+          addLog('BUTLER', `Opening learned playlist alias: ${query} -> ${learnedPath}`);
+          const learnedOpen = await window.hexAPI.butler.openFile(learnedPath);
+          if (learnedOpen?.success) {
+            addHexMessage(`**Opening playlist:** ${query}`);
+            noteDesktopOutcome({
+              kind: 'file',
+              label: query,
+              path: learnedOpen.path || learnedPath,
+              value: learnedOpen.path || learnedPath,
+              meta: { targetType: 'playlist', source: 'playlist-alias-memory', exact: true }
+            }, 'file', true);
+            return { handled: true };
+          }
+          addLog('BUTLER', `Learned playlist alias failed, falling back to search: ${learnedOpen?.error || 'unknown error'}`, 'warn');
+        }
+
+        addLog('BUTLER', `Searching playlists for: ${query}`);
+        const result = await window.hexAPI.butler.findFiles(query, 'music');
+        const files = Array.isArray(result?.files) ? result.files : [];
+        const normalizedQuery = query.toLowerCase().replace(/\.(xspf|m3u8?|pls|wpl)$/i, '').trim();
+        const playlistFiles = files.filter((file) => /\.(xspf|m3u8?|pls|wpl)$/i.test(file?.path || file?.name || ''));
+        const exact = playlistFiles.find((file) => {
+          const base = String(file.name || file.path || '').split(/[\\/]/).pop().replace(/\.(xspf|m3u8?|pls|wpl)$/i, '').toLowerCase();
+          return base === normalizedQuery;
+        });
+        const contains = playlistFiles.find((file) => {
+          const base = String(file.name || file.path || '').split(/[\\/]/).pop().replace(/\.(xspf|m3u8?|pls|wpl)$/i, '').toLowerCase();
+          return base.includes(normalizedQuery) || normalizedQuery.includes(base);
+        });
+        const picked = exact || contains || playlistFiles[0] || files[0] || null;
+        if (!picked?.path) {
+          addHexMessage(`I couldn't find a playlist named **${query}** in your Music library.`);
+          addLog('BUTLER', `Playlist not found: ${query}`, 'error');
+          return { handled: true };
+        }
+        const openResult = await window.hexAPI.butler.openFile(picked.path);
+        if (openResult?.success) {
+          addLog('BUTLER', `Opened playlist: ${openResult.path || picked.path}`);
+          addHexMessage(`**Opening playlist:** ${picked.name || query}`);
+          noteDesktopOutcome({
+            kind: 'file',
+            label: picked.name || query,
+            path: openResult.path || picked.path,
+            value: openResult.path || picked.path,
+            meta: { targetType: 'playlist', source: 'playlist-search', exact: picked === exact }
+          }, 'file', true);
+        } else {
+          addHexMessage(`**Could not open playlist** "${query}". ${openResult?.error || ''}`);
+          addLog('BUTLER', `Playlist open failed: ${query} - ${openResult?.error || ''}`, 'error');
+        }
+        return { handled: true };
+      }
       case 'open_file': {
         if (action.args[0]) {
           const p = action.args.join(':');
-          const openResult = await window.hexAPI.butler.openFile(p);
+          const learnedPath = findLearnedFilePath(p);
+          const targetPath = learnedPath || p;
+          if (learnedPath) addLog('BUTLER', `Opening learned file alias: ${p} -> ${learnedPath}`);
+          const openResult = await window.hexAPI.butler.openFile(targetPath);
           if (openResult.success) {
             addLog('BUTLER', `Opened file: ${openResult.path}`);
             const recentFile = {
               kind: 'file',
-              label: String(openResult.path || p).split(/[\\/]/).pop(),
-              path: openResult.path || p,
-              value: openResult.path || p,
-              meta: { targetType: 'file' }
+              label: learnedPath ? p : String(openResult.path || p).split(/[\\/]/).pop(),
+              path: openResult.path || targetPath,
+              value: openResult.path || targetPath,
+              meta: { targetType: 'file', source: learnedPath ? 'file-alias-memory' : 'open-file', exact: !!learnedPath }
             };
             noteDesktopOutcome(recentFile, 'file', true);
-            if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_file:${p}`, true);
+            if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_file:${targetPath}`, true);
           } else {
             addLog('BUTLER', `File error: ${openResult.error}`, 'error');
             noteDesktopOutcome({
               kind: 'file',
-              label: String(p).split(/[\/]/).pop() || p,
-              path: p,
-              value: p,
-              meta: { targetType: 'file', source: 'open-file' }
+              label: String(targetPath).split(/[\\/]/).pop() || targetPath,
+              path: targetPath,
+              value: targetPath,
+              meta: { targetType: 'file', source: learnedPath ? 'file-alias-memory' : 'open-file', exact: !!learnedPath }
             }, 'file', false, openResult.error || '');
-            if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_file:${p}`, false, openResult.error);
+            if (window.hexMemory) window.hexMemory.recordActionOutcome(`open_file:${targetPath}`, false, openResult.error);
           }
         }
         return { handled: true };
@@ -332,10 +415,3 @@ window.hexFileActionHandler = (() => {
 
   return { handle, publishFileCandidates };
 })();
-
-
-
-
-
-
-

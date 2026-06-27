@@ -295,7 +295,7 @@ window.dispatchVoiceCommand = dispatchVoiceCommand;
     voiceCommandListenTimer = setTimeout(() => {
       voiceCommandListenTimer = null;
       if (window.hexVoice?.isListening) updateMicUI(true, window.hexVoice?._isAwakeHeld?.() ? 'awake' : 'standby');
-    }, 6500);
+    }, 8500);
   };
   window.hexVoice.onWakeTimeout = () => {
     addLog('VOICE', 'Wake window expired. Returning to standby.');
@@ -308,13 +308,11 @@ window.dispatchVoiceCommand = dispatchVoiceCommand;
   window.hexVoice.onAwakeStart = (_reason, ms) => {
     const statusEl = document.getElementById('mic-status');
     const isCommandWindowVisible = statusEl?.classList.contains('active');
-    if (!voiceCommandListenTimer) {
-      voiceCommandListenTimer = setTimeout(() => {
-        voiceCommandListenTimer = null;
-        if (window.hexVoice?.isListening) updateMicUI(true, 'standby');
-      }, Number(ms) || 60000);
-    }
     if (window.hexVoice?.isListening && !isCommandWindowVisible) updateMicUI(true, 'awake');
+    const holdMs = Number(ms) || 60000;
+    setTimeout(() => {
+      if (window.hexVoice?.isListening && !window.hexVoice?._isAwakeHeld?.()) updateMicUI(true, 'standby');
+    }, holdMs + 300);
   };
   window.hexVoice.onAwakeEnd = () => {
     if (voiceCommandListenTimer) {
@@ -727,10 +725,14 @@ function updateMicUI(listening, mode = null) {
   if (labelEl) {
     if (!listening || voiceMode === 'off') labelEl.textContent = window.i18n.t('microphone_off') || 'MIC OFF';
     else if (voiceMode === 'listening') labelEl.textContent = window.i18n.t('listening') || 'LISTENING...';
+    else if (voiceMode === 'awake') labelEl.textContent = 'AWAKE';
+    else if (voiceMode === 'processing') labelEl.textContent = 'PROCESSING';
+    else if (voiceMode === 'speaking') labelEl.textContent = 'SPEAKING';
+    else if (voiceMode === 'action') labelEl.textContent = 'EXECUTING';
     else labelEl.textContent = 'STANDBY';
   }
-  statusEl?.classList.toggle('active', listening && voiceMode === 'listening');
-  statusEl?.classList.toggle('standby', listening && voiceMode !== 'listening');
+  statusEl?.classList.toggle('active', listening && ['listening', 'awake', 'processing', 'speaking', 'action'].includes(voiceMode));
+  statusEl?.classList.toggle('standby', listening && voiceMode === 'standby');
   micBtn?.classList.toggle('active', listening);
   setVoiceAgiSurface(listening, voiceMode);
   if (listening && voiceMode === 'listening') {

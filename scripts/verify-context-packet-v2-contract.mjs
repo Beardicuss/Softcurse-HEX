@@ -83,6 +83,10 @@ assert.equal(packet.continuityState.freshnessTiers.browser, 'stale');
 assert.equal(packet.retrieval.contextUse.schema, 'hex.context-use.v1');
 assert.equal(packet.retrieval.contextUse.background.includes('browser'), true);
 assert.equal(packet.retrieval.contextUse.active.includes('session'), false);
+assert.equal(packet.retrieval.routingGuidance.schema, 'hex.routing-guidance.v1');
+assert.equal(packet.retrieval.routingGuidance.backgroundOnlySurfaces.includes('browser'), true);
+assert.equal(packet.retrieval.routingGuidance.clarificationTriggers.includes('stale-browser-reference'), true);
+assert.equal(packet.retrieval.routingGuidance.browserFollowUpPolicy, 'require-fresh-live-browser-target-before-clicking');
 assert.equal(typeof packet.continuityState.freshness.sessionSeconds, 'number');
 assert.equal(typeof packet.continuityState.freshness.inventorySeconds, 'number');
 assert.equal(packet.activeGoal.text, 'Open selected YouTube result');
@@ -114,5 +118,6 @@ console.log('Context packet V2 contract OK:', {
   turnReasons: packet.retrieval.reasons.turns.length,
   actionReasons: packet.retrieval.reasons.actions.length,
   contextBackground: packet.retrieval.contextUse.background.join(','),
+  routingPolicy: packet.retrieval.routingGuidance.recoveryPolicy,
   desktopCategories: Object.keys(packet.retrieval.categoryCounts).length
 });

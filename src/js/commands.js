@@ -7,7 +7,17 @@
 // ════════════════════════════════════════════════════════════════════════════════
 async function tryDirectCommand(text) {
   const rawInput = text.trim();
-  const raw = rawInput.replace(/[\s.!?]+$/g, '').trim();
+  const normalizeDirectInput = (value) => {
+    let input = String(value || '').replace(/[\s.!?]+$/g, '').trim();
+    if (!input) return '';
+    const wakePrefix = input.match(/^(?:hey\s+(?:buddy|hex|cardinal)|hi\s+(?:hex|cardinal)|hello\s+(?:hex|cardinal)|yo\s+(?:hex|cardinal)|hex|cardinal|h\.e\.x\.)[,\s:;-]+(.+)$/i);
+    if (wakePrefix?.[1]) input = wakePrefix[1].trim();
+    const greetingCommand = input.match(/^(?:hey|hi|hello|yo|buddy)[,\s:;-]+((?:open|show|play|launch|run|start|close|hide|search|find|go\s+to|visit|browse\s+to)\b.+)$/i);
+    if (greetingCommand?.[1]) input = greetingCommand[1].trim();
+    return input.replace(/^["'“”‘’]+|["'“”‘’]+$/g, '').trim();
+  };
+  const raw = normalizeDirectInput(rawInput);
+  if (!raw) return { handled: false };
   const t = raw.toLowerCase();
 
   const rememberResolvedReference = (resolved) => {
@@ -61,7 +71,7 @@ async function tryDirectCommand(text) {
     const name = window._hexConfig?.userName || 'Dante';
     return sayLocal(`You are ${name}.`);
   }
-  if (/^(?:who\s+are\s+you|what\s+are\s+you)$/.test(t)) {
+  if (/^(?:who\s+are\s+you|what\s+are\s+you|what(?:'s|\s+is)\s+your\s+name)$/.test(t)) {
     return sayLocal('I am H.E.X., the Quiet Cardinal. Local brain online and listening.');
   }
   if (/^(?:close|hide|dismiss|exit|back\s+from)\s+(?:the\s+)?(?:settings|settings\s+panel|settings\s+window)$/.test(t)) {
@@ -159,6 +169,12 @@ async function tryDirectCommand(text) {
     const resolved = window.hexReferenceResolver.resolveDesktopReference(raw, preferredKind);
     return handleResolvedDesktopTarget(resolved, raw);
   };
+
+  const playlistM = raw.match(/^(?:open|play|launch|start)\s+(?:my\s+)?(?:music\s+)?playlist\s+["'“”]?(.+?)["'“”]?$/i);
+  if (playlistM) {
+    const name = playlistM[1].trim().replace(/\b(?:playlist|file)$/i, '').trim();
+    if (name) return do_('open_playlist', [name], 'Opening playlist ' + name + '...');
+  }
 
   const resolvedMixedRef = await tryMixedReference();
   if (resolvedMixedRef) return resolvedMixedRef;

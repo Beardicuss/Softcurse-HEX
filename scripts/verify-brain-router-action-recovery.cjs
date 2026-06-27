@@ -95,6 +95,17 @@ require(path.join(__dirname, '..', 'src', 'js', 'brain-router.js'));
   assert.equal(directCloseBrowser.actions[0].type, 'web_close');
   assert.equal(directCloseBrowser.hints.providerRequired, false);
 
+  const directPlaylist = await window.hexBrainRouter.route({
+    userMsg: 'play playlist insight',
+    lang: 'en',
+    systemState: {}
+  });
+
+  assert.equal(directPlaylist.mode, 'direct-local-action');
+  assert.equal(directPlaylist.actions[0].type, 'open_playlist');
+  assert.deepEqual(directPlaylist.actions[0].args, ['insight']);
+  assert.equal(directPlaylist.hints.providerRequired, false);
+
 
   const priorityBrowserFollowUp = await window.hexBrainRouter.route({
     userMsg: 'that one',
@@ -253,6 +264,41 @@ require(path.join(__dirname, '..', 'src', 'js', 'brain-router.js'));
   assert.equal(staleBrowser.hints.serverPacketFreshness.stale, true);
   assert.equal(staleBrowser.hints.recommendedNext, 'reason-with-server-background-memory');
 
+  const guidanceBackgroundBrowserPacket = {
+    schema: 'hex.context-packet.v2',
+    continuityState: {
+      schema: 'hex.continuity-state.v1',
+      activeSurface: 'browser',
+      browser: { open: true, title: 'Fresh but background YouTube', url: 'https://youtube.com' },
+      hasDesktopInventory: true,
+      freshness: { sessionSeconds: 20, lastTurnSeconds: 8, inventorySeconds: 100, lastActionSeconds: 12 }
+    },
+    retrieval: {
+      schema: 'hex.retrieval-summary.v1',
+      routingGuidance: {
+        schema: 'hex.routing-guidance.v1',
+        activeSurfaces: ['session', 'inventory'],
+        backgroundOnlySurfaces: ['browser'],
+        missingSurfaces: [],
+        clarificationTriggers: ['stale-browser-reference'],
+        recoveryPolicy: 'prefer-live-local-context-before-provider-or-clarification',
+        browserFollowUpPolicy: 'require-fresh-live-browser-target-before-clicking'
+      }
+    },
+    browser: { open: true, title: 'Fresh but background YouTube', url: 'https://youtube.com' }
+  };
+
+  const guidanceBackgroundBrowser = await window.hexBrainRouter.route({
+    userMsg: 'what page is open',
+    lang: 'en',
+    systemState: { cloudContext: guidanceBackgroundBrowserPacket }
+  });
+
+  assert.equal(guidanceBackgroundBrowser.mode, 'provider');
+  assert.equal(guidanceBackgroundBrowser.reason, 'routing-guidance-background');
+  assert.equal(guidanceBackgroundBrowser.hints.recommendedNext, 'follow-routing-guidance-prefer-live-local');
+  assert.equal(guidanceBackgroundBrowser.hints.server.routingGuidance.backgroundOnlySurfaces[0], 'browser');
+
   const staleLastTurn = await window.hexBrainRouter.route({
     userMsg: 'what was my last message?',
     lang: 'en',
@@ -270,12 +316,187 @@ require(path.join(__dirname, '..', 'src', 'js', 'brain-router.js'));
   assert.equal(staleMemory.mode, 'memory-answer');
   assert.equal(staleMemory.reason, 'server-memory');
 
+
+  const degradedFailurePacket = {
+    schema: 'hex.context-packet.v2',
+    contextPacketHealth: {
+      schema: 'hex.context-packet-health.v1',
+      level: 'degraded',
+      ready: false,
+      issues: ['server-timeout'],
+      references: { active: 0, background: 1, total: 1 }
+    },
+    continuityState: {
+      schema: 'hex.continuity-state.v1',
+      activeSurface: 'browser',
+      browser: { open: true, title: 'Old YouTube', url: 'https://youtube.com' },
+      freshness: { sessionSeconds: 12, lastTurnSeconds: 8, lastActionSeconds: 5 }
+    },
+    browser: { open: true, title: 'Old YouTube', url: 'https://youtube.com' },
+    actionTimeline: [
+      { kind: 'action-result', status: 'failure', actionType: 'web_find_click', surface: 'browser', text: 'Old failure', at: '2026-06-24T12:00:00.000Z' }
+    ]
+  };
+
+  const degradedDirectBrowser = await window.hexBrainRouter.route({
+    userMsg: 'open third video',
+    lang: 'en',
+    systemState: {
+      browserSession: { open: true, title: 'Live YouTube' },
+      cloudContext: degradedFailurePacket
+    }
+  });
+
+  assert.equal(degradedDirectBrowser.mode, 'direct-browser-action');
+  assert.equal(degradedDirectBrowser.reason, 'direct-browser-action');
+  assert.equal(degradedDirectBrowser.actions[0].type, 'web_find_click');
+  assert.deepEqual(degradedDirectBrowser.actions[0].args, ['third video']);
+  assert.equal(degradedDirectBrowser.hints.serverPacketHealth.level, 'degraded');
+  assert.ok(degradedDirectBrowser.hints.confidence < 0.92);
+
+  const stalePriorityOnly = await window.hexBrainRouter.route({
+    userMsg: 'that one',
+    lang: 'en',
+    systemState: {
+      cloudContext: {
+        schema: 'hex.context-packet.v2',
+        contextPacketHealth: {
+          schema: 'hex.context-packet-health.v1',
+          level: 'stale',
+          ready: false,
+          issues: ['all-context-stale']
+        },
+        desktopPriorityView: {
+          schema: 'hex.desktop-priority-view.v1',
+          active: [{ kind: 'browser', purpose: 'browser', label: 'Old stale video', contextFresh: false }],
+          background: []
+        }
+      }
+    }
+  });
+
+  assert.equal(stalePriorityOnly.mode, 'context-gap-local');
+  assert.equal(stalePriorityOnly.reason, 'no-active-browser-session');
+  assert.match(stalePriorityOnly.text, /active browser session/i);
+
+  const missingLiveTarget = await window.hexBrainRouter.route({
+    userMsg: 'same one',
+    lang: 'en',
+    systemState: {
+      browserSession: { open: true, title: 'YouTube' },
+      localLiveContext: {
+        browser: { open: true, title: 'YouTube', candidateCount: 0, candidatesFresh: false },
+        candidates: {},
+        referenceCandidateCount: 0
+      }
+    }
+  });
+
+  assert.equal(missingLiveTarget.mode, 'context-gap-local');
+  assert.equal(missingLiveTarget.reason, 'no-fresh-browser-target');
+  assert.equal(missingLiveTarget.hints.providerRequired, false);
+  assert.equal(missingLiveTarget.hints.local.liveContext.browser.candidateCount, 0);
+  assert.match(missingLiveTarget.text, /fresh target/i);
+
+  const freshLiveTargetRoute = await window.hexBrainRouter.route({
+    userMsg: 'same one',
+    lang: 'en',
+    systemState: {
+      browserSession: { open: true, title: 'Live YouTube' },
+      localLiveContext: {
+        browser: { open: true, title: 'Live YouTube', candidateCount: 2, candidatesFresh: true },
+        lastResolvedReference: { label: 'Fresh live video', surface: 'browser', source: 'local-live-browser' }
+      }
+    }
+  });
+
+  assert.equal(freshLiveTargetRoute.mode, 'direct-browser-action');
+  assert.equal(freshLiveTargetRoute.reason, 'direct-browser-action');
+  assert.equal(freshLiveTargetRoute.actions[0].type, 'web_find_click');
+  assert.deepEqual(freshLiveTargetRoute.actions[0].args, ['Fresh live video']);
+  assert.equal(freshLiveTargetRoute.hints.providerRequired, false);
+
+  const bestTargetOnlyRoute = await window.hexBrainRouter.route({
+    userMsg: 'open that one',
+    lang: 'en',
+    systemState: {
+      browserSession: { open: true, title: 'Live YouTube' },
+      localLiveContext: {
+        browser: { open: true, title: 'Live YouTube', candidateCount: 2, candidatesFresh: true },
+        bestTarget: { label: 'Best fresh browser video', kind: 'video', surface: 'browser', source: 'browser-candidates', fresh: true, index: 1 }
+      }
+    }
+  });
+
+  assert.equal(bestTargetOnlyRoute.mode, 'direct-browser-action');
+  assert.equal(bestTargetOnlyRoute.reason, 'direct-browser-action');
+  assert.equal(bestTargetOnlyRoute.actions[0].type, 'web_find_click');
+  assert.deepEqual(bestTargetOnlyRoute.actions[0].args, ['Best fresh browser video']);
+  assert.equal(bestTargetOnlyRoute.actions[0].meta.resolvedSource, 'browser-candidates');
+  assert.equal(bestTargetOnlyRoute.hints.providerRequired, false);
+
+  const desktopBestTargetRoute = await window.hexBrainRouter.route({
+    userMsg: 'open it',
+    lang: 'en',
+    systemState: {
+      localLiveContext: {
+        desktopBestTarget: { label: 'Visual Studio Code', kind: 'app', surface: 'desktop', source: 'app-candidates', fresh: true, index: 1 }
+      }
+    }
+  });
+
+  assert.equal(desktopBestTargetRoute.mode, 'direct-local-action');
+  assert.equal(desktopBestTargetRoute.reason, 'direct-local-action');
+  assert.equal(desktopBestTargetRoute.actions[0].type, 'open_app');
+  assert.deepEqual(desktopBestTargetRoute.actions[0].args, ['Visual Studio Code']);
+  assert.equal(desktopBestTargetRoute.actions[0].meta.resolvedSource, 'app-candidates');
+  assert.equal(desktopBestTargetRoute.hints.providerRequired, false);
+
+  const windowBestTargetRoute = await window.hexBrainRouter.route({
+    userMsg: 'focus that one',
+    lang: 'en',
+    systemState: {
+      localLiveContext: {
+        desktopBestTarget: { label: 'Untitled - Notepad', kind: 'window', surface: 'desktop', source: 'window-candidates', fresh: true, index: 1 }
+      }
+    }
+  });
+
+  assert.equal(windowBestTargetRoute.mode, 'direct-local-action');
+  assert.equal(windowBestTargetRoute.actions[0].type, 'window');
+  assert.deepEqual(windowBestTargetRoute.actions[0].args, ['focus', 'Untitled - Notepad']);
+  assert.equal(windowBestTargetRoute.actions[0].meta.resolvedSource, 'window-candidates');
+  assert.equal(windowBestTargetRoute.hints.providerRequired, false);
+
+  const degradedProviderRoute = await window.hexBrainRouter.route({
+    userMsg: 'explain what we were doing',
+    lang: 'en',
+    systemState: { cloudContext: degradedFailurePacket }
+  });
+
+  assert.equal(degradedProviderRoute.mode, 'provider');
+  assert.equal(degradedProviderRoute.reason, 'stale-server-packet-background');
+  assert.equal(degradedProviderRoute.hints.recommendedNext, 'prefer-local-or-live-browser-context');
+
+  const nullPriorityRoute = await window.hexBrainRouter.route({
+    userMsg: 'open settings',
+    lang: 'en',
+    systemState: {
+      cloudContext: {
+        schema: 'hex.context-packet.v2',
+        desktopPriorityView: null,
+        contextPacketHealth: { level: 'degraded', ready: false, issues: ['priority-null'] },
+        retrieval: { contextUse: null }
+      }
+    }
+  });
+
+  assert.equal(nullPriorityRoute.mode, 'direct-local-action');
+  assert.equal(nullPriorityRoute.actions[0].type, 'open_settings');
+  assert.equal(nullPriorityRoute.hints.server.priorityView, null);
+  assert.equal(nullPriorityRoute.hints.providerRequired, false);
   console.log('Brain router action recovery contract OK');
 })().catch((error) => {
   console.error(error);
   process.exit(1);
 });
-
-
-
-

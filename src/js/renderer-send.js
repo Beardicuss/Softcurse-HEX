@@ -48,6 +48,8 @@ window.sendHexMessage = async function sendHexMessage() {
     const directResult = await tryDirectCommand(text);
     if (directResult.handled) return;
 
+
+    stage = 'preflight planning';
     const preflightPlan = window.hexBrainActionPlanner?.classify?.(text, {
       browserSession: preflightBrowserState,
       sessionContext: {

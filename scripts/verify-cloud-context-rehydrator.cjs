@@ -40,6 +40,15 @@ const packet = {
   retrieval: {
     schema: 'hex.retrieval-summary.v1',
     categoryCounts: { apps: 2, recent: 1 },
+    routingGuidance: {
+      schema: 'hex.routing-guidance.v1',
+      activeSurfaces: ['session', 'browser', 'inventory', 'action'],
+      backgroundOnlySurfaces: [],
+      missingSurfaces: [],
+      clarificationTriggers: [],
+      recoveryPolicy: 'server-context-can-drive-routing',
+      browserFollowUpPolicy: 'server-browser-context-active'
+    },
     reasons: {
       memories: [{ id: 'm1', kind: 'browser_context', reason: 'matched: youtube | browser surface' }]
     }
@@ -92,6 +101,14 @@ const priorityView = window.hexCloudContextRehydrator.getPriorityView();
 assert.equal(priorityView.schema, 'hex.desktop-priority-view.v1');
 assert.ok(priorityView.active.some((item) => item.kind === 'browser' && item.contextFresh), 'fresh browser references should be active');
 assert.ok(priorityView.active[0].score >= priorityView.active.at(-1).score, 'active priority references should be score-ranked');
+const packetHealth = window.hexCloudContextRehydrator.getPacketHealth();
+assert.equal(packetHealth.schema, 'hex.context-packet-health.v1');
+assert.equal(packetHealth.level, 'ready');
+assert.equal(packetHealth.ready, true);
+assert.equal(packetHealth.references.active > 0, true);
+assert.equal(packetHealth.routingGuidance.schema, 'hex.routing-guidance.v1');
+assert.equal(packetHealth.routingGuidance.browserFollowUpPolicy, 'server-browser-context-active');
+assert.equal(packet.contextPacketHealth.level, 'ready');
 
 
 merged.length = 0;
@@ -121,6 +138,30 @@ assert.ok(staleAppIngest.weight < 1.3, 'stale inventory should ingest with reduc
 const stalePriorityView = window.hexCloudContextRehydrator.getPriorityView();
 assert.equal(stalePriorityView.active.length, 0, 'stale packet references must not stay active');
 assert.ok(stalePriorityView.background.some((item) => item.label === 'Metallica video'), 'stale browser reference should remain as background memory');
+const staleHealth = window.hexCloudContextRehydrator.getPacketHealth();
+assert.equal(staleHealth.level, 'stale');
+assert.equal(staleHealth.issues.includes('all-context-stale'), true);
+assert.equal(staleHealth.references.background > 0, true);
+assert.equal(staleHealth.routingGuidance.recoveryPolicy, 'server-context-can-drive-routing');
+
+assert.equal(window.hexCloudContextRehydrator.applyPacket(null), false);
+const invalidHealth = window.hexCloudContextRehydrator.getPacketHealth();
+assert.equal(invalidHealth.level, 'invalid');
+assert.equal(invalidHealth.ready, false);
+assert.equal(invalidHealth.issues.includes('packet-not-object'), true);
+
+const nullPriorityHealth = window.hexCloudContextRehydrator.getPacketHealth({
+  schema: 'hex.context-packet.v2',
+  continuityState: {
+    schema: 'hex.continuity-state.v1',
+    hasDesktopInventory: true,
+    freshness: { sessionSeconds: 1, inventorySeconds: 1, lastTurnSeconds: 1, lastActionSeconds: 1 }
+  },
+  retrieval: { schema: 'hex.retrieval-summary.v1' },
+  references: { priority: [] }
+});
+assert.equal(nullPriorityHealth.references.active, 0);
+
 console.log('Cloud context rehydrator contract OK:', {
   merged: merged.length,
   ingested: ingested.length,

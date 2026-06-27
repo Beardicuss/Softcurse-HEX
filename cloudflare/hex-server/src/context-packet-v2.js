@@ -175,6 +175,29 @@ function buildContextUse(continuityState = {}) {
       : 'Server continuity is suitable for active routing.'
   };
 }
+
+function buildRoutingGuidance(continuityState = {}) {
+  const contextUse = buildContextUse(continuityState);
+  const browserOpen = continuityState?.browser?.open === true;
+  const clarificationTriggers = [];
+  if (!browserOpen || contextUse.missing.includes('browser')) clarificationTriggers.push('no-active-browser-session');
+  if (contextUse.background.includes('browser')) clarificationTriggers.push('stale-browser-reference');
+  if (contextUse.background.includes('action')) clarificationTriggers.push('stale-action-context');
+  if (contextUse.missing.includes('inventory')) clarificationTriggers.push('missing-inventory-context');
+  return {
+    schema: 'hex.routing-guidance.v1',
+    activeSurfaces: contextUse.active,
+    backgroundOnlySurfaces: contextUse.background,
+    missingSurfaces: contextUse.missing,
+    clarificationTriggers,
+    recoveryPolicy: contextUse.background.length || contextUse.missing.length
+      ? 'prefer-live-local-context-before-provider-or-clarification'
+      : 'server-context-can-drive-routing',
+    browserFollowUpPolicy: browserOpen && !contextUse.background.includes('browser') && !contextUse.missing.includes('browser')
+      ? 'server-browser-context-active'
+      : 'require-fresh-live-browser-target-before-clicking'
+  };
+}
 function enrichRetrievalSummary(retrieval = {}, projected = {}) {
   const references = projected.references || {};
   const desktopByCategory = references.desktopByCategory || {};
@@ -207,6 +230,7 @@ function enrichRetrievalSummary(retrieval = {}, projected = {}) {
     categoryCounts,
     actionStatusCounts,
     contextUse: buildContextUse(projected.continuityState || {}),
+    routingGuidance: buildRoutingGuidance(projected.continuityState || {}),
     selectedCounts: {
       memories: (projected.relevantMemories || []).length,
       turns: (projected.relevantTurns || []).length,
@@ -401,4 +425,3 @@ function finite(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
-

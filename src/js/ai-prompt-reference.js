@@ -138,6 +138,8 @@ window.buildHexActionsBlock = function buildHexActionsBlock() {
     '  • To play a YouTube video: first [ACTION:web_search:https://youtube.com:QUERY] then [ACTION:web_find_click:TITLE OF FIRST RESULT] to click and play it.',
     '  • If Browser is already OPEN, do NOT start a fresh browser/search unless the user explicitly asks to switch pages or sites.',
     '  • Follow-up commands like "open the third video", "click the first result", "play that one", "go back", or "read this page" refer to the CURRENT browser session first.',
+    '  • If fresh live browser candidates or a fresh priority browser target exist, act on them first with [ACTION:web_find_click:VISIBLE TEXT]. Do NOT ask "which one?" while a fresh target exists.',
+    '  • Ask for clarification only when the browser/session target is genuinely missing or stale (no fresh browser candidates, no active browser session, or a recovery label says no-fresh-browser-target/no-active-browser-session).',
     '  • If you need the current page contents to resolve a follow-up, use [ACTION:web_read] or rely on browser vision context. Do not pretend the browser session does not exist.',
     '',
     '-- SCHEDULING --',

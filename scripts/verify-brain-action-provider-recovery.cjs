@@ -18,6 +18,10 @@ const sandbox = {
       },
       resolveDesktopReference() { return null; }
     },
+    resolveSessionReference(text) {
+      if (/that one|that|this|it/i.test(text || '')) return { index: 1, label: 'Live local video', text: 'Live local video', source: 'live-browser-candidates' };
+      return null;
+    },
     hexBrainActionPlanner: {
       classify(text, state) {
         const browserOpen = !!state?.browserSession?.open;
@@ -115,6 +119,34 @@ assert.equal(priorityThatOne.actions[0].type, 'web_find_click');
 assert.deepEqual([...priorityThatOne.actions[0].args], ['Eminem - Lose Yourself']);
 assert.equal(priorityThatOne.actions[0].meta.resolvedSource, 'cloud-priority-view');
 
+const liveContextSameOne = sandbox.window.hexBrainActionRecovery.actionsForObviousBrowserCommand({
+  userMsg: 'same one',
+  lang: 'en',
+  systemState: {
+    browserSession: { open: true, title: 'Live YouTube' },
+    localLiveContext: {
+      browser: { open: true, title: 'Live YouTube', candidateCount: 2, candidatesFresh: true },
+      lastResolvedReference: { label: 'Fresh live video', surface: 'browser', source: 'local-live-browser' }
+    }
+  }
+});
+assert.equal(liveContextSameOne.actions[0].type, 'web_find_click');
+assert.deepEqual([...liveContextSameOne.actions[0].args], ['Fresh live video']);
+assert.equal(liveContextSameOne.actions[0].meta.resolvedSource, 'local-live-browser');
+
+const noClarificationWithFreshLiveTarget = sandbox.window.hexBrainActionRecovery.explainMissingBrowserTarget({
+  userMsg: 'same one',
+  lang: 'en',
+  systemState: {
+    browserSession: { open: true, title: 'Live YouTube' },
+    localLiveContext: {
+      browser: { open: true, title: 'Live YouTube', candidateCount: 2, candidatesFresh: true },
+      lastResolvedReference: { label: 'Fresh live video', surface: 'browser', source: 'local-live-browser' }
+    }
+  }
+});
+assert.equal(noClarificationWithFreshLiveTarget, null, 'fresh live browser target must not trigger clarification');
+
 const priorityContinue = sandbox.window.hexBrainActionRecovery.actionsForObviousBrowserCommand({
   userMsg: 'continue',
   lang: 'en',
@@ -170,6 +202,67 @@ const priorityDesktopFile = sandbox.window.hexBrainActionRecovery.actionsForObvi
 });
 assert.equal(priorityDesktopFile.actions[0].type, 'open_file');
 assert.deepEqual([...priorityDesktopFile.actions[0].args], ['C:/Users/DanTe/notes.txt']);
+
+const stalePriorityIgnored = sandbox.window.hexBrainActionRecovery.actionsForObviousBrowserCommand({
+  userMsg: 'that one',
+  lang: 'en',
+  systemState: {
+    browserSession: { open: true, title: 'Live YouTube' },
+    cloudContext: {
+      contextPacketHealth: {
+        schema: 'hex.context-packet-health.v1',
+        level: 'stale',
+        ready: false,
+        issues: ['all-context-stale']
+      },
+      desktopPriorityView: {
+        schema: 'hex.desktop-priority-view.v1',
+        active: [{ kind: 'browser', purpose: 'browser', label: 'Old stale video', contextFresh: false }],
+        background: []
+      }
+    }
+  }
+});
+assert.equal(stalePriorityIgnored.actions[0].type, 'web_find_click');
+assert.deepEqual([...stalePriorityIgnored.actions[0].args], ['Live local video']);
+assert.equal(stalePriorityIgnored.actions[0].meta.resolvedSource, 'live-browser-candidates');
+const missingLiveTarget = sandbox.window.hexBrainActionRecovery.explainMissingBrowserTarget({
+  userMsg: 'same one',
+  lang: 'en',
+  systemState: {
+    browserSession: { open: true, title: 'YouTube' },
+    localLiveContext: {
+      browser: { open: true, title: 'YouTube', candidateCount: 0, candidatesFresh: false },
+      candidates: {},
+      referenceCandidateCount: 0
+    }
+  }
+});
+assert.equal(missingLiveTarget.reason, 'no-fresh-browser-target');
+assert.match(missingLiveTarget.text, /do not have a fresh target/i);
+assert.equal(missingLiveTarget.actions.length, 0);
+
+const degradedPriorityIgnored = sandbox.window.hexBrainActionRecovery.actionsForObviousLocalCommand({
+  userMsg: 'open that one',
+  lang: 'en',
+  systemState: {
+    browserSession: { open: true, title: 'Live YouTube' },
+    cloudContext: {
+      contextPacketHealth: {
+        schema: 'hex.context-packet-health.v1',
+        level: 'degraded',
+        ready: false,
+        issues: ['server-timeout']
+      },
+      desktopPriorityView: {
+        schema: 'hex.desktop-priority-view.v1',
+        active: [{ kind: 'app', purpose: 'inventory', label: 'Old App', contextFresh: false }],
+        background: []
+      }
+    }
+  }
+});
+assert.equal(degradedPriorityIgnored, null, 'degraded cloud priority must not drive direct local recovery');
 const unsafe = sandbox.window.hexBrainActionRecovery.actionsForProviderFailure({
   userMsg: 'delete downloads folder',
   lang: 'en',
@@ -182,8 +275,3 @@ console.log('Brain action provider-failure recovery contract OK:', {
   browserFollowUp: browserFollowUp.actions[0].type,
   unsafeBlocked: unsafe === null
 });
-
-
-
-
-

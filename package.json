@@ -18,9 +18,14 @@
     "test:provider-queue": "node scripts/verify-ai-provider-queue-guard.cjs",
     "test:context-packet": "node scripts/verify-context-packet-v2-contract.mjs",
     "test:cloud-rehydrate": "node scripts/verify-cloud-context-rehydrator.cjs",
+    "test:local-live-context": "node scripts/verify-local-live-context.cjs",
     "test:voice-wake": "node scripts/verify-voice-wake-routing.cjs",
     "test:voice-direct": "node scripts/verify-direct-voice-commands.cjs",
-    "test:contracts": "npm run test:voice-wake && npm run test:voice-direct && npm run test:capabilities && npm run test:desktop-capabilities && npm run test:live-keys && npm run test:provider-queue && npm run test:context-packet && npm run test:context-priority && npm run test:cloud-rehydrate && npm run test:action-outcomes && npm run test:prompt-actions && npm run test:brain-recovery && npm run test:brain-telemetry && npm run test:brain-action-recovery && npm run test:brain-evolution && npm run test:finetune-export && npm run test:ai-routed-actions && npm run test:ai-provider-action-recovery && npm run test:performance-policy && npm run test:cloud-lite-cache && npm run test:cloud-degraded-fallback && npm run test:cloud-token && npm run test:cloud-access-token && npm run test:config-save-secrets && npm run test:cloud-token-vault && npm run test:performance-settings",
+    "test:playlist-action": "node scripts/verify-playlist-action.cjs",
+    "test:file-alias-action": "node scripts/verify-file-alias-action.cjs",
+    "test:open-app-memory-guard": "node scripts/verify-open-app-memory-guard.cjs",
+    "test:memory-correction-actions": "node scripts/verify-memory-correction-actions.cjs",
+    "test:contracts": "npm run test:voice-wake && npm run test:voice-direct && npm run test:playlist-action && npm run test:file-alias-action && npm run test:open-app-memory-guard && npm run test:memory-correction-actions && npm run test:capabilities && npm run test:desktop-capabilities && npm run test:live-keys && npm run test:provider-queue && npm run test:context-packet && npm run test:context-priority && npm run test:cloud-rehydrate && npm run test:local-live-context && npm run test:action-outcomes && npm run test:prompt-actions && npm run test:brain-recovery && npm run test:brain-telemetry && npm run test:brain-action-recovery && npm run test:brain-evolution && npm run test:finetune-export && npm run test:brain-dataset-guidance && npm run test:ai-routed-actions && npm run test:ai-provider-action-recovery && npm run test:performance-policy && npm run test:cloud-lite-cache && npm run test:cloud-degraded-fallback && npm run test:cloud-token && npm run test:cloud-access-token && npm run test:config-save-secrets && npm run test:cloud-token-vault && npm run test:performance-settings",
     "test:action-outcomes": "node scripts/verify-action-outcome-recorder.cjs",
     "test:prompt-actions": "node scripts/verify-prompt-action-outcomes.cjs",
     "test:brain-recovery": "node scripts/verify-brain-router-action-recovery.cjs",
@@ -38,6 +43,7 @@
     "test:brain-action-recovery": "node scripts/verify-brain-action-provider-recovery.cjs",
     "test:brain-evolution": "node scripts/verify-brain-evolution-recorder.cjs",
     "test:finetune-export": "node scripts/verify-finetune-exporter.cjs",
+    "test:brain-dataset-guidance": "node scripts/verify-brain-dataset-guidance.cjs",
     "test:ai-provider-action-recovery": "node scripts/verify-ai-provider-failure-action-recovery.cjs"
   },
   "dependencies": {

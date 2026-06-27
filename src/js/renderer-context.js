@@ -60,7 +60,13 @@ function makeMinimalDesktopContext() {
 window.buildAIContextState = async function buildAIContextState(userText, options = {}) {
   const config = options.config || window._hexConfig || {};
   const sysStats = options.sysStats || window.sysStats || {};
-  const browserSession = await window.getBrowserSessionState();
+  let browserSession = await window.getBrowserSessionState();
+  if (browserSession?.open && !options.skipBrowserCandidateRefresh && window.hexContextState?.shouldRefreshBrowserCandidates?.(userText)) {
+    const refreshed = await window.hexActionHelpers?.refreshBrowserReferenceCandidates?.('pre-message live refresh').catch(() => null);
+    if (refreshed?.success) {
+      browserSession = await window.getBrowserSessionState();
+    }
+  }
   if (!options.skipUserUpdate) {
     window.updateSessionContextForUser(userText, browserSession);
   }
@@ -106,6 +112,7 @@ window.buildAIContextState = async function buildAIContextState(userText, option
     aiProvider: config.llm?.provider || 'none',
     browserSession,
     sessionContext,
+    localLiveContext: window.hexContextState?.getLiveContextFreshness?.() || null,
     desktopContext,
     workingMemory: {
       currentTask: working.currentTask || null,

@@ -88,12 +88,27 @@ function buildChatMsg(role, text, options = {}) {
 
   if (role === 'hex' && options.feedback !== false) {
     const feedbackId = 'fb_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+    const brainRoute = options.feedback?.brainRoute || null;
+    const routeMode = String(brainRoute?.mode || brainRoute?.route || brainRoute?.hints?.route || '').toLowerCase();
+    const routeReason = String(brainRoute?.reason || brainRoute?.hints?.reason || '').toLowerCase();
+    const recoveryLike = /context-gap|recovery|no-fresh|no-active|stale|missing/.test(routeMode + ' ' + routeReason);
+    const refusedStaleReference = /context-gap|no-fresh-browser-target|no-active-browser-session/.test(routeMode + ' ' + routeReason);
+    const feedbackActions = Array.isArray(options.feedback?.actions) ? options.feedback.actions.slice(0, 12) : [];
     window.hexFeedbackBuffer.set(feedbackId, {
       user: String(options.feedback?.user || window._lastUserMsg || '').slice(0, 4000),
       assistant: String(text || '').slice(0, 8000),
-      brainRoute: options.feedback?.brainRoute || null,
-      actions: Array.isArray(options.feedback?.actions) ? options.feedback.actions.slice(0, 12) : [],
-      actionTypes: Array.isArray(options.feedback?.actions) ? options.feedback.actions.map((action) => action?.type).filter(Boolean).slice(0, 12) : [],
+      brainRoute,
+      actions: feedbackActions,
+      actionTypes: feedbackActions.map((action) => action?.type).filter(Boolean).slice(0, 12),
+      recovery: recoveryLike ? {
+        schema: 'hex.feedback-recovery-message.v1',
+        text: String(text || '').slice(0, 1200),
+        mode: routeMode || null,
+        reason: routeReason || null,
+        classification: refusedStaleReference ? 'stale-reference-refusal' : 'action-recovery-message',
+        refusedToGuess: refusedStaleReference,
+        actionsSuggested: feedbackActions.length
+      } : null,
       language: document.documentElement?.lang || window._hexConfig?.language || 'en',
       assistantMode: window.currentMode || window._hexConfig?.mode || 'hex',
       createdAt: new Date().toISOString()

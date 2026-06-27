@@ -414,6 +414,8 @@ class HexVoice {
   _extractWakeCommand(transcript) {
     const raw = this._normalizeTranscript(transcript);
     const text = raw.toLowerCase();
+    const wakeOnly = this._matchWakePhrase(text);
+    if (wakeOnly && !wakeOnly.command) return null;
     const match = text.match(/^(hey[\s\W_]+)?(cardinal|hex|wake up|arise|rise|wake|awaken)[\s\W_]+(.+)$/iu);
     if (match?.[2] && match?.[3]) {
       const command = match[3].replace(/^[\s,.:;!?-]+/, '').trim();
@@ -594,6 +596,7 @@ class HexVoice {
   }
   _matchWakePhrase(transcript) {
     const text = String(transcript || '').trim().toLowerCase();
+    const canonical = text.replace(/[\s,.:;!?-]+$/g, '').trim();
     const customWake = String(this.wakeWord || '').trim().toLowerCase();
     const builtIns = ['hey cardinal', 'hey hex', 'cardinal', 'hex', 'wake up', 'arise', 'rise', 'wake', 'awaken'];
     const custom = customWake && !builtIns.includes(customWake) ? [customWake] : [];
@@ -606,7 +609,7 @@ class HexVoice {
       });
     }
     for (const phrase of phrases) {
-      if (text === phrase) return { phrase, command: '' };
+      if (text === phrase || canonical === phrase) return { phrase, command: '' };
       if (text.startsWith(phrase + ' ') || text.startsWith(phrase + ',')) {
         return { phrase, command: text.slice(phrase.length).replace(/^[\s,.:;!?-]+/, '').trim() };
       }

@@ -2,6 +2,22 @@ window.hexButlerActionHandler = (() => {
   const noteDesktopOutcome = (...args) => window.hexActionHelpers?.noteDesktopOutcome?.(...args);
   const noteBrowserOutcome = (...args) => window.hexActionHelpers?.noteBrowserOutcome?.(...args);
 
+  function isExecutablePath(value = '') {
+    return /\.(exe|lnk|bat|cmd|ps1)$/i.test(String(value || '').trim());
+  }
+
+  function isLikelyDocumentOrMediaPath(value = '') {
+    return /\.(xspf|m3u8?|pls|wpl|mp3|mp4|mkv|avi|mov|wav|flac|ogg|pdf|docx?|xlsx?|pptx?|txt|md|png|jpe?g|webp|gif)$/i.test(String(value || '').trim());
+  }
+
+  function shouldTrustMemoryAppPath(content = '', savedPath = '') {
+    const lower = String(content || '').toLowerCase();
+    if (lower.startsWith('app_path:')) return true;
+    if (isExecutablePath(savedPath)) return true;
+    if (isLikelyDocumentOrMediaPath(savedPath)) return false;
+    return /\b(app|program|software|launcher|executable)\b/i.test(content);
+  }
+
   async function handle(action) {
     switch (action.type) {
       case 'open_app': {
@@ -41,25 +57,29 @@ window.hexButlerActionHandler = (() => {
             if (match) {
               let savedPath = match[0].trim();
               if (savedPath) {
-                addLog('BUTLER', `Memory recall: "${appName}" → ${savedPath}`);
-                if (!savedPath.toLowerCase().endsWith('.exe') && !savedPath.toLowerCase().endsWith('.lnk')) {
-                  const exePath = await window.hexAPI.butler.findExeInFolder(savedPath, appName);
-                  if (exePath) {
-                    savedPath = exePath;
+                if (!shouldTrustMemoryAppPath(bestNode.content, savedPath)) {
+                  addLog('BUTLER', `Ignoring non-app memory path for "${appName}": ${savedPath}`);
+                } else {
+                  addLog('BUTLER', `Memory recall: "${appName}" → ${savedPath}`);
+                  if (!isExecutablePath(savedPath)) {
+                    const exePath = await window.hexAPI.butler.findExeInFolder(savedPath, appName);
+                    if (exePath) {
+                      savedPath = exePath;
+                    }
                   }
-                }
 
-                const openResult = await window.hexAPI.butler.openFile(savedPath);
-                if (openResult?.success) {
-                  addHexMessage(`**Opening** ${appName} (remembered path)`);
-                  noteDesktopOutcome({
-                    kind: 'app',
-                    label: appName,
-                    path: savedPath,
-                    value: appName,
-                    meta: { source: 'memory-path' }
-                  }, 'app', true);
-                  return { handled: true };
+                  const openResult = await window.hexAPI.butler.openFile(savedPath);
+                  if (openResult?.success) {
+                    addHexMessage(`**Opening** ${appName} (remembered path)`);
+                    noteDesktopOutcome({
+                      kind: 'app',
+                      label: appName,
+                      path: savedPath,
+                      value: appName,
+                      meta: { source: 'memory-path' }
+                    }, 'app', true);
+                    return { handled: true };
+                  }
                 }
               }
             }

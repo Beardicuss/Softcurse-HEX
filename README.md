@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="src/assets/hex.png" alt="Softcurse H.E.X. UI Preview" width="800">
+  <img src="src/assets/hex.webp" alt="Softcurse H.E.X. UI Preview" width="800">
   <br /><br />
   <h1 align="center">Softcurse H.E.X.</h1>
   <p align="center">
@@ -34,7 +34,7 @@
 
 ## � What Is H.E.X.
 
-**H.E.X.** (Heuristic Execution Matrix) is a fully autonomous desktop intelligence system built from the ground up inside **Softcurse Lab**. It is not a chatbot. It is not a wrapper around someone else's API. It is a self-contained synthetic agent that fuses directly into your operating system — reading your hardware, controlling your processes, managing your files, and executing complex multi-step operations on command.
+**H.E.X.** means **Human Enhancement X**. **Human** is the user; **Enhancement** is the augmentation of human capability through AI; **X** is intentionally symbolic rather than a fixed word: the unknown, the future, continuous evolution, limitless potential, and future possibilities. H.E.X. is a fully autonomous desktop intelligence system built from the ground up inside **Softcurse Lab**. It is not a chatbot. It is not a wrapper around someone else's API. It is a self-contained synthetic agent that fuses directly into your operating system — reading your hardware, controlling your processes, managing your files, and executing complex multi-step operations on command.
 
 The interface is built on the **SOFTCURSE/SYS v3.0 OMEGA** design doctrine: void-black panels, rigid geometric structures, tactical corner brackets, zero border-radius, and a strict 4-color military palette. Every pixel is deliberate. Every animation is functional. There is no decoration — only information density.
 

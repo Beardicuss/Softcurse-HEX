@@ -55,7 +55,15 @@ Long-term upgrade ideas that are intentionally outside the current implementatio
 - Add better settings organization and split large settings modules.
 - Add accessible contrast and scalable layouts for laptop screens.
 
-## 7. Refactor And Test Debt
+## 7. Personality Side Quest
+
+- Explore and carefully analyze built-in HEX personalities and custom personality behavior.
+- Verify personalities actually affect prompts, dialogue style, language behavior, and runtime switching.
+- Fix broken personality activation, saving, deletion, persistence, and config sync if discovered.
+- Audit and improve the personality adder / personality forger so custom personas are safe, clear, reusable, and cannot break core directives.
+- Add tests or smoke checks proving built-in personalities, custom personalities, active badge, prompt injection, and personality forger work end-to-end.
+
+## 8. Refactor And Test Debt
 
 - Split remaining large renderer and settings files by domain.
 - Split AI provider orchestration, prompt assembly, fallback policy, and response processing.
